@@ -31,6 +31,20 @@ function CoachIcon({ focused }: { focused: boolean }) {
   );
 }
 
+function ProfileIcon({ focused }: { focused: boolean }) {
+  return (
+    <View
+      style={[
+        styles.iconContainer,
+        { backgroundColor: focused ? COLORS.primary : 'transparent' },
+      ]}
+    >
+      <View style={[styles.profileHead, { backgroundColor: focused ? COLORS.white : COLORS.textLight }]} />
+      <View style={[styles.profileBody, { backgroundColor: focused ? COLORS.white : COLORS.textLight }]} />
+    </View>
+  );
+}
+
 export default function TabLayout() {
   return (
     <Tabs
@@ -62,6 +76,14 @@ export default function TabLayout() {
           title: 'Coach',
           headerTitle: 'Coach Sage',
           tabBarIcon: ({ focused }) => <CoachIcon focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          headerTitle: 'Profile',
+          tabBarIcon: ({ focused }) => <ProfileIcon focused={focused} />,
         }}
       />
     </Tabs>
@@ -107,5 +129,17 @@ const styles = StyleSheet.create({
     width: 20,
     height: 20,
     borderRadius: 10,
+  },
+  profileHead: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginBottom: 2,
+  },
+  profileBody: {
+    width: 16,
+    height: 8,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
   },
 });
