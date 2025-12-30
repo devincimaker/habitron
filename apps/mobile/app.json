@@ -1,19 +1,24 @@
 {
   "expo": {
-    "name": "habits-coach",
+    "name": "Habits Coach",
     "slug": "habits-coach",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "scheme": "habits-coach",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#F5A623"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.capybarastudios.habitscoach",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -25,6 +30,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "d90531ab-298f-4386-98dd-df7a6baa3c48"
+      }
     }
   }
 }

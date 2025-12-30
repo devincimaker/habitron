@@ -1,22 +1,20 @@
 {
-  "name": "habits-coach",
+  "name": "habits-coach-monorepo",
   "version": "1.0.0",
-  "main": "index.ts",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
   "scripts": {
-    "start": "expo start",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web"
-  },
-  "dependencies": {
-    "expo": "~54.0.30",
-    "expo-status-bar": "~3.0.9",
-    "react": "19.1.0",
-    "react-native": "0.81.5"
+    "dev": "turbo dev --ui tui",
+    "build": "turbo build",
+    "start": "turbo start --ui tui",
+    "typecheck": "turbo typecheck",
+    "clean": "turbo clean && rm -rf node_modules",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "db:diff": "supabase db diff",
+    "db:new": "supabase migration new"
   },
   "devDependencies": {
-    "@types/react": "~19.1.0",
-    "typescript": "~5.9.2"
-  },
-  "private": true
+    "turbo": "^2.3.3"
+  }
 }

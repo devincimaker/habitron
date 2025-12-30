@@ -2,6 +2,14 @@
 
 # dependencies
 node_modules/
+.pnpm-store/
+
+# Turborepo
+.turbo/
+
+# Supabase
+supabase/.branches
+supabase/.temp
 
 # Expo
 .expo/
@@ -31,6 +39,7 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
 
 # typescript
