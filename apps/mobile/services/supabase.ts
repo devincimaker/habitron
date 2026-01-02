@@ -1,5 +1,5 @@
 import 'react-native-url-polyfill/auto';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL!;
@@ -18,11 +18,31 @@ const ExpoSecureStoreAdapter = {
   },
 };
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    storage: ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false,
+// Lazily initialize Supabase client to avoid TurboModule crash on startup
+let _supabase: SupabaseClient | null = null;
+
+const getSupabaseClient = (): SupabaseClient => {
+  if (!_supabase) {
+    _supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storage: ExpoSecureStoreAdapter,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: false,
+      },
+    });
+  }
+  return _supabase;
+};
+
+// Proxy object that lazily initializes the client on first access
+export const supabase = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getSupabaseClient();
+    const value = client[prop as keyof SupabaseClient];
+    if (typeof value === 'function') {
+      return value.bind(client);
+    }
+    return value;
   },
 });
