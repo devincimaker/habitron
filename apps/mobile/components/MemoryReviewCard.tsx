@@ -1,0 +1,124 @@
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import type { MemoryCategory } from '@habits-coach/shared';
+import {
+  COLORS,
+  FONT_SIZES,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+} from '../constants/theme';
+
+// Category display names
+const CATEGORY_LABELS: Record<string, string> = {
+  motivation: 'Motivation',
+  obstacle: 'Obstacle',
+  preference: 'Preference',
+  personal: 'Personal',
+  goal: 'Goal',
+  general: 'General',
+};
+
+// Category colors for visual distinction
+const CATEGORY_COLORS: Record<string, string> = {
+  motivation: '#4CAF50',
+  obstacle: '#F44336',
+  preference: '#2196F3',
+  personal: '#9C27B0',
+  goal: '#FF9800',
+  general: '#607D8B',
+};
+
+interface MemoryReviewCardProps {
+  content: string;
+  category: MemoryCategory;
+  selected: boolean;
+  onToggle: () => void;
+}
+
+export function MemoryReviewCard({
+  content,
+  category,
+  selected,
+  onToggle,
+}: MemoryReviewCardProps) {
+  return (
+    <TouchableOpacity
+      style={[styles.card, selected && styles.cardSelected]}
+      onPress={onToggle}
+      activeOpacity={0.7}
+    >
+      <View style={styles.header}>
+        <View
+          style={[
+            styles.categoryBadge,
+            { backgroundColor: `${CATEGORY_COLORS[category]}20` },
+          ]}
+        >
+          <Text
+            style={[styles.categoryText, { color: CATEGORY_COLORS[category] }]}
+          >
+            {CATEGORY_LABELS[category]}
+          </Text>
+        </View>
+        <View style={[styles.checkbox, selected && styles.checkboxSelected]}>
+          {selected && <Text style={styles.checkmark}>✓</Text>}
+        </View>
+      </View>
+      <Text style={styles.content}>{content}</Text>
+    </TouchableOpacity>
+  );
+}
+
+const styles = StyleSheet.create({
+  card: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    ...SHADOWS.small,
+  },
+  cardSelected: {
+    borderColor: COLORS.primary,
+    backgroundColor: `${COLORS.primary}08`,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: SPACING.sm,
+  },
+  categoryBadge: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: BORDER_RADIUS.sm,
+  },
+  categoryText: {
+    fontSize: FONT_SIZES.xs,
+    fontWeight: '600',
+  },
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: BORDER_RADIUS.sm,
+    borderWidth: 2,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: COLORS.primary,
+  },
+  checkmark: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.sm,
+    fontWeight: 'bold',
+  },
+  content: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.text,
+    lineHeight: 22,
+  },
+});

@@ -68,6 +68,10 @@ export interface ChatRequest {
     timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'anytime';
     reason?: string;
   }>;
+  memories?: Array<{
+    content: string;
+    category: MemoryCategory;
+  }>;
 }
 
 export interface ChatResponse {
@@ -78,4 +82,31 @@ export interface ChatResponse {
 export interface ErrorResponse {
   error: string;
   code?: string;
+}
+
+// Memory types
+export type MemoryCategory = 'motivation' | 'obstacle' | 'preference' | 'personal' | 'goal' | 'general';
+
+export interface Memory {
+  id: string;
+  content: string;
+  category: MemoryCategory;
+  sourceSessionAt?: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// Memory API types
+export interface ExtractMemoriesRequest {
+  messages: Array<{
+    role: 'user' | 'assistant';
+    content: string;
+  }>;
+}
+
+export interface ExtractMemoriesResponse {
+  memories: Array<{
+    content: string;
+    category: MemoryCategory;
+  }>;
 }

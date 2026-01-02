@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config } from './config.js';
 import { generalRateLimiter } from './middleware/rateLimit.js';
 import chatRouter from './routes/chat.js';
+import memoriesRouter from './routes/memories.js';
 
 const app = express();
 
@@ -29,6 +30,7 @@ app.get('/health', (_req, res) => {
 
 // API routes
 app.use('/api/chat', chatRouter);
+app.use('/api/memories', memoriesRouter);
 
 // 404 handler
 app.use((_req, res) => {
