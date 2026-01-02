@@ -26,7 +26,7 @@ const INITIAL_MESSAGE: ChatMessage = {
   id: 'welcome',
   role: 'assistant',
   content:
-    "Hi, I'm Sage - your habits coach. Before I can help you build meaningful habits, I'd love to understand you a bit better.\n\nWhat's on your mind today? What brought you here?",
+    "Hi, I'm Sage - your habits coach. How are things going? What's on your mind today?",
   timestamp: Date.now(),
 };
 
