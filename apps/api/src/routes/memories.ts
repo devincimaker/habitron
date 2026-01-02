@@ -36,8 +36,14 @@ router.post('/extract', authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
+    // Fetch existing memories for deduplication
+    const { data: existingMemories } = await supabase
+      .from('memories')
+      .select('content, category')
+      .eq('user_id', req.user!.id);
+
     // Extract memories using AI (return without saving)
-    const extracted = await extractMemories(messages);
+    const extracted = await extractMemories(messages, existingMemories || []);
     res.json(extracted);
   } catch (error) {
     console.error('Extract memories error:', error);
