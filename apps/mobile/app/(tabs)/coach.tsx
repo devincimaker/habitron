@@ -9,16 +9,23 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
-import { useMemoriesStore } from '../../stores/useMemoriesStore';
+import { useMemoriesStore, ExtractedMemory } from '../../stores/useMemoriesStore';
 import { ChatMessage } from '../../components/ChatMessage';
 import { SuggestionCard } from '../../components/SuggestionCard';
+import { MemoryReviewCard } from '../../components/MemoryReviewCard';
 import { sendMessage } from '../../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../../constants/theme';
+
+type ReviewState =
+  | { phase: 'none' }
+  | { phase: 'extracting' }
+  | { phase: 'reviewing'; memories: ExtractedMemory[]; selected: Set<number> };
 
 export default function CoachScreen() {
   const {
@@ -32,10 +39,11 @@ export default function CoachScreen() {
   } = useSessionStore();
 
   const { habits, addHabit, removeHabit, updateHabit } = useHabitsStore();
-  const { memories, loadMemories } = useMemoriesStore();
+  const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
 
   const [inputText, setInputText] = useState('');
   const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
+  const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
   const flatListRef = useRef<FlatList>(null);
 
   // Load memories on mount
@@ -47,8 +55,70 @@ export default function CoachScreen() {
     startSession();
   }, [startSession]);
 
-  const handleEndSession = useCallback(() => {
+  const handleEndSession = useCallback(async () => {
     setPendingAction(null);
+
+    // If session has meaningful content, extract memories
+    if (messages.length > 2) {
+      setReviewState({ phase: 'extracting' });
+
+      const extracted = await extractMemories(
+        messages.map((m) => ({ role: m.role, content: m.content }))
+      );
+
+      if (extracted.length > 0) {
+        // Show review screen with all memories selected by default
+        setReviewState({
+          phase: 'reviewing',
+          memories: extracted,
+          selected: new Set(extracted.map((_, i) => i)),
+        });
+      } else {
+        // No memories extracted, just end the session
+        setReviewState({ phase: 'none' });
+        endSession();
+      }
+    } else {
+      // Short session, no need to extract
+      endSession();
+    }
+  }, [messages, extractMemories, endSession]);
+
+  const handleToggleMemory = useCallback((index: number) => {
+    setReviewState((prev) => {
+      if (prev.phase !== 'reviewing') return prev;
+
+      const newSelected = new Set(prev.selected);
+      if (newSelected.has(index)) {
+        newSelected.delete(index);
+      } else {
+        newSelected.add(index);
+      }
+      return { ...prev, selected: newSelected };
+    });
+  }, []);
+
+  const handleSaveMemories = useCallback(async () => {
+    if (reviewState.phase !== 'reviewing') return;
+
+    const selectedMemories = reviewState.memories.filter((_, i) =>
+      reviewState.selected.has(i)
+    );
+
+    if (selectedMemories.length > 0) {
+      try {
+        await saveMemories(selectedMemories);
+      } catch (error) {
+        console.error('Failed to save memories:', error);
+      }
+    }
+
+    setReviewState({ phase: 'none' });
+    endSession();
+  }, [reviewState, saveMemories, endSession]);
+
+  const handleSkipMemories = useCallback(() => {
+    setReviewState({ phase: 'none' });
     endSession();
   }, [endSession]);
 
@@ -156,7 +226,7 @@ export default function CoachScreen() {
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
 
   // Not in session - show start button
-  if (!isActive) {
+  if (!isActive && reviewState.phase === 'none') {
     return (
       <View style={styles.container}>
         <LinearGradient
@@ -178,6 +248,83 @@ export default function CoachScreen() {
             <Text style={styles.startButtonText}>Start Coaching Session</Text>
           </TouchableOpacity>
         </LinearGradient>
+      </View>
+    );
+  }
+
+  // Memory review - extracting phase
+  if (reviewState.phase === 'extracting') {
+    return (
+      <View style={styles.container}>
+        <View style={styles.reviewContainer}>
+          <View style={styles.reviewHeader}>
+            <Text style={styles.reviewEmoji}>🧠</Text>
+            <Text style={styles.reviewTitle}>Processing Session</Text>
+            <Text style={styles.reviewSubtitle}>
+              Extracting what I learned about you...
+            </Text>
+          </View>
+          <ActivityIndicator size="large" color={COLORS.primary} />
+        </View>
+      </View>
+    );
+  }
+
+  // Memory review - showing extracted memories
+  if (reviewState.phase === 'reviewing') {
+    const selectedCount = reviewState.selected.size;
+
+    return (
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.reviewScrollView}
+          contentContainerStyle={styles.reviewContent}
+        >
+          <View style={styles.reviewHeader}>
+            <Text style={styles.reviewEmoji}>✨</Text>
+            <Text style={styles.reviewTitle}>Session Complete</Text>
+            <Text style={styles.reviewSubtitle}>
+              Here's what I learned about you. Select what you'd like me to remember for future sessions.
+            </Text>
+          </View>
+
+          <View style={styles.memoriesList}>
+            {reviewState.memories.map((memory, index) => (
+              <MemoryReviewCard
+                key={index}
+                content={memory.content}
+                category={memory.category}
+                selected={reviewState.selected.has(index)}
+                onToggle={() => handleToggleMemory(index)}
+              />
+            ))}
+          </View>
+        </ScrollView>
+
+        <View style={styles.reviewFooter}>
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkipMemories}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.skipButtonText}>Skip</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.saveButton,
+              selectedCount === 0 && styles.saveButtonDisabled,
+            ]}
+            onPress={handleSaveMemories}
+            activeOpacity={0.8}
+            disabled={selectedCount === 0}
+          >
+            <Text style={styles.saveButtonText}>
+              {selectedCount === 0
+                ? 'Select memories'
+                : `Save ${selectedCount} ${selectedCount === 1 ? 'memory' : 'memories'}`}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   }
@@ -377,5 +524,83 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     fontWeight: '600',
     fontSize: FONT_SIZES.md,
+  },
+  // Review screen
+  reviewContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: SPACING.xl,
+  },
+  reviewScrollView: {
+    flex: 1,
+  },
+  reviewContent: {
+    padding: SPACING.lg,
+    paddingBottom: 100,
+  },
+  reviewHeader: {
+    alignItems: 'center',
+    marginBottom: SPACING.xl,
+  },
+  reviewEmoji: {
+    fontSize: 48,
+    marginBottom: SPACING.md,
+  },
+  reviewTitle: {
+    fontSize: FONT_SIZES.xl,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
+  },
+  reviewSubtitle: {
+    fontSize: FONT_SIZES.md,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  memoriesList: {
+    marginTop: SPACING.md,
+  },
+  reviewFooter: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    padding: SPACING.md,
+    backgroundColor: COLORS.background,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  skipButton: {
+    flex: 1,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  skipButtonText: {
+    color: COLORS.textSecondary,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '500',
+  },
+  saveButton: {
+    flex: 2,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.md,
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+  },
+  saveButtonDisabled: {
+    backgroundColor: COLORS.border,
+  },
+  saveButtonText: {
+    color: COLORS.white,
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
   },
 });

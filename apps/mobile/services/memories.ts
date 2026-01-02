@@ -1,5 +1,11 @@
 import { supabase } from './supabase';
-import type { Memory, MemoryCategory } from '@habits-coach/shared';
+import type { Memory, MemoryCategory, ExtractMemoriesResponse } from '@habits-coach/shared';
+
+// Type for extracted memory before saving (no id yet)
+export interface ExtractedMemory {
+  content: string;
+  category: MemoryCategory;
+}
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -55,10 +61,10 @@ export async function getMemories(): Promise<Memory[]> {
   return (data as DbMemory[]).map(mapDbMemoryToMemory);
 }
 
-// Extract memories from a conversation (calls API)
+// Extract memories from a conversation (calls API, returns without saving)
 export async function extractMemories(
   messages: Array<{ role: 'user' | 'assistant'; content: string }>
-): Promise<void> {
+): Promise<ExtractedMemory[]> {
   const token = await getAuthToken();
 
   const response = await fetch(`${API_URL}/api/memories/extract`, {
@@ -73,6 +79,30 @@ export async function extractMemories(
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(error.error || 'Failed to extract memories');
+  }
+
+  const data = (await response.json()) as ExtractMemoriesResponse;
+  return data.memories;
+}
+
+// Save approved memories to database
+export async function saveMemories(memories: ExtractedMemory[]): Promise<void> {
+  if (memories.length === 0) return;
+
+  const token = await getAuthToken();
+
+  const response = await fetch(`${API_URL}/api/memories`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ memories }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || 'Failed to save memories');
   }
 }
 

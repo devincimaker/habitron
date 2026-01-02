@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Memory, MemoryCategory } from '@habits-coach/shared';
 import * as memoriesService from '../services/memories';
+import type { ExtractedMemory } from '../services/memories';
 
 interface MemoriesState {
   memories: Memory[];
@@ -10,7 +11,8 @@ interface MemoriesState {
   loadMemories: () => Promise<void>;
   extractMemories: (
     messages: Array<{ role: 'user' | 'assistant'; content: string }>
-  ) => Promise<void>;
+  ) => Promise<ExtractedMemory[]>;
+  saveMemories: (memories: ExtractedMemory[]) => Promise<void>;
   updateMemory: (
     id: string,
     updates: { content?: string; category?: MemoryCategory }
@@ -18,6 +20,8 @@ interface MemoriesState {
   deleteMemory: (id: string) => Promise<void>;
   clearMemories: () => void;
 }
+
+export type { ExtractedMemory };
 
 export const useMemoriesStore = create<MemoriesState>((set, get) => ({
   memories: [],
@@ -36,12 +40,22 @@ export const useMemoriesStore = create<MemoriesState>((set, get) => ({
 
   extractMemories: async (messages) => {
     try {
-      await memoriesService.extractMemories(messages);
-      // Reload memories after extraction to get the newly saved ones
-      await get().loadMemories();
+      const extracted = await memoriesService.extractMemories(messages);
+      return extracted;
     } catch (error) {
       console.error('Failed to extract memories:', error);
-      // Don't throw - extraction failure shouldn't break the app flow
+      return [];
+    }
+  },
+
+  saveMemories: async (memories) => {
+    try {
+      await memoriesService.saveMemories(memories);
+      // Reload memories after saving to get the complete list
+      await get().loadMemories();
+    } catch (error) {
+      console.error('Failed to save memories:', error);
+      throw error;
     }
   },
 

@@ -26,7 +26,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
   }
 });
 
-// POST /api/memories/extract - Extract memories from conversation
+// POST /api/memories/extract - Extract memories from conversation (does NOT save)
 router.post('/extract', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { messages } = req.body as ExtractMemoriesRequest;
@@ -36,26 +36,39 @@ router.post('/extract', authMiddleware, async (req: Request, res: Response): Pro
       return;
     }
 
-    // Extract memories using AI
+    // Extract memories using AI (return without saving)
     const extracted = await extractMemories(messages);
-
-    // Save to database
-    if (extracted.memories.length > 0) {
-      const memoriesData = extracted.memories.map((m) => ({
-        user_id: req.user!.id,
-        content: m.content,
-        category: m.category,
-        source_session_at: new Date().toISOString(),
-      }));
-
-      const { error } = await supabase.from('memories').insert(memoriesData);
-      if (error) throw error;
-    }
-
     res.json(extracted);
   } catch (error) {
     console.error('Extract memories error:', error);
     res.status(500).json({ error: 'Failed to extract memories' } satisfies ErrorResponse);
+  }
+});
+
+// POST /api/memories - Save approved memories
+router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { memories } = req.body as { memories: Array<{ content: string; category: MemoryCategory }> };
+
+    if (!Array.isArray(memories) || memories.length === 0) {
+      res.status(400).json({ error: 'Memories array is required' } satisfies ErrorResponse);
+      return;
+    }
+
+    const memoriesData = memories.map((m) => ({
+      user_id: req.user!.id,
+      content: m.content,
+      category: m.category,
+      source_session_at: new Date().toISOString(),
+    }));
+
+    const { data, error } = await supabase.from('memories').insert(memoriesData).select();
+    if (error) throw error;
+
+    res.json({ memories: data });
+  } catch (error) {
+    console.error('Save memories error:', error);
+    res.status(500).json({ error: 'Failed to save memories' } satisfies ErrorResponse);
   }
 });
 
