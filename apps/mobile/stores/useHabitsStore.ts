@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { Habit, HabitWithStatus, HabitStatus, getTodayDate } from '@habits-coach/shared';
 import * as habitsService from '../services/habits';
+import { notifyFirstSkip } from '../services/api';
 
 interface HabitsState {
   habits: Habit[];
@@ -84,6 +85,11 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
         newLogs.set(habitId, status);
         return { todayLogs: newLogs };
       });
+
+      // Notify backend when habit is skipped (for first-skip notification)
+      if (status === 'skipped') {
+        notifyFirstSkip(habitId);
+      }
     } catch (error) {
       console.error('Failed to set habit status:', error);
       throw error;

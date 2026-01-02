@@ -70,3 +70,30 @@ export async function sendMessage(
 
   return response.json();
 }
+
+/**
+ * Notify the backend when a user skips a habit.
+ * This is used to detect first-ever skip and schedule a notification.
+ * Fire-and-forget - errors are logged but not thrown.
+ */
+export async function notifyFirstSkip(habitId: string): Promise<void> {
+  try {
+    const token = await getAuthToken();
+
+    const response = await fetch(`${API_URL}/api/notifications/first-skip`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ habitId }),
+    });
+
+    if (!response.ok) {
+      console.error('Failed to notify first skip:', response.status);
+    }
+  } catch (error) {
+    // Fire and forget - don't throw, just log
+    console.error('Error notifying first skip:', error);
+  }
+}

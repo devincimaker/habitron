@@ -12,6 +12,7 @@ import {
   ScrollView,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useLocalSearchParams } from 'expo-router';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useMemoriesStore, ExtractedMemory } from '../../stores/useMemoriesStore';
@@ -28,6 +29,8 @@ type ReviewState =
   | { phase: 'reviewing'; memories: ExtractedMemory[]; selected: Set<number> };
 
 export default function CoachScreen() {
+  const { autoStart } = useLocalSearchParams<{ autoStart?: string }>();
+
   const {
     isActive,
     messages,
@@ -50,6 +53,13 @@ export default function CoachScreen() {
   useEffect(() => {
     loadMemories();
   }, [loadMemories]);
+
+  // Auto-start session when navigated from push notification
+  useEffect(() => {
+    if (autoStart === 'true' && !isActive && reviewState.phase === 'none') {
+      startSession();
+    }
+  }, [autoStart, isActive, reviewState.phase, startSession]);
 
   const handleStartSession = useCallback(() => {
     startSession();
