@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { ChatRequest, ChatResponse, Habit } from '@habits-coach/shared';
+import type { ChatRequest, ChatResponse, Habit, Memory } from '@habits-coach/shared';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -27,7 +27,8 @@ async function getAuthToken(): Promise<string> {
 
 export async function sendMessage(
   messages: ChatRequest['messages'],
-  habits: Habit[]
+  habits: Habit[],
+  memories?: Memory[]
 ): Promise<ChatResponse> {
   const token = await getAuthToken();
 
@@ -40,6 +41,12 @@ export async function sendMessage(
     reason: h.reason,
   }));
 
+  // Map memories to the request format
+  const memoriesData: ChatRequest['memories'] = memories?.map((m) => ({
+    content: m.content,
+    category: m.category,
+  }));
+
   const response = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',
     headers: {
@@ -49,6 +56,7 @@ export async function sendMessage(
     body: JSON.stringify({
       messages,
       habits: habitData,
+      memories: memoriesData,
     } satisfies ChatRequest),
   });
 

@@ -101,6 +101,16 @@ function buildUserContext(habits: ChatRequest['habits']): string {
   return `Current habits being tracked:\n${habitList}`;
 }
 
+function buildMemoryContext(memories?: ChatRequest['memories']): string {
+  if (!memories || memories.length === 0) {
+    return '';
+  }
+
+  const memoryList = memories.map((m) => `- [${m.category}] ${m.content}`).join('\n');
+
+  return `\n\n## What you know about this user (from previous sessions):\n${memoryList}\n\nUse this context to personalize your coaching naturally. Don't explicitly say "I remember" - just incorporate what you know into your responses.`;
+}
+
 function buildConversationContext(
   messages: ChatRequest['messages']
 ): string {
@@ -118,10 +128,12 @@ function buildConversationContext(
 
 function buildMessages(
   sessionMessages: ChatRequest['messages'],
-  habits: ChatRequest['habits']
+  habits: ChatRequest['habits'],
+  memories?: ChatRequest['memories']
 ): OpenAI.ChatCompletionMessageParam[] {
+  const memoryContext = buildMemoryContext(memories);
   const messages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'system', content: SYSTEM_PROMPT + memoryContext },
     { role: 'system', content: buildUserContext(habits) },
     { role: 'system', content: buildConversationContext(sessionMessages) },
   ];
@@ -139,7 +151,7 @@ function buildMessages(
 export async function sendMessage(
   request: ChatRequest
 ): Promise<ChatResponse> {
-  const messages = buildMessages(request.messages, request.habits);
+  const messages = buildMessages(request.messages, request.habits, request.memories);
 
   const response = await client.chat.completions.create({
     model: config.openai.model,

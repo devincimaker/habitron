@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
+import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import { ChatMessage } from '../../components/ChatMessage';
 import { SuggestionCard } from '../../components/SuggestionCard';
 import { sendMessage } from '../../services/api';
@@ -31,10 +32,16 @@ export default function CoachScreen() {
   } = useSessionStore();
 
   const { habits, addHabit, removeHabit, updateHabit } = useHabitsStore();
+  const { memories, loadMemories } = useMemoriesStore();
 
   const [inputText, setInputText] = useState('');
   const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  // Load memories on mount
+  useEffect(() => {
+    loadMemories();
+  }, [loadMemories]);
 
   const handleStartSession = useCallback(() => {
     startSession();
@@ -59,7 +66,7 @@ export default function CoachScreen() {
     setLoading(true);
     try {
       const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
-      const response = await sendMessage(allMessages, habits);
+      const response = await sendMessage(allMessages, habits, memories);
 
       // Add assistant message
       addMessage({ role: 'assistant', content: response.message, action: response.action });
@@ -77,7 +84,7 @@ export default function CoachScreen() {
     } finally {
       setLoading(false);
     }
-  }, [inputText, isLoading, messages, habits, addMessage, setLoading]);
+  }, [inputText, isLoading, messages, habits, memories, addMessage, setLoading]);
 
   const handleConfirmAction = useCallback(async () => {
     if (!pendingAction) return;

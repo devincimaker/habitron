@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { ChatMessage } from '@habits-coach/shared';
 import { CONFIG } from '../config';
+import { useMemoriesStore } from './useMemoriesStore';
 
 interface SessionState {
   isActive: boolean;
@@ -49,6 +50,17 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   endSession: () => {
+    const { messages } = get();
+
+    // Extract memories from the conversation (fire and forget)
+    // Only extract if there were meaningful exchanges (more than just the welcome message)
+    if (messages.length > 2) {
+      const memoriesStore = useMemoriesStore.getState();
+      memoriesStore.extractMemories(
+        messages.map((m) => ({ role: m.role, content: m.content }))
+      );
+    }
+
     set({
       isActive: false,
       startedAt: null,
