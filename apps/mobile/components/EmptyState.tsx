@@ -1,9 +1,16 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSessionStore } from '../stores/useSessionStore';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../constants/theme';
 
 export function EmptyState() {
   const router = useRouter();
+  const startSession = useSessionStore((state) => state.startSession);
+
+  const handleStartCoaching = () => {
+    startSession();
+    router.push('/(tabs)/coach');
+  };
 
   return (
     <View style={styles.container}>
@@ -16,7 +23,7 @@ export function EmptyState() {
       </Text>
       <TouchableOpacity
         style={styles.button}
-        onPress={() => router.push('/(tabs)/coach')}
+        onPress={handleStartCoaching}
         activeOpacity={0.8}
       >
         <Text style={styles.buttonText}>Start Coaching Session</Text>
