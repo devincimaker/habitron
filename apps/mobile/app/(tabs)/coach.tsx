@@ -19,7 +19,9 @@ import { useMemoriesStore, ExtractedMemory } from '../../stores/useMemoriesStore
 import { ChatMessage } from '../../components/ChatMessage';
 import { SuggestionCard } from '../../components/SuggestionCard';
 import { MemoryReviewCard } from '../../components/MemoryReviewCard';
-import { sendMessage } from '../../services/api';
+import { VoiceInputButton } from '../../components/VoiceInputButton';
+import { useAudioRecorder } from '../../hooks/useAudioRecorder';
+import { sendMessage, transcribeAudio } from '../../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
 import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../../constants/theme';
 
@@ -47,7 +49,20 @@ export default function CoachScreen() {
   const [inputText, setInputText] = useState('');
   const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
   const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
+  const [isRecordingMode, setIsRecordingMode] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const flatListRef = useRef<FlatList>(null);
+
+  const {
+    isRecording,
+    recordingDuration,
+    meterLevel,
+    startRecording,
+    stopRecording,
+    cancelRecording,
+    error: recordingError,
+  } = useAudioRecorder();
 
   // Load memories on mount
   useEffect(() => {
@@ -228,6 +243,84 @@ export default function CoachScreen() {
     });
   }, [addMessage]);
 
+  const handleMicPress = useCallback(async () => {
+    setTranscriptionError(null);
+    setIsRecordingMode(true);
+    await startRecording();
+  }, [startRecording]);
+
+  const handleStopRecording = useCallback(async () => {
+    const audioUri = await stopRecording();
+    if (!audioUri) {
+      setIsRecordingMode(false);
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const text = await transcribeAudio(audioUri);
+      setInputText(text);
+      setIsRecordingMode(false);
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setTranscriptionError(
+        error instanceof Error ? error.message : 'Failed to transcribe audio'
+      );
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [stopRecording]);
+
+  const handleSendRecording = useCallback(async () => {
+    const audioUri = await stopRecording();
+    if (!audioUri) {
+      setIsRecordingMode(false);
+      return;
+    }
+
+    setIsTranscribing(true);
+    try {
+      const text = await transcribeAudio(audioUri);
+      setIsRecordingMode(false);
+
+      // Immediately send the message
+      if (text.trim()) {
+        addMessage({ role: 'user', content: text });
+        setLoading(true);
+
+        try {
+          const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
+          const response = await sendMessage(allMessages, habits, memories);
+          addMessage({ role: 'assistant', content: response.message, action: response.action });
+
+          if (response.action) {
+            setPendingAction(response.action);
+          }
+        } catch (error) {
+          console.error('Error sending message:', error);
+          addMessage({
+            role: 'assistant',
+            content: 'Sorry, I had trouble processing that. Please try again.',
+          });
+        } finally {
+          setLoading(false);
+        }
+      }
+    } catch (error) {
+      console.error('Transcription error:', error);
+      setTranscriptionError(
+        error instanceof Error ? error.message : 'Failed to transcribe audio'
+      );
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, [stopRecording, addMessage, setLoading, messages, habits, memories]);
+
+  const handleRetryRecording = useCallback(() => {
+    setTranscriptionError(null);
+    setIsRecordingMode(false);
+  }, []);
+
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessageType }) => <ChatMessage message={item} />,
     []
@@ -384,29 +477,51 @@ export default function CoachScreen() {
 
       {/* Input */}
       <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          value={inputText}
-          onChangeText={setInputText}
-          placeholder="Type your message..."
-          placeholderTextColor={COLORS.textLight}
-          multiline
-          maxLength={500}
-          editable={!isLoading}
-          onSubmitEditing={handleSendMessage}
-          blurOnSubmit={false}
-        />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            (!inputText.trim() || isLoading) && styles.sendButtonDisabled,
-          ]}
-          onPress={handleSendMessage}
-          disabled={!inputText.trim() || isLoading}
-          activeOpacity={0.8}
-        >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
+        {isRecordingMode ? (
+          <VoiceInputButton
+            mode={isTranscribing ? 'transcribing' : 'recording'}
+            onMicPress={() => {}}
+            meterLevel={meterLevel}
+            recordingDuration={recordingDuration}
+            onStopPress={handleStopRecording}
+            onSendPress={handleSendRecording}
+            error={transcriptionError || recordingError}
+            onRetry={handleRetryRecording}
+          />
+        ) : (
+          <>
+            <TextInput
+              style={styles.input}
+              value={inputText}
+              onChangeText={setInputText}
+              placeholder="Type your message..."
+              placeholderTextColor={COLORS.textLight}
+              multiline
+              maxLength={500}
+              editable={!isLoading}
+              onSubmitEditing={handleSendMessage}
+              blurOnSubmit={false}
+            />
+            {inputText.trim() ? (
+              <TouchableOpacity
+                style={[
+                  styles.sendButton,
+                  isLoading && styles.sendButtonDisabled,
+                ]}
+                onPress={handleSendMessage}
+                disabled={isLoading}
+                activeOpacity={0.8}
+              >
+                <Text style={styles.sendIcon}>↑</Text>
+              </TouchableOpacity>
+            ) : (
+              <VoiceInputButton
+                mode="idle"
+                onMicPress={handleMicPress}
+              />
+            )}
+          </>
+        )}
       </View>
     </KeyboardAvoidingView>
   );
@@ -521,19 +636,20 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
   },
   sendButton: {
+    width: 40,
+    height: 40,
     backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.full,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   sendButtonDisabled: {
     backgroundColor: COLORS.border,
   },
-  sendButtonText: {
+  sendIcon: {
+    fontSize: 18,
     color: COLORS.white,
-    fontWeight: '600',
-    fontSize: FONT_SIZES.md,
+    fontWeight: 'bold',
   },
   // Review screen
   reviewContainer: {

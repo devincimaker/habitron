@@ -198,3 +198,31 @@ export async function sendMessage(
 
   return parsed;
 }
+
+export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {
+  // Determine file extension from mime type
+  const extensionMap: Record<string, string> = {
+    'audio/wav': 'wav',
+    'audio/x-wav': 'wav',
+    'audio/mp4': 'm4a',
+    'audio/m4a': 'm4a',
+    'audio/x-m4a': 'm4a',
+    'audio/mpeg': 'mp3',
+    'audio/webm': 'webm',
+  };
+
+  const extension = extensionMap[mimeType] || 'wav';
+
+  // Create a File object from the buffer
+  // Convert Buffer to Uint8Array for compatibility with File constructor
+  const uint8Array = new Uint8Array(audioBuffer);
+  const file = new File([uint8Array], `audio.${extension}`, { type: mimeType });
+
+  const response = await client.audio.transcriptions.create({
+    model: 'whisper-1',
+    file: file,
+    language: 'en',
+  });
+
+  return response.text;
+}

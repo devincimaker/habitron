@@ -19,7 +19,8 @@
       "buildNumber": "2",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": ["remote-notification"]
+        "UIBackgroundModes": ["remote-notification"],
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record voice messages for your coaching sessions."
       }
     },
     "android": {
@@ -39,6 +40,12 @@
         "expo-notifications",
         {
           "color": "#F5A623"
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "This app uses the microphone to record voice messages for your coaching sessions."
         }
       ]
     ],
