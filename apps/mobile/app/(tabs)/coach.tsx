@@ -20,10 +20,11 @@ import { ChatMessage } from '../../components/ChatMessage';
 import { SuggestionCard } from '../../components/SuggestionCard';
 import { MemoryReviewCard } from '../../components/MemoryReviewCard';
 import { VoiceInputButton } from '../../components/VoiceInputButton';
+import { Button, Avatar, DisplayMedium, BodyMedium, BodySmall } from '../../components/ui';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { sendMessage, transcribeAudio } from '../../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../../constants/theme';
 
 type ReviewState =
   | { phase: 'none' }
@@ -336,20 +337,25 @@ export default function CoachScreen() {
           colors={[COLORS.primaryLight, COLORS.primary]}
           style={styles.startContainer}
         >
-          <View style={styles.coachAvatar}>
-            <Text style={styles.avatarText}>S</Text>
-          </View>
-          <Text style={styles.coachName}>Coach Sage</Text>
-          <Text style={styles.coachSubtitle}>
+          <Avatar
+            text="S"
+            size="lg"
+            backgroundColor={COLORS.white}
+            textColor={COLORS.primary}
+            style={styles.coachAvatar}
+          />
+          <DisplayMedium color={COLORS.white} style={styles.coachName}>
+            Coach Sage
+          </DisplayMedium>
+          <BodyMedium color={COLORS.white} style={styles.coachSubtitle}>
             Ready to help you build better habits
-          </Text>
-          <TouchableOpacity
-            style={styles.startButton}
+          </BodyMedium>
+          <Button
+            title="Start Coaching Session"
+            variant="secondary"
             onPress={handleStartSession}
-            activeOpacity={0.9}
-          >
-            <Text style={styles.startButtonText}>Start Coaching Session</Text>
-          </TouchableOpacity>
+            size="lg"
+          />
         </LinearGradient>
       </View>
     );
@@ -362,10 +368,10 @@ export default function CoachScreen() {
         <View style={styles.reviewContainer}>
           <View style={styles.reviewHeader}>
             <Text style={styles.reviewEmoji}>🧠</Text>
-            <Text style={styles.reviewTitle}>Processing Session</Text>
-            <Text style={styles.reviewSubtitle}>
+            <DisplayMedium style={styles.reviewTitle}>Processing Session</DisplayMedium>
+            <BodyMedium style={styles.reviewSubtitle}>
               Extracting what I learned about you...
-            </Text>
+            </BodyMedium>
           </View>
           <ActivityIndicator size="large" color={COLORS.primary} />
         </View>
@@ -385,10 +391,10 @@ export default function CoachScreen() {
         >
           <View style={styles.reviewHeader}>
             <Text style={styles.reviewEmoji}>✨</Text>
-            <Text style={styles.reviewTitle}>Session Complete</Text>
-            <Text style={styles.reviewSubtitle}>
+            <DisplayMedium style={styles.reviewTitle}>Session Complete</DisplayMedium>
+            <BodyMedium style={styles.reviewSubtitle}>
               Here's what I learned about you. Select what you'd like me to remember for future sessions.
-            </Text>
+            </BodyMedium>
           </View>
 
           <View style={styles.memoriesList}>
@@ -405,28 +411,24 @@ export default function CoachScreen() {
         </ScrollView>
 
         <View style={styles.reviewFooter}>
-          <TouchableOpacity
-            style={styles.skipButton}
+          <Button
+            title="Skip"
+            variant="outline"
             onPress={handleSkipMemories}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.skipButtonText}>Skip</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              styles.saveButton,
-              selectedCount === 0 && styles.saveButtonDisabled,
-            ]}
-            onPress={handleSaveMemories}
-            activeOpacity={0.8}
-            disabled={selectedCount === 0}
-          >
-            <Text style={styles.saveButtonText}>
-              {selectedCount === 0
+            size="md"
+            style={styles.skipButton}
+          />
+          <Button
+            title={
+              selectedCount === 0
                 ? 'Select memories'
-                : `Save ${selectedCount} ${selectedCount === 1 ? 'memory' : 'memories'}`}
-            </Text>
-          </TouchableOpacity>
+                : `Save ${selectedCount} ${selectedCount === 1 ? 'memory' : 'memories'}`
+            }
+            onPress={handleSaveMemories}
+            disabled={selectedCount === 0}
+            size="md"
+            style={styles.saveButton}
+          />
         </View>
       </View>
     );
@@ -540,42 +542,15 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   coachAvatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.white,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: SPACING.md,
   },
-  avatarText: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: COLORS.primary,
-  },
   coachName: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '600',
-    color: COLORS.white,
     marginBottom: SPACING.xs,
   },
   coachSubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.white,
     opacity: 0.9,
     marginBottom: SPACING.xl,
     textAlign: 'center',
-  },
-  startButton: {
-    backgroundColor: COLORS.white,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  startButtonText: {
-    color: COLORS.primary,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
   // Session header
   sessionHeader: {
@@ -589,14 +564,12 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   sessionTitle: {
-    fontSize: FONT_SIZES.sm,
+    ...TYPOGRAPHY.label,
     color: COLORS.success,
-    fontWeight: '500',
   },
   endSessionText: {
-    fontSize: FONT_SIZES.sm,
+    ...TYPOGRAPHY.label,
     color: COLORS.error,
-    fontWeight: '500',
   },
   // Messages
   messageList: {
@@ -611,7 +584,7 @@ const styles = StyleSheet.create({
   loadingText: {
     marginLeft: SPACING.sm,
     color: COLORS.textSecondary,
-    fontSize: FONT_SIZES.sm,
+    ...TYPOGRAPHY.bodyMedium,
   },
   // Input
   inputContainer: {
@@ -628,10 +601,10 @@ const styles = StyleSheet.create({
     minHeight: 40,
     maxHeight: 100,
     backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    fontSize: FONT_SIZES.md,
+    ...TYPOGRAPHY.bodyLarge,
     color: COLORS.text,
     marginRight: SPACING.sm,
   },
@@ -674,16 +647,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   reviewTitle: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '600',
-    color: COLORS.text,
     marginBottom: SPACING.sm,
+    textAlign: 'center',
   },
   reviewSubtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
   },
   memoriesList: {
     marginTop: SPACING.md,
@@ -702,31 +670,8 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     flex: 1,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  skipButtonText: {
-    color: COLORS.textSecondary,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '500',
   },
   saveButton: {
     flex: 2,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    alignItems: 'center',
-    backgroundColor: COLORS.primary,
-  },
-  saveButtonDisabled: {
-    backgroundColor: COLORS.border,
-  },
-  saveButtonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
 });

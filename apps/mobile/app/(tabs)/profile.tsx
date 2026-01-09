@@ -1,46 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  Alert,
-  FlatList,
-  TextInput,
-  Modal,
-} from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, FlatList, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import type { Memory } from '@habits-coach/shared';
+import { Button, Input, Avatar, Card, HeadingLarge, BodyMedium, BodySmall, Caption } from '../../components/ui';
 import {
   COLORS,
-  FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
-  SHADOWS,
+  TYPOGRAPHY,
+  CATEGORY_COLORS,
+  CATEGORY_LABELS,
 } from '../../constants/theme';
-
-// Category display names
-const CATEGORY_LABELS: Record<string, string> = {
-  motivation: 'Motivation',
-  obstacle: 'Obstacle',
-  preference: 'Preference',
-  personal: 'Personal',
-  goal: 'Goal',
-  general: 'General',
-};
-
-// Category colors for visual distinction
-const CATEGORY_COLORS: Record<string, string> = {
-  motivation: '#4CAF50',
-  obstacle: '#F44336',
-  preference: '#2196F3',
-  personal: '#9C27B0',
-  goal: '#FF9800',
-  general: '#607D8B',
-};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -110,7 +82,7 @@ export default function ProfileScreen() {
 
   const renderMemory = useCallback(
     ({ item }: { item: Memory }) => (
-      <View style={styles.memoryCard}>
+      <Card variant="surface">
         <View style={styles.memoryHeader}>
           <View
             style={[
@@ -142,8 +114,8 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        <Text style={styles.memoryContent}>{item.content}</Text>
-      </View>
+        <BodyMedium color={COLORS.text}>{item.content}</BodyMedium>
+      </Card>
     ),
     [handleEditMemory, handleDeleteMemory]
   );
@@ -153,19 +125,17 @@ export default function ProfileScreen() {
   const ListHeader = (
     <>
       <View style={styles.userSection}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>
-            {user?.email?.charAt(0).toUpperCase() || '?'}
-          </Text>
-        </View>
-        <Text style={styles.email}>{user?.email || 'Not signed in'}</Text>
+        <Avatar
+          text={user?.email || '?'}
+          size="lg"
+          style={styles.avatar}
+        />
+        <BodyMedium>{user?.email || 'Not signed in'}</BodyMedium>
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Memories</Text>
-        <Text style={styles.sectionSubtitle}>
-          Things Coach Sage remembers about you
-        </Text>
+        <HeadingLarge style={styles.sectionTitle}>Memories</HeadingLarge>
+        <BodySmall>Things Coach Sage remembers about you</BodySmall>
       </View>
     </>
   );
@@ -173,26 +143,23 @@ export default function ProfileScreen() {
   const ListEmpty = (
     <View style={styles.emptyState}>
       <Text style={styles.emptyEmoji}>🧠</Text>
-      <Text style={styles.emptyText}>
+      <BodyMedium style={styles.emptyText}>
         {isLoading
           ? 'Loading memories...'
           : 'No memories yet.\nChat with Coach Sage to build your profile.'}
-      </Text>
+      </BodyMedium>
     </View>
   );
 
   const ListFooter = (
     <View style={styles.actions}>
-      <TouchableOpacity onPress={handleLogout} activeOpacity={0.8}>
-        <LinearGradient
-          colors={[COLORS.error, '#D32F2F']}
-          style={styles.logoutButton}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 0 }}
-        >
-          <Text style={styles.logoutText}>Sign Out</Text>
-        </LinearGradient>
-      </TouchableOpacity>
+      <Button
+        title="Sign Out"
+        variant="destructive"
+        onPress={handleLogout}
+        size="lg"
+        fullWidth
+      />
     </View>
   );
 
@@ -218,33 +185,27 @@ export default function ProfileScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Edit Memory</Text>
-            <TextInput
-              style={styles.modalInput}
+            <HeadingLarge style={styles.modalTitle}>Edit Memory</HeadingLarge>
+            <Input
               value={editContent}
               onChangeText={setEditContent}
               multiline
               autoFocus
               placeholder="Memory content..."
-              placeholderTextColor={COLORS.textLight}
+              containerStyle={styles.modalInputContainer}
             />
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.modalButton}
+              <Button
+                title="Cancel"
+                variant="ghost"
                 onPress={handleCancelEdit}
-              >
-                <Text style={styles.modalButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.modalButton, styles.modalButtonPrimary]}
+                size="md"
+              />
+              <Button
+                title="Save"
                 onPress={handleSaveEdit}
-              >
-                <Text
-                  style={[styles.modalButtonText, styles.modalButtonTextPrimary]}
-                >
-                  Save
-                </Text>
-              </TouchableOpacity>
+                size="md"
+              />
             </View>
           </View>
         </View>
@@ -269,45 +230,16 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xl,
   },
   avatar: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: COLORS.primary,
-    justifyContent: 'center',
-    alignItems: 'center',
     marginBottom: SPACING.md,
-  },
-  avatarText: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: COLORS.white,
-  },
-  email: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
   },
   // Memories section
   sectionHeader: {
     marginBottom: SPACING.md,
   },
   sectionTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.text,
     marginBottom: SPACING.xs,
   },
-  sectionSubtitle: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
-  },
   // Memory card
-  memoryCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.sm,
-    ...SHADOWS.small,
-  },
   memoryHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -320,7 +252,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.sm,
   },
   categoryText: {
-    fontSize: FONT_SIZES.xs,
+    ...TYPOGRAPHY.caption,
     fontWeight: '600',
   },
   memoryActions: {
@@ -329,18 +261,11 @@ const styles = StyleSheet.create({
   },
   editText: {
     color: COLORS.primary,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '500',
+    ...TYPOGRAPHY.label,
   },
   deleteText: {
     color: COLORS.error,
-    fontSize: FONT_SIZES.sm,
-    fontWeight: '500',
-  },
-  memoryContent: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    lineHeight: 22,
+    ...TYPOGRAPHY.label,
   },
   // Empty state
   emptyState: {
@@ -352,23 +277,11 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   emptyText: {
-    color: COLORS.textSecondary,
     textAlign: 'center',
-    lineHeight: 22,
   },
   // Actions
   actions: {
     marginTop: SPACING.xl,
-  },
-  logoutButton: {
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
-  },
-  logoutText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
   // Modal
   modalOverlay: {
@@ -380,47 +293,21 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
     width: '100%',
     maxWidth: 400,
   },
   modalTitle: {
-    fontSize: FONT_SIZES.lg,
-    fontWeight: '600',
-    color: COLORS.text,
     marginBottom: SPACING.md,
   },
-  modalInput: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: BORDER_RADIUS.md,
-    padding: SPACING.md,
-    minHeight: 100,
-    textAlignVertical: 'top',
-    marginBottom: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
+  modalInputContainer: {
+    marginBottom: 0,
   },
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: SPACING.sm,
-  },
-  modalButton: {
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.md,
-  },
-  modalButtonPrimary: {
-    backgroundColor: COLORS.primary,
-  },
-  modalButtonText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-  },
-  modalButtonTextPrimary: {
-    color: COLORS.white,
-    fontWeight: '600',
+    marginTop: SPACING.md,
   },
 });

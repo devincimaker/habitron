@@ -1,18 +1,9 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  StyleSheet,
-  KeyboardAvoidingView,
-  Platform,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platform } from 'react-native';
 import { Link, useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../../stores/useAuthStore';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../../constants/theme';
+import { Button, Input, DisplayLarge, BodyMedium } from '../../components/ui';
+import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -44,61 +35,47 @@ export default function LoginScreen() {
     >
       <View style={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>Welcome Back</Text>
-          <Text style={styles.subtitle}>Sign in to continue your journey</Text>
+          <DisplayLarge style={styles.title}>Welcome Back</DisplayLarge>
+          <BodyMedium>Sign in to continue your journey</BodyMedium>
         </View>
 
         <View style={styles.form}>
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Email</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your email"
-              placeholderTextColor={COLORS.textLight}
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
+          <Input
+            label="Email"
+            placeholder="Enter your email"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoCorrect={false}
+            error={error && !email ? 'Email is required' : undefined}
+          />
+
+          <Input
+            label="Password"
+            placeholder="Enter your password"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            error={error && !password ? 'Password is required' : undefined}
+          />
+
+          {error && email && password && <Text style={styles.error}>{error}</Text>}
+
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Sign In"
+              onPress={handleLogin}
+              loading={isLoading}
+              disabled={isLoading}
+              size="lg"
+              fullWidth
             />
           </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Password</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter your password"
-              placeholderTextColor={COLORS.textLight}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
-          </View>
-
-          {error && <Text style={styles.error}>{error}</Text>}
-
-          <TouchableOpacity
-            onPress={handleLogin}
-            disabled={isLoading}
-            activeOpacity={0.8}
-          >
-            <LinearGradient
-              colors={[COLORS.primary, COLORS.primaryDark]}
-              style={styles.button}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-            >
-              {isLoading ? (
-                <ActivityIndicator color={COLORS.white} />
-              ) : (
-                <Text style={styles.buttonText}>Sign In</Text>
-              )}
-            </LinearGradient>
-          </TouchableOpacity>
         </View>
 
         <View style={styles.footer}>
-          <Text style={styles.footerText}>Don't have an account? </Text>
+          <BodyMedium>Don't have an account? </BodyMedium>
           <Link href="/(auth)/signup" asChild>
             <TouchableOpacity>
               <Text style={styles.link}>Sign Up</Text>
@@ -124,64 +101,26 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xxl,
   },
   title: {
-    fontSize: FONT_SIZES.xxl,
-    fontWeight: 'bold',
-    color: COLORS.text,
     marginBottom: SPACING.xs,
-  },
-  subtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
   },
   form: {
     marginBottom: SPACING.xl,
   },
-  inputContainer: {
-    marginBottom: SPACING.md,
-  },
-  label: {
-    fontSize: FONT_SIZES.sm,
-    color: COLORS.text,
-    marginBottom: SPACING.xs,
-    fontWeight: '500',
-  },
-  input: {
-    backgroundColor: COLORS.surface,
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.md,
-    fontSize: FONT_SIZES.md,
-    color: COLORS.text,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
   error: {
+    ...TYPOGRAPHY.bodySmall,
     color: COLORS.error,
-    fontSize: FONT_SIZES.sm,
     marginBottom: SPACING.md,
   },
-  button: {
-    borderRadius: BORDER_RADIUS.md,
-    paddingVertical: SPACING.md,
-    alignItems: 'center',
+  buttonContainer: {
     marginTop: SPACING.sm,
-  },
-  buttonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
   footer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  footerText: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
-  },
   link: {
-    fontSize: FONT_SIZES.md,
+    ...TYPOGRAPHY.bodyLarge,
     color: COLORS.primary,
     fontWeight: '600',
   },

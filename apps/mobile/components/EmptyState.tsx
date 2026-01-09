@@ -1,7 +1,8 @@
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSessionStore } from '../stores/useSessionStore';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { Button, DisplayMedium, BodyMedium } from './ui';
+import { COLORS, SPACING } from '../constants/theme';
 
 export function EmptyState() {
   const router = useRouter();
@@ -17,20 +18,19 @@ export function EmptyState() {
       <View style={styles.iconContainer}>
         <Text style={styles.icon}>🌱</Text>
       </View>
-      <Text style={styles.title}>No habits yet</Text>
-      <Text style={styles.subtitle}>
+      <DisplayMedium style={styles.title}>No habits yet</DisplayMedium>
+      <BodyMedium style={styles.subtitle}>
         Go talk to Coach Sage to add your first habit
-      </Text>
-      <TouchableOpacity
-        style={styles.button}
+      </BodyMedium>
+      <Button
+        title="Start Coaching Session"
         onPress={handleStartCoaching}
-        activeOpacity={0.8}
-      >
-        <Text style={styles.buttonText}>Start Coaching Session</Text>
-      </TouchableOpacity>
+        size="lg"
+      />
     </View>
   );
 }
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -45,27 +45,10 @@ const styles = StyleSheet.create({
     fontSize: 64,
   },
   title: {
-    fontSize: FONT_SIZES.xl,
-    fontWeight: '600',
-    color: COLORS.text,
     marginBottom: SPACING.sm,
   },
   subtitle: {
-    fontSize: FONT_SIZES.md,
-    color: COLORS.textSecondary,
     textAlign: 'center',
     marginBottom: SPACING.xl,
-    lineHeight: 24,
-  },
-  button: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.xl,
-    paddingVertical: SPACING.md,
-    borderRadius: BORDER_RADIUS.lg,
-  },
-  buttonText: {
-    color: COLORS.white,
-    fontSize: FONT_SIZES.md,
-    fontWeight: '600',
   },
 });

@@ -7,7 +7,15 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
-import { COLORS, FONT_SIZES, SPACING, BORDER_RADIUS, SHADOWS } from '../constants/theme';
+import {
+  COLORS,
+  SPACING,
+  BORDER_RADIUS,
+  SHADOWS,
+  TYPOGRAPHY,
+  LIST_ITEM,
+  STATUS_INDICATOR,
+} from '../constants/theme';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
@@ -21,11 +29,9 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
     if (direction === 'right') {
-      // Right swipe: toggle between completed and pending
       const newStatus = habit.todayStatus === 'completed' ? 'pending' : 'completed';
       onStatusChange(habit.id, newStatus);
     } else {
-      // Left swipe: mark as skipped
       onStatusChange(habit.id, 'skipped');
     }
   };
@@ -79,7 +85,6 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
 
   return (
     <View style={styles.container}>
-      {/* Background indicators */}
       <Animated.View style={[styles.backgroundLeft, leftBackgroundStyle]}>
         <Text style={styles.backgroundIcon}>✓</Text>
       </Animated.View>
@@ -87,7 +92,6 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
         <Text style={styles.backgroundIcon}>✗</Text>
       </Animated.View>
 
-      {/* Main content */}
       <GestureDetector gesture={panGesture}>
         <Animated.View style={[styles.content, animatedStyle]}>
           <View style={[styles.statusIndicator, { borderColor: getStatusColor() }]}>
@@ -116,8 +120,8 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
 const styles = StyleSheet.create({
   container: {
     position: 'relative',
-    marginHorizontal: SPACING.md,
-    marginVertical: SPACING.xs,
+    marginHorizontal: LIST_ITEM.marginHorizontal,
+    marginVertical: LIST_ITEM.marginVertical,
   },
   backgroundLeft: {
     ...StyleSheet.absoluteFillObject,
@@ -137,7 +141,7 @@ const styles = StyleSheet.create({
   },
   backgroundIcon: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.xl,
+    ...TYPOGRAPHY.displayMedium,
     fontWeight: 'bold',
   },
   content: {
@@ -151,23 +155,23 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   statusIndicator: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
+    width: STATUS_INDICATOR.size,
+    height: STATUS_INDICATOR.size,
+    borderRadius: STATUS_INDICATOR.borderRadius,
+    borderWidth: STATUS_INDICATOR.borderWidth,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
   },
   statusIcon: {
-    fontSize: FONT_SIZES.md,
+    ...TYPOGRAPHY.headingMedium,
     fontWeight: 'bold',
   },
   textContainer: {
     flex: 1,
   },
   habitName: {
-    fontSize: FONT_SIZES.md,
+    ...TYPOGRAPHY.headingMedium,
     color: COLORS.text,
     fontWeight: '500',
   },
@@ -179,7 +183,7 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
   },
   timeOfDay: {
-    fontSize: FONT_SIZES.sm,
+    ...TYPOGRAPHY.bodyMedium,
     color: COLORS.textLight,
     marginTop: 2,
     textTransform: 'capitalize',

@@ -2,31 +2,13 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { MemoryCategory } from '@habits-coach/shared';
 import {
   COLORS,
-  FONT_SIZES,
   SPACING,
   BORDER_RADIUS,
   SHADOWS,
+  TYPOGRAPHY,
+  CATEGORY_COLORS,
+  CATEGORY_LABELS,
 } from '../constants/theme';
-
-// Category display names
-const CATEGORY_LABELS: Record<string, string> = {
-  motivation: 'Motivation',
-  obstacle: 'Obstacle',
-  preference: 'Preference',
-  personal: 'Personal',
-  goal: 'Goal',
-  general: 'General',
-};
-
-// Category colors for visual distinction
-const CATEGORY_COLORS: Record<string, string> = {
-  motivation: '#4CAF50',
-  obstacle: '#F44336',
-  preference: '#2196F3',
-  personal: '#9C27B0',
-  goal: '#FF9800',
-  general: '#607D8B',
-};
 
 interface MemoryReviewCardProps {
   content: string;
@@ -95,7 +77,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.sm,
   },
   categoryText: {
-    fontSize: FONT_SIZES.xs,
+    ...TYPOGRAPHY.caption,
     fontWeight: '600',
   },
   checkbox: {
@@ -113,12 +95,11 @@ const styles = StyleSheet.create({
   },
   checkmark: {
     color: COLORS.white,
-    fontSize: FONT_SIZES.sm,
+    ...TYPOGRAPHY.label,
     fontWeight: 'bold',
   },
   content: {
-    fontSize: FONT_SIZES.md,
+    ...TYPOGRAPHY.bodyLarge,
     color: COLORS.text,
-    lineHeight: 22,
   },
 });

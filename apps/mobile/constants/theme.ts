@@ -63,3 +63,82 @@ export const SHADOWS = {
     elevation: 4,
   },
 } as const;
+
+// Typography variants (pre-composed styles)
+export const TYPOGRAPHY = {
+  displayLarge: { fontSize: 32, fontWeight: 'bold' as const, lineHeight: 40 },
+  displayMedium: { fontSize: 24, fontWeight: '600' as const, lineHeight: 32 },
+  headingLarge: { fontSize: 18, fontWeight: '600' as const, lineHeight: 26 },
+  headingMedium: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
+  bodyLarge: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
+  bodyMedium: { fontSize: 14, fontWeight: '400' as const, lineHeight: 22 },
+  bodySmall: { fontSize: 12, fontWeight: '400' as const, lineHeight: 18 },
+  label: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 },
+  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
+} as const;
+
+// Avatar sizes
+export const AVATAR_SIZES = {
+  sm: { size: 32, fontSize: 14, borderRadius: 16 },
+  md: { size: 48, fontSize: 18, borderRadius: 24 },
+  lg: { size: 80, fontSize: 32, borderRadius: 40 },
+} as const;
+
+// Icon button sizes
+export const ICON_BUTTON_SIZES = {
+  sm: 32,
+  md: 40,
+  lg: 48,
+} as const;
+
+// Category colors (centralized from profile.tsx and MemoryReviewCard.tsx)
+export const CATEGORY_COLORS: Record<string, string> = {
+  motivation: '#4CAF50',
+  obstacle: '#F44336',
+  preference: '#2196F3',
+  personal: '#9C27B0',
+  goal: '#FF9800',
+  general: '#607D8B',
+};
+
+export const CATEGORY_LABELS: Record<string, string> = {
+  motivation: 'Motivation',
+  obstacle: 'Obstacle',
+  preference: 'Preference',
+  personal: 'Personal',
+  goal: 'Goal',
+  general: 'General',
+};
+
+// Input heights
+export const INPUT_HEIGHTS = {
+  sm: 40,
+  md: 48,
+  lg: 56,
+} as const;
+
+// Screen padding
+export const SCREEN_PADDING = {
+  horizontal: SPACING.md,
+  vertical: SPACING.lg,
+} as const;
+
+// List item margins
+export const LIST_ITEM = {
+  marginHorizontal: SPACING.md,
+  marginVertical: SPACING.xs,
+} as const;
+
+// Card standard sizes
+export const CARD = {
+  padding: SPACING.md,
+  marginBottom: SPACING.sm,
+  borderRadius: BORDER_RADIUS.md,
+} as const;
+
+// Status indicator size
+export const STATUS_INDICATOR = {
+  size: 28,
+  borderRadius: 14,
+  borderWidth: 2,
+} as const;
