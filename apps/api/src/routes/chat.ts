@@ -4,7 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { chatRateLimiter } from '../middleware/rateLimit.js';
 import type { ChatRequest, ErrorResponse } from '@habits-coach/shared';
 
-const router = Router();
+const router: Router = Router();
 
 // POST /api/chat - Send message to AI coach
 router.post(

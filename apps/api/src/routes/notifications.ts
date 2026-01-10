@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authMiddleware } from '../middleware/auth.js';
 import { scheduleFirstSkipNotification } from '../services/notifications.js';
 
-const router = Router();
+const router: Router = Router();
 
 /**
  * POST /api/notifications/first-skip

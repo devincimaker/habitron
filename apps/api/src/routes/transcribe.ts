@@ -4,7 +4,7 @@ import { transcribeAudio } from '../services/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { ErrorResponse } from '@habits-coach/shared';
 
-const router = Router();
+const router: Router = Router();
 
 // Configure multer for memory storage (max 10MB for 4 min audio)
 const upload = multer({

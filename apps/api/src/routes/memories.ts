@@ -5,7 +5,7 @@ import { extractMemories } from '../services/memories.js';
 import { config } from '../config.js';
 import type { ExtractMemoriesRequest, ErrorResponse, MemoryCategory } from '@habits-coach/shared';
 
-const router = Router();
+const router: Router = Router();
 
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
