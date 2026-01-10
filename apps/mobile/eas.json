@@ -12,9 +12,16 @@
       "distribution": "internal",
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com"
       }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com"
+      }
+    }
   },
   "submit": {
     "production": {}
