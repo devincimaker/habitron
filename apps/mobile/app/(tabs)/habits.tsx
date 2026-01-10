@@ -3,9 +3,8 @@ import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { HabitItem } from '../../components/HabitItem';
 import { EmptyState } from '../../components/EmptyState';
-import { HabitStatus, HabitWithStatus } from '../../types';
+import { HabitStatus, HabitWithStatus } from '@habits-coach/shared';
 import { COLORS, FONT_SIZES, SPACING } from '../../constants/theme';
-import { getTodayDate } from '../../services/storage';
 
 export default function HabitsScreen() {
   const { habits, isLoading, loadHabits, setHabitStatus, getHabitsWithStatus } =
