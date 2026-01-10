@@ -18,7 +18,7 @@ import {
   STATUS_INDICATOR,
 } from '../constants/theme';
 
-const DEFAULT_HABIT_ICON = 'ellipse';
+const DEFAULT_HABIT_ICON = 'flash';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
@@ -116,7 +116,10 @@ export function HabitItem({ habit, onStatusChange, onLongPress }: HabitItemProps
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.content, animatedStyle]}>
-          <View style={[styles.statusIndicator, { borderColor: getStatusColor() }]}>
+          <View style={[
+            styles.statusIndicator,
+            habit.todayStatus !== 'pending' && { borderColor: getStatusColor(), borderWidth: STATUS_INDICATOR.borderWidth },
+          ]}>
             {renderStatusContent()}
           </View>
           <View style={styles.textContainer}>
@@ -178,7 +181,6 @@ const styles = StyleSheet.create({
     width: STATUS_INDICATOR.size,
     height: STATUS_INDICATOR.size,
     borderRadius: STATUS_INDICATOR.borderRadius,
-    borderWidth: STATUS_INDICATOR.borderWidth,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
