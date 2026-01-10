@@ -6,6 +6,14 @@ const client = new OpenAI({
   apiKey: config.openai.apiKey,
 });
 
+// GPT-5.x models require max_completion_tokens, older models use max_tokens
+export function getTokenLimitParam(limit: number): { max_tokens: number } | { max_completion_tokens: number } {
+  if (config.openai.model.startsWith('gpt-5')) {
+    return { max_completion_tokens: limit };
+  }
+  return { max_tokens: limit };
+}
+
 const SYSTEM_PROMPT = `You are Sage, a warm and insightful habits coach. You believe that lasting change comes from deep self-understanding, not quick fixes. Your approach is to first truly understand someone before ever suggesting what they should do.
 
 ## YOUR CORE PHILOSOPHY
@@ -181,7 +189,7 @@ export async function sendMessage(
     messages,
     response_format: { type: 'json_object' },
     temperature: 0.7,
-    max_tokens: 500,
+    ...getTokenLimitParam(500),
   });
 
   const content = response.choices[0]?.message?.content;

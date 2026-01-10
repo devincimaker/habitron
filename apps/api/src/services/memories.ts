@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
+import { getTokenLimitParam } from './openai.js';
 import type { ExtractMemoriesRequest, ExtractMemoriesResponse, MemoryCategory } from '@habits-coach/shared';
 
 const client = new OpenAI({
@@ -70,7 +71,7 @@ export async function extractMemories(
     ],
     response_format: { type: 'json_object' },
     temperature: 0.3,
-    max_tokens: 500,
+    ...getTokenLimitParam(500),
   });
 
   const content = response.choices[0]?.message?.content;
