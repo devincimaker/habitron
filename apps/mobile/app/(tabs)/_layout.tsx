@@ -1,73 +1,117 @@
 import { Tabs } from 'expo-router';
-import { View, StyleSheet } from 'react-native';
-import { COLORS, SPACING } from '../../constants/theme';
+import { StyleSheet, Pressable, GestureResponderEvent } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+} from 'react-native-reanimated';
+import { COLORS } from '../../constants/theme';
 
-// Simple icon components (can be replaced with proper icons later)
-function HabitsIcon({ focused }: { focused: boolean }) {
+const ICON_SIZE = 24;
+const TAB_BAR_HEIGHT = 56;
+
+type IoniconsName = keyof typeof Ionicons.glyphMap;
+
+const TAB_ICONS: Record<string, { active: IoniconsName; inactive: IoniconsName }> = {
+  habits: { active: 'checkmark-circle', inactive: 'checkmark-circle-outline' },
+  coach: { active: 'chatbubble-ellipses', inactive: 'chatbubble-ellipses-outline' },
+  profile: { active: 'person', inactive: 'person-outline' },
+};
+
+// Animated icon component with scale bump and opacity transition
+function AnimatedTabIcon({
+  focused,
+  routeName,
+  color,
+}: {
+  focused: boolean;
+  routeName: string;
+  color: string;
+}) {
+  const icons = TAB_ICONS[routeName];
+  const iconName = focused ? icons.active : icons.inactive;
+
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: withSpring(focused ? 1.1 : 1, { damping: 15 }) }],
+    opacity: withSpring(focused ? 1 : 0.6, { damping: 20 }),
+  }));
+
   return (
-    <View
-      style={[
-        styles.iconContainer,
-        { backgroundColor: focused ? COLORS.primary : 'transparent' },
-      ]}
-    >
-      <View style={[styles.checkIcon, { borderColor: focused ? COLORS.white : COLORS.textLight }]}>
-        {focused && <View style={styles.checkMark} />}
-      </View>
-    </View>
+    <Animated.View style={animatedStyle}>
+      <Ionicons name={iconName} size={ICON_SIZE} color={color} />
+    </Animated.View>
   );
 }
 
-function CoachIcon({ focused }: { focused: boolean }) {
-  return (
-    <View
-      style={[
-        styles.iconContainer,
-        { backgroundColor: focused ? COLORS.primary : 'transparent' },
-      ]}
-    >
-      <View style={[styles.coachIcon, { backgroundColor: focused ? COLORS.white : COLORS.textLight }]} />
-    </View>
-  );
-}
+// Custom tab bar button with tap feedback
+function TabBarButton({
+  children,
+  onPress,
+  accessibilityState,
+}: {
+  children: React.ReactNode;
+  onPress?: (e: GestureResponderEvent | React.MouseEvent<HTMLAnchorElement, MouseEvent>) => void;
+  accessibilityState?: { selected?: boolean };
+}) {
+  const scale = useSharedValue(1);
 
-function ProfileIcon({ focused }: { focused: boolean }) {
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+  }));
+
+  const handlePressIn = () => {
+    scale.value = withSpring(0.9, { damping: 15, stiffness: 300 });
+  };
+
+  const handlePressOut = () => {
+    scale.value = withSpring(1, { damping: 15, stiffness: 150 });
+  };
+
   return (
-    <View
-      style={[
-        styles.iconContainer,
-        { backgroundColor: focused ? COLORS.primary : 'transparent' },
-      ]}
+    <Pressable
+      onPress={onPress}
+      onPressIn={handlePressIn}
+      onPressOut={handlePressOut}
+      style={styles.tabButton}
+      accessibilityRole="button"
+      accessibilityState={accessibilityState}
     >
-      <View style={[styles.profileHead, { backgroundColor: focused ? COLORS.white : COLORS.textLight }]} />
-      <View style={[styles.profileBody, { backgroundColor: focused ? COLORS.white : COLORS.textLight }]} />
-    </View>
+      <Animated.View style={animatedStyle}>{children}</Animated.View>
+    </Pressable>
   );
 }
 
 export default function TabLayout() {
+  const insets = useSafeAreaInsets();
+
   return (
     <Tabs
-      screenOptions={{
+      screenOptions={({ route }) => ({
+        tabBarIcon: ({ focused, color }) => (
+          <AnimatedTabIcon focused={focused} routeName={route.name} color={color} />
+        ),
+        tabBarButton: (props) => <TabBarButton {...props} />,
         tabBarActiveTintColor: COLORS.primary,
-        tabBarInactiveTintColor: COLORS.textLight,
-        tabBarStyle: styles.tabBar,
+        tabBarInactiveTintColor: COLORS.text,
+        tabBarStyle: {
+          ...styles.tabBar,
+          height: TAB_BAR_HEIGHT + insets.bottom,
+          paddingBottom: insets.bottom,
+        },
         tabBarLabelStyle: styles.tabLabel,
-        headerStyle: {
-          backgroundColor: COLORS.background,
-        },
-        headerTitleStyle: {
-          color: COLORS.text,
-          fontWeight: '600',
-        },
-      }}
+        tabBarItemStyle: styles.tabItem,
+        headerStyle: styles.header,
+        headerTitleStyle: styles.headerTitle,
+        animation: 'fade',
+      })}
     >
       <Tabs.Screen
         name="habits"
         options={{
           title: 'Habits',
           headerTitle: 'My Habits',
-          tabBarIcon: ({ focused }) => <HabitsIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -75,7 +119,6 @@ export default function TabLayout() {
         options={{
           title: 'Coach',
           headerTitle: 'Coach Sage',
-          tabBarIcon: ({ focused }) => <CoachIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
@@ -83,7 +126,6 @@ export default function TabLayout() {
         options={{
           title: 'Profile',
           headerTitle: 'Profile',
-          tabBarIcon: ({ focused }) => <ProfileIcon focused={focused} />,
         }}
       />
     </Tabs>
@@ -93,53 +135,33 @@ export default function TabLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     backgroundColor: COLORS.background,
-    borderTopColor: COLORS.border,
-    paddingTop: SPACING.xs,
-    height: 80,
+    borderTopWidth: 1,
+    borderTopColor: '#E5E5E5',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 5,
   },
   tabLabel: {
     fontSize: 12,
     fontWeight: '500',
-    marginTop: 4,
+    marginTop: 2,
   },
-  iconContainer: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+  tabItem: {
+    minHeight: 44,
+    paddingTop: 6,
+  },
+  tabButton: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  checkIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    justifyContent: 'center',
-    alignItems: 'center',
+  header: {
+    backgroundColor: COLORS.background,
   },
-  checkMark: {
-    width: 8,
-    height: 4,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: COLORS.white,
-    transform: [{ rotate: '-45deg' }, { translateY: -1 }],
-  },
-  coachIcon: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-  },
-  profileHead: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    marginBottom: 2,
-  },
-  profileBody: {
-    width: 16,
-    height: 8,
-    borderTopLeftRadius: 8,
-    borderTopRightRadius: 8,
+  headerTitle: {
+    color: COLORS.text,
+    fontWeight: '600',
   },
 });
