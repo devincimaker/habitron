@@ -5,6 +5,7 @@ export interface Habit {
   frequency: 'daily' | 'weekly';
   timeOfDay?: 'morning' | 'afternoon' | 'evening' | 'anytime';
   reason?: string;
+  icon?: string;
   createdAt: number;
 }
 

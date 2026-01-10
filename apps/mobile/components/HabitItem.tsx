@@ -6,6 +6,7 @@ import Animated, {
   withSpring,
   runOnJS,
 } from 'react-native-reanimated';
+import { Ionicons } from '@expo/vector-icons';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
 import {
   COLORS,
@@ -17,14 +18,17 @@ import {
   STATUS_INDICATOR,
 } from '../constants/theme';
 
+const DEFAULT_HABIT_ICON = 'ellipse';
+
 interface HabitItemProps {
   habit: HabitWithStatus;
   onStatusChange: (habitId: string, status: HabitStatus) => void;
+  onLongPress?: (habitId: string) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
+export function HabitItem({ habit, onStatusChange, onLongPress }: HabitItemProps) {
   const translateX = useSharedValue(0);
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
@@ -33,6 +37,12 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
       onStatusChange(habit.id, newStatus);
     } else {
       onStatusChange(habit.id, 'skipped');
+    }
+  };
+
+  const handleLongPress = () => {
+    if (onLongPress) {
+      onLongPress(habit.id);
     }
   };
 
@@ -49,6 +59,16 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
       translateX.value = withSpring(0);
     });
 
+  const longPressGesture = Gesture.LongPress()
+    .minDuration(500)
+    .onEnd((event, success) => {
+      if (success) {
+        runOnJS(handleLongPress)();
+      }
+    });
+
+  const composedGesture = Gesture.Race(panGesture, longPressGesture);
+
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
   }));
@@ -61,17 +81,6 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
     opacity: translateX.value < 0 ? Math.min(-translateX.value / SWIPE_THRESHOLD, 1) : 0,
   }));
 
-  const getStatusIcon = () => {
-    switch (habit.todayStatus) {
-      case 'completed':
-        return '✓';
-      case 'skipped':
-        return '✗';
-      default:
-        return '';
-    }
-  };
-
   const getStatusColor = () => {
     switch (habit.todayStatus) {
       case 'completed':
@@ -79,7 +88,20 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
       case 'skipped':
         return COLORS.skipped;
       default:
-        return COLORS.border;
+        return COLORS.primary;
+    }
+  };
+
+  const renderStatusContent = () => {
+    switch (habit.todayStatus) {
+      case 'completed':
+        return <Text style={[styles.statusIcon, { color: COLORS.success }]}>✓</Text>;
+      case 'skipped':
+        return <Text style={[styles.statusIcon, { color: COLORS.skipped }]}>✗</Text>;
+      default:
+        // Show habit icon when pending
+        const iconName = (habit.icon || DEFAULT_HABIT_ICON) as keyof typeof Ionicons.glyphMap;
+        return <Ionicons name={iconName} size={18} color={COLORS.primary} />;
     }
   };
 
@@ -92,12 +114,10 @@ export function HabitItem({ habit, onStatusChange }: HabitItemProps) {
         <Text style={styles.backgroundIcon}>✗</Text>
       </Animated.View>
 
-      <GestureDetector gesture={panGesture}>
+      <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.content, animatedStyle]}>
           <View style={[styles.statusIndicator, { borderColor: getStatusColor() }]}>
-            <Text style={[styles.statusIcon, { color: getStatusColor() }]}>
-              {getStatusIcon()}
-            </Text>
+            {renderStatusContent()}
           </View>
           <View style={styles.textContainer}>
             <Text style={[

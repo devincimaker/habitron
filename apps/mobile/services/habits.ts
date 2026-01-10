@@ -9,6 +9,7 @@ interface DbHabit {
   frequency: 'daily' | 'weekly';
   time_of_day: 'morning' | 'afternoon' | 'evening' | 'anytime' | null;
   reason: string | null;
+  icon: string | null;
   created_at: string;
 }
 
@@ -28,6 +29,7 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
     frequency: dbHabit.frequency,
     timeOfDay: dbHabit.time_of_day ?? undefined,
     reason: dbHabit.reason ?? undefined,
+    icon: dbHabit.icon ?? undefined,
     createdAt: new Date(dbHabit.created_at).getTime(),
   };
 }
@@ -66,6 +68,7 @@ export async function addHabit(
       frequency: habit.frequency,
       time_of_day: habit.timeOfDay ?? null,
       reason: habit.reason ?? null,
+      icon: habit.icon ?? null,
     })
     .select()
     .single();
@@ -98,6 +101,7 @@ export async function updateHabit(
   if (updates.timeOfDay !== undefined)
     updateData.time_of_day = updates.timeOfDay;
   if (updates.reason !== undefined) updateData.reason = updates.reason;
+  if (updates.icon !== undefined) updateData.icon = updates.icon;
 
   const { error } = await supabase
     .from('habits')

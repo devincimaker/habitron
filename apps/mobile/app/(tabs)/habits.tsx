@@ -1,16 +1,22 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, RefreshControl } from 'react-native';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { HabitItem } from '../../components/HabitItem';
+import { IconPicker } from '../../components/IconPicker';
 import { EmptyState } from '../../components/EmptyState';
 import { HabitStatus, HabitWithStatus } from '@habits-coach/shared';
 import { COLORS, FONT_SIZES, SPACING } from '../../constants/theme';
 
 export default function HabitsScreen() {
-  const { habits, isLoading, loadHabits, setHabitStatus, getHabitsWithStatus } =
+  const { habits, isLoading, loadHabits, setHabitStatus, updateHabit, getHabitsWithStatus } =
     useHabitsStore();
 
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+
   const habitsWithStatus = getHabitsWithStatus();
+  const selectedHabit = selectedHabitId
+    ? habitsWithStatus.find(h => h.id === selectedHabitId)
+    : null;
 
   const handleStatusChange = useCallback(
     async (habitId: string, status: HabitStatus) => {
@@ -19,15 +25,34 @@ export default function HabitsScreen() {
     [setHabitStatus]
   );
 
+  const handleLongPress = useCallback((habitId: string) => {
+    setSelectedHabitId(habitId);
+  }, []);
+
+  const handleSelectIcon = useCallback(async (icon: string) => {
+    if (selectedHabitId) {
+      await updateHabit(selectedHabitId, { icon });
+      setSelectedHabitId(null);
+    }
+  }, [selectedHabitId, updateHabit]);
+
+  const handleCloseIconPicker = useCallback(() => {
+    setSelectedHabitId(null);
+  }, []);
+
   const handleRefresh = useCallback(async () => {
     await loadHabits();
   }, [loadHabits]);
 
   const renderItem = useCallback(
     ({ item }: { item: HabitWithStatus }) => (
-      <HabitItem habit={item} onStatusChange={handleStatusChange} />
+      <HabitItem
+        habit={item}
+        onStatusChange={handleStatusChange}
+        onLongPress={handleLongPress}
+      />
     ),
-    [handleStatusChange]
+    [handleStatusChange, handleLongPress]
   );
 
   const keyExtractor = useCallback((item: HabitWithStatus) => item.id, []);
@@ -71,11 +96,12 @@ export default function HabitsScreen() {
         ListFooterComponent={<View style={styles.footer} />}
       />
 
-      <View style={styles.swipeHint}>
-        <Text style={styles.hintText}>
-          Swipe right to complete • Swipe left to skip
-        </Text>
-      </View>
+      <IconPicker
+        visible={selectedHabitId !== null}
+        selectedIcon={selectedHabit?.icon}
+        onSelectIcon={handleSelectIcon}
+        onClose={handleCloseIconPicker}
+      />
     </View>
   );
 }
@@ -105,17 +131,5 @@ const styles = StyleSheet.create({
   },
   footer: {
     height: SPACING.xxl,
-  },
-  swipeHint: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.surface,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-  },
-  hintText: {
-    fontSize: FONT_SIZES.xs,
-    color: COLORS.textLight,
-    textAlign: 'center',
   },
 });
