@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "turbo dev --ui tui",
     "build": "turbo build",
+    "build:ios": "pnpm --filter @habits-coach/mobile build:ios",
     "start": "turbo start --ui tui",
     "typecheck": "turbo typecheck",
     "clean": "turbo clean && rm -rf node_modules",
