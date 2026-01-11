@@ -9,6 +9,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "typecheck": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:coverage": "jest --coverage",
     "build:ios": "node scripts/build-ios.js",
     "submit:ios": "node scripts/submit-ios.js"
   },
@@ -39,8 +42,12 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@types/jest": "^29.0.0",
     "@types/react": "~19.1.0",
     "babel-preset-expo": "^54.0.9",
+    "jest": "^29.0.0",
+    "jest-expo": "^54.0.16",
+    "ts-jest": "^29.4.6",
     "typescript": "~5.9.2"
   },
   "private": true

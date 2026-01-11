@@ -5,11 +5,13 @@ import { notifyFirstSkip } from '../services/api';
 
 interface HabitsState {
   habits: Habit[];
-  todayLogs: Map<string, HabitStatus>;
+  selectedDate: string; // YYYY-MM-DD format
+  dateLogs: Map<string, Map<string, HabitStatus>>; // date -> (habitId -> status)
   isLoading: boolean;
 
   // Actions
   loadHabits: () => Promise<void>;
+  setSelectedDate: (date: string) => Promise<void>;
   addHabit: (habit: Omit<Habit, 'id' | 'createdAt'>) => Promise<void>;
   removeHabit: (habitId: string) => Promise<void>;
   updateHabit: (habitId: string, updates: Partial<Omit<Habit, 'id' | 'createdAt'>>) => Promise<void>;
@@ -20,20 +22,47 @@ interface HabitsState {
 
 export const useHabitsStore = create<HabitsState>((set, get) => ({
   habits: [],
-  todayLogs: new Map(),
+  selectedDate: getTodayDate(),
+  dateLogs: new Map(),
   isLoading: true,
 
   loadHabits: async () => {
     set({ isLoading: true });
     try {
-      const [habits, todayLogs] = await Promise.all([
+      const { selectedDate } = get();
+      const [habits, logs] = await Promise.all([
         habitsService.getHabits(),
-        habitsService.getTodayLogs(),
+        habitsService.getLogsForDate(selectedDate),
       ]);
-      set({ habits, todayLogs, isLoading: false });
+      set((state) => {
+        const newDateLogs = new Map(state.dateLogs);
+        newDateLogs.set(selectedDate, logs);
+        return { habits, dateLogs: newDateLogs, isLoading: false };
+      });
     } catch (error) {
       console.error('Failed to load habits:', error);
       set({ isLoading: false });
+    }
+  },
+
+  setSelectedDate: async (date: string) => {
+    const { dateLogs } = get();
+    set({ selectedDate: date });
+
+    // Load logs for this date if not cached
+    if (!dateLogs.has(date)) {
+      set({ isLoading: true });
+      try {
+        const logs = await habitsService.getLogsForDate(date);
+        set((state) => {
+          const newDateLogs = new Map(state.dateLogs);
+          newDateLogs.set(date, logs);
+          return { dateLogs: newDateLogs, isLoading: false };
+        });
+      } catch (error) {
+        console.error('Failed to load logs for date:', error);
+        set({ isLoading: false });
+      }
     }
   },
 
@@ -50,12 +79,21 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   removeHabit: async (habitId) => {
     try {
       await habitsService.removeHabit(habitId);
-      set((state) => ({
-        habits: state.habits.filter((h) => h.id !== habitId),
-        todayLogs: new Map(
-          [...state.todayLogs].filter(([id]) => id !== habitId)
-        ),
-      }));
+      set((state) => {
+        // Remove from all cached date logs
+        const newDateLogs = new Map(state.dateLogs);
+        for (const [date, logs] of newDateLogs) {
+          if (logs.has(habitId)) {
+            const newLogs = new Map(logs);
+            newLogs.delete(habitId);
+            newDateLogs.set(date, newLogs);
+          }
+        }
+        return {
+          habits: state.habits.filter((h) => h.id !== habitId),
+          dateLogs: newDateLogs,
+        };
+      });
     } catch (error) {
       console.error('Failed to remove habit:', error);
       throw error;
@@ -78,16 +116,20 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
 
   setHabitStatus: async (habitId, status) => {
     try {
-      const today = getTodayDate();
-      await habitsService.setHabitStatus(habitId, today, status);
+      const { selectedDate } = get();
+      await habitsService.setHabitStatus(habitId, selectedDate, status);
       set((state) => {
-        const newLogs = new Map(state.todayLogs);
-        newLogs.set(habitId, status);
-        return { todayLogs: newLogs };
+        const newDateLogs = new Map(state.dateLogs);
+        const currentLogs = newDateLogs.get(selectedDate) || new Map();
+        const updatedLogs = new Map(currentLogs);
+        updatedLogs.set(habitId, status);
+        newDateLogs.set(selectedDate, updatedLogs);
+        return { dateLogs: newDateLogs };
       });
 
-      // Notify backend when habit is skipped (for first-skip notification)
-      if (status === 'skipped') {
+      // Only notify backend for first-skip on today's date
+      const today = getTodayDate();
+      if (status === 'skipped' && selectedDate === today) {
         notifyFirstSkip(habitId);
       }
     } catch (error) {
@@ -97,14 +139,15 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   },
 
   getHabitsWithStatus: () => {
-    const { habits, todayLogs } = get();
+    const { habits, selectedDate, dateLogs } = get();
+    const currentLogs = dateLogs.get(selectedDate) || new Map();
     return habits.map((habit) => ({
       ...habit,
-      todayStatus: todayLogs.get(habit.id) || 'pending',
+      todayStatus: currentLogs.get(habit.id) || 'pending',
     }));
   },
 
   clearHabits: () => {
-    set({ habits: [], todayLogs: new Map() });
+    set({ habits: [], dateLogs: new Map(), selectedDate: getTodayDate() });
   },
 }));

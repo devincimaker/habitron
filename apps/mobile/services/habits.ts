@@ -115,16 +115,14 @@ export async function updateHabit(
 }
 
 // Habit Logs
-export async function getTodayLogs(): Promise<Map<string, HabitStatus>> {
-  const today = getTodayDate();
-
+export async function getLogsForDate(date: string): Promise<Map<string, HabitStatus>> {
   const { data, error } = await supabase
     .from('habit_logs')
     .select('habit_id, status')
-    .eq('date', today);
+    .eq('date', date);
 
   if (error) {
-    console.error('Error fetching today logs:', error);
+    console.error('Error fetching logs for date:', error);
     throw error;
   }
 
@@ -134,6 +132,10 @@ export async function getTodayLogs(): Promise<Map<string, HabitStatus>> {
   }
 
   return logsMap;
+}
+
+export async function getTodayLogs(): Promise<Map<string, HabitStatus>> {
+  return getLogsForDate(getTodayDate());
 }
 
 export async function setHabitStatus(
