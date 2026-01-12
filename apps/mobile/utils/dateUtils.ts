@@ -60,6 +60,10 @@ export function formatDateString(dateStr: string): string {
   });
 }
 
+export function toDateString(year: number, month: number, day: number): string {
+  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 // Month calendar utilities
 
 export interface MonthInfo {
@@ -75,20 +79,13 @@ export function getMonthInfo(year: number, month: number): MonthInfo {
   const firstDay = new Date(year, month, 1);
   const lastDay = new Date(year, month + 1, 0);
 
-  const formatDate = (d: Date) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${y}-${m}-${day}`;
-  };
-
   return {
     year,
     month,
     firstDayOfWeek: firstDay.getDay(),
     daysInMonth: lastDay.getDate(),
-    startDate: formatDate(firstDay),
-    endDate: formatDate(lastDay),
+    startDate: toDateString(year, month + 1, 1),
+    endDate: toDateString(year, month + 1, lastDay.getDate()),
   };
 }
 

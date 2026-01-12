@@ -33,6 +33,10 @@ import {
   HabitStats,
 } from '../utils/habitStats';
 
+function getMonthKey(year: number, month: number): string {
+  return `${year}-${String(month + 1).padStart(2, '0')}`;
+}
+
 interface HabitDetailsModalProps {
   visible: boolean;
   habit: Habit | null;
@@ -84,7 +88,7 @@ export function HabitDetailsModal({
   useEffect(() => {
     if (!visible || !habit) return;
 
-    const monthKey = `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}`;
+    const monthKey = getMonthKey(displayYear, displayMonth);
 
     // Check cache first
     if (monthLogs.has(monthKey)) {
@@ -206,15 +210,21 @@ export function HabitDetailsModal({
     async (date: string, currentStatus: HabitStatus | undefined) => {
       if (!habit) return;
 
-      const nextStatus: HabitStatus =
-        currentStatus === 'pending' || !currentStatus
-          ? 'completed'
-          : currentStatus === 'completed'
-            ? 'skipped'
-            : 'pending';
+      const getNextStatus = (status: HabitStatus | undefined): HabitStatus => {
+        switch (status) {
+          case 'completed':
+            return 'skipped';
+          case 'skipped':
+            return 'pending';
+          default:
+            return 'completed';
+        }
+      };
+
+      const nextStatus = getNextStatus(currentStatus);
 
       // Optimistic update
-      const monthKey = `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}`;
+      const monthKey = getMonthKey(displayYear, displayMonth);
       setMonthLogs((prev) => {
         const newMap = new Map(prev);
         const currentLogs = new Map(newMap.get(monthKey) || new Map());
@@ -250,7 +260,7 @@ export function HabitDetailsModal({
 
   // Recalculate stats when monthLogs changes
   useEffect(() => {
-    const monthKey = `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}`;
+    const monthKey = getMonthKey(displayYear, displayMonth);
     const currentLogs = monthLogs.get(monthKey);
     if (currentLogs && habit) {
       updateStats(currentLogs);
@@ -260,9 +270,7 @@ export function HabitDetailsModal({
   if (!habit) return null;
 
   const currentMonthLogs =
-    monthLogs.get(
-      `${displayYear}-${String(displayMonth + 1).padStart(2, '0')}`
-    ) || new Map();
+    monthLogs.get(getMonthKey(displayYear, displayMonth)) || new Map();
 
   return (
     <Modal

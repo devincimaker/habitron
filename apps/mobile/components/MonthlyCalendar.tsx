@@ -14,7 +14,11 @@ import {
   BORDER_RADIUS,
   TYPOGRAPHY,
 } from '../constants/theme';
-import { getMonthInfo, getMonthDisplayString } from '../utils/dateUtils';
+import {
+  getMonthInfo,
+  getMonthDisplayString,
+  toDateString,
+} from '../utils/dateUtils';
 
 interface MonthlyCalendarProps {
   year: number;
@@ -49,7 +53,7 @@ export function MonthlyCalendar({
   const todayStr = getTodayDate();
 
   const createdDate = new Date(habitCreatedAt);
-  const createdDateStr = formatDateStr(
+  const createdDateStr = toDateString(
     createdDate.getFullYear(),
     createdDate.getMonth() + 1,
     createdDate.getDate()
@@ -77,7 +81,7 @@ export function MonthlyCalendar({
 
     // Actual days
     for (let day = 1; day <= monthInfo.daysInMonth; day++) {
-      const dateStr = formatDateStr(year, month + 1, day);
+      const dateStr = toDateString(year, month + 1, day);
       const status = logs.get(dateStr);
       const isToday = dateStr === todayStr;
       const isFuture = dateStr > todayStr;
@@ -222,10 +226,6 @@ function DayCell({
       </Animated.View>
     </Pressable>
   );
-}
-
-function formatDateStr(year: number, month: number, day: number): string {
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 const styles = StyleSheet.create({

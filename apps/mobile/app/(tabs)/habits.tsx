@@ -79,13 +79,6 @@ export default function HabitsScreen() {
     await loadHabits();
   }, [loadHabits]);
 
-  const handleSelectDate = useCallback(
-    (date: string) => {
-      setSelectedDate(date);
-    },
-    [setSelectedDate]
-  );
-
   const navigateToPreviousDay = useCallback(() => {
     if (canGoToPreviousDay(selectedDate)) {
       setSelectedDate(getPreviousDay(selectedDate));
@@ -129,7 +122,7 @@ export default function HabitsScreen() {
   return (
     <GestureDetector gesture={daySwipeGesture}>
       <View style={styles.container}>
-        <MiniCalendar selectedDate={selectedDate} onSelectDate={handleSelectDate} />
+        <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
         <FlatList
           data={habitsWithStatus}

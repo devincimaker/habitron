@@ -1,4 +1,5 @@
 import { HabitStatus, getTodayDate } from '@habits-coach/shared';
+import { toDateString } from './dateUtils';
 
 export interface HabitStats {
   monthlyCheckIns: number;
@@ -78,7 +79,11 @@ export function calculateStreak(
   createdDate.setHours(0, 0, 0, 0);
 
   while (currentDate >= createdDate) {
-    const dateStr = formatDateString(currentDate);
+    const dateStr = toDateString(
+      currentDate.getFullYear(),
+      currentDate.getMonth() + 1,
+      currentDate.getDate()
+    );
     const status = allLogs.get(dateStr);
 
     if (status === 'completed') {
@@ -98,11 +103,4 @@ export function calculateStreak(
   }
 
   return streak;
-}
-
-function formatDateString(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
 }

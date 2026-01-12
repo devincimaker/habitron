@@ -42,15 +42,11 @@ export function HabitItem({ habit, onStatusChange, onLongPress, onPress }: Habit
   };
 
   const handleLongPress = () => {
-    if (onLongPress) {
-      onLongPress(habit.id);
-    }
+    onLongPress?.(habit.id);
   };
 
   const handlePress = () => {
-    if (onPress) {
-      onPress(habit.id);
-    }
+    onPress?.(habit.id);
   };
 
   const panGesture = Gesture.Pan()
