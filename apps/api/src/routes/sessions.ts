@@ -63,11 +63,10 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
     if (countError) throw countError;
 
     // Count memories per session
-    const memoryCountMap = new Map<string, number>();
-    for (const m of memoryCounts || []) {
-      const count = memoryCountMap.get(m.session_id) || 0;
-      memoryCountMap.set(m.session_id, count + 1);
-    }
+    const memoryCountMap = (memoryCounts || []).reduce((map, m) => {
+      map.set(m.session_id, (map.get(m.session_id) || 0) + 1);
+      return map;
+    }, new Map<string, number>());
 
     const result: CoachingSessionSummary[] = (sessions as DbSession[]).map(s => ({
       id: s.id,
@@ -262,18 +261,17 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
     const messages = s.messages || [];
     let sessionName = s.name;
 
-    // Generate summary if requested and session has content
-    if (generateSummary && messages.length > 2 && !sessionName) {
+    // Generate summary if requested and session has enough content
+    if (!sessionName && generateSummary && messages.length > 2) {
       try {
         sessionName = await generateSessionSummary(messages);
       } catch (err) {
         console.error('Failed to generate summary:', err);
-        // Fallback name
-        const date = new Date(s.started_at);
-        sessionName = `Session on ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
       }
-    } else if (!sessionName) {
-      // Fallback for short sessions
+    }
+
+    // Fallback name if no name was set or generation failed
+    if (!sessionName) {
       const date = new Date(s.started_at);
       sessionName = `Session on ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
     }

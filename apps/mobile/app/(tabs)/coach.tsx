@@ -23,7 +23,7 @@ import { MemoryReviewCard } from '../../components/MemoryReviewCard';
 import { VoiceInputButton } from '../../components/VoiceInputButton';
 import { SessionListItem } from '../../components/SessionListItem';
 import { SessionDetailModal } from '../../components/SessionDetailModal';
-import { Button, Avatar, DisplayMedium, BodyMedium, BodySmall } from '../../components/ui';
+import { Button, Avatar, DisplayMedium, BodyMedium } from '../../components/ui';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { sendMessage, transcribeAudio } from '../../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
@@ -128,9 +128,29 @@ export default function CoachScreen() {
     }
   }, [selectedSession, deleteSession, handleCloseSessionDetail]);
 
-  const handleStartSession = useCallback(() => {
-    startSession();
-  }, [startSession]);
+  // Helper to send message and get AI response
+  const sendUserMessage = useCallback(async (text: string) => {
+    addMessage({ role: 'user', content: text });
+    setLoading(true);
+
+    try {
+      const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
+      const response = await sendMessage(allMessages, habits, memories);
+      addMessage({ role: 'assistant', content: response.message, action: response.action });
+
+      if (response.action) {
+        setPendingAction(response.action);
+      }
+    } catch (error) {
+      console.error('Error sending message:', error);
+      addMessage({
+        role: 'assistant',
+        content: 'Sorry, I had trouble processing that. Please try again.',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [messages, habits, memories, addMessage, setLoading]);
 
   const handleEndSession = useCallback(async () => {
     setPendingAction(null);
@@ -210,33 +230,8 @@ export default function CoachScreen() {
 
     setInputText('');
     setPendingAction(null);
-
-    // Add user message
-    addMessage({ role: 'user', content: text });
-
-    // Get AI response
-    setLoading(true);
-    try {
-      const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
-      const response = await sendMessage(allMessages, habits, memories);
-
-      // Add assistant message
-      addMessage({ role: 'assistant', content: response.message, action: response.action });
-
-      // If there's an action, show the suggestion card
-      if (response.action) {
-        setPendingAction(response.action);
-      }
-    } catch (error) {
-      console.error('Error sending message:', error);
-      addMessage({
-        role: 'assistant',
-        content: 'Sorry, I had trouble processing that. Please try again.',
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [inputText, isLoading, messages, habits, memories, addMessage, setLoading]);
+    await sendUserMessage(text);
+  }, [inputText, isLoading, sendUserMessage]);
 
   const handleConfirmAction = useCallback(async () => {
     if (!pendingAction) return;
@@ -340,28 +335,8 @@ export default function CoachScreen() {
       const text = await transcribeAudio(audioUri);
       setIsRecordingMode(false);
 
-      // Immediately send the message
       if (text.trim()) {
-        addMessage({ role: 'user', content: text });
-        setLoading(true);
-
-        try {
-          const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
-          const response = await sendMessage(allMessages, habits, memories);
-          addMessage({ role: 'assistant', content: response.message, action: response.action });
-
-          if (response.action) {
-            setPendingAction(response.action);
-          }
-        } catch (error) {
-          console.error('Error sending message:', error);
-          addMessage({
-            role: 'assistant',
-            content: 'Sorry, I had trouble processing that. Please try again.',
-          });
-        } finally {
-          setLoading(false);
-        }
+        await sendUserMessage(text);
       }
     } catch (error) {
       console.error('Transcription error:', error);
@@ -371,7 +346,7 @@ export default function CoachScreen() {
     } finally {
       setIsTranscribing(false);
     }
-  }, [stopRecording, addMessage, setLoading, messages, habits, memories]);
+  }, [stopRecording, sendUserMessage]);
 
   const handleRetryRecording = useCallback(() => {
     setTranscriptionError(null);
@@ -410,7 +385,7 @@ export default function CoachScreen() {
             <Button
               title="Start Coaching Session"
               variant="secondary"
-              onPress={handleStartSession}
+              onPress={startSession}
               size="lg"
             />
           </LinearGradient>
