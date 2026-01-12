@@ -5,6 +5,7 @@ import { runOnJS } from 'react-native-reanimated';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { HabitItem } from '../../components/HabitItem';
 import { IconPicker } from '../../components/IconPicker';
+import { HabitDetailsModal } from '../../components/HabitDetailsModal';
 import { EmptyState } from '../../components/EmptyState';
 import { MiniCalendar } from '../../components/MiniCalendar';
 import { HabitStatus, HabitWithStatus } from '@habits-coach/shared';
@@ -31,10 +32,14 @@ export default function HabitsScreen() {
   } = useHabitsStore();
 
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const [detailsHabitId, setDetailsHabitId] = useState<string | null>(null);
 
   const habitsWithStatus = getHabitsWithStatus();
   const selectedHabit = selectedHabitId
     ? habitsWithStatus.find((h) => h.id === selectedHabitId)
+    : null;
+  const detailsHabit = detailsHabitId
+    ? habits.find((h) => h.id === detailsHabitId) || null
     : null;
 
   const handleStatusChange = useCallback(
@@ -60,6 +65,14 @@ export default function HabitsScreen() {
 
   const handleCloseIconPicker = useCallback(() => {
     setSelectedHabitId(null);
+  }, []);
+
+  const handleHabitPress = useCallback((habitId: string) => {
+    setDetailsHabitId(habitId);
+  }, []);
+
+  const handleCloseDetails = useCallback(() => {
+    setDetailsHabitId(null);
   }, []);
 
   const handleRefresh = useCallback(async () => {
@@ -101,9 +114,10 @@ export default function HabitsScreen() {
         habit={item}
         onStatusChange={handleStatusChange}
         onLongPress={handleLongPress}
+        onPress={handleHabitPress}
       />
     ),
-    [handleStatusChange, handleLongPress]
+    [handleStatusChange, handleLongPress, handleHabitPress]
   );
 
   const keyExtractor = useCallback((item: HabitWithStatus) => item.id, []);
@@ -137,6 +151,12 @@ export default function HabitsScreen() {
           selectedIcon={selectedHabit?.icon}
           onSelectIcon={handleSelectIcon}
           onClose={handleCloseIconPicker}
+        />
+
+        <HabitDetailsModal
+          visible={detailsHabitId !== null}
+          habit={detailsHabit}
+          onClose={handleCloseDetails}
         />
       </View>
     </GestureDetector>

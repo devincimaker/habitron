@@ -138,6 +138,31 @@ export async function getTodayLogs(): Promise<Map<string, HabitStatus>> {
   return getLogsForDate(getTodayDate());
 }
 
+export async function getLogsForHabitInRange(
+  habitId: string,
+  startDate: string,
+  endDate: string
+): Promise<Map<string, HabitStatus>> {
+  const { data, error } = await supabase
+    .from('habit_logs')
+    .select('date, status')
+    .eq('habit_id', habitId)
+    .gte('date', startDate)
+    .lte('date', endDate);
+
+  if (error) {
+    console.error('Error fetching logs for habit range:', error);
+    throw error;
+  }
+
+  const logsMap = new Map<string, HabitStatus>();
+  for (const log of data as { date: string; status: HabitStatus }[]) {
+    logsMap.set(log.date, log.status);
+  }
+
+  return logsMap;
+}
+
 export async function setHabitStatus(
   habitId: string,
   date: string,

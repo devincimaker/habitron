@@ -24,11 +24,12 @@ interface HabitItemProps {
   habit: HabitWithStatus;
   onStatusChange: (habitId: string, status: HabitStatus) => void;
   onLongPress?: (habitId: string) => void;
+  onPress?: (habitId: string) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export function HabitItem({ habit, onStatusChange, onLongPress }: HabitItemProps) {
+export function HabitItem({ habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
   const translateX = useSharedValue(0);
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
@@ -43,6 +44,12 @@ export function HabitItem({ habit, onStatusChange, onLongPress }: HabitItemProps
   const handleLongPress = () => {
     if (onLongPress) {
       onLongPress(habit.id);
+    }
+  };
+
+  const handlePress = () => {
+    if (onPress) {
+      onPress(habit.id);
     }
   };
 
@@ -67,7 +74,15 @@ export function HabitItem({ habit, onStatusChange, onLongPress }: HabitItemProps
       }
     });
 
-  const composedGesture = Gesture.Race(panGesture, longPressGesture);
+  const tapGesture = Gesture.Tap()
+    .onEnd((event, success) => {
+      if (success) {
+        runOnJS(handlePress)();
+      }
+    });
+
+  // Exclusive: first gesture to activate wins (longPress > pan > tap)
+  const composedGesture = Gesture.Exclusive(longPressGesture, panGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],
