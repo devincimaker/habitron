@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { Habit, HabitWithStatus, HabitStatus, getTodayDate } from '@habits-coach/shared';
 import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
+import { getLast7Days } from '../utils/dateUtils';
 
 interface HabitsState {
   habits: Habit[];
@@ -29,16 +30,20 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   loadHabits: async () => {
     set({ isLoading: true });
     try {
-      const { selectedDate } = get();
-      const [habits, logs] = await Promise.all([
+      // Preload all 7 days shown in the mini-calendar
+      const dates = getLast7Days().map((d) => d.date);
+
+      const [habits, ...logsResults] = await Promise.all([
         habitsService.getHabits(),
-        habitsService.getLogsForDate(selectedDate),
+        ...dates.map((date) => habitsService.getLogsForDate(date)),
       ]);
-      set((state) => {
-        const newDateLogs = new Map(state.dateLogs);
-        newDateLogs.set(selectedDate, logs);
-        return { habits, dateLogs: newDateLogs, isLoading: false };
+
+      const dateLogs = new Map<string, Map<string, HabitStatus>>();
+      dates.forEach((date, index) => {
+        dateLogs.set(date, logsResults[index]);
       });
+
+      set({ habits, dateLogs, isLoading: false });
     } catch (error) {
       console.error('Failed to load habits:', error);
       set({ isLoading: false });
