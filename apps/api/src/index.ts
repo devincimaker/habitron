@@ -6,6 +6,7 @@ import { generalRateLimiter } from './middleware/rateLimit.js';
 import chatRouter from './routes/chat.js';
 import memoriesRouter from './routes/memories.js';
 import notificationsRouter from './routes/notifications.js';
+import sessionsRouter from './routes/sessions.js';
 import transcribeRouter from './routes/transcribe.js';
 
 const app = express();
@@ -34,6 +35,7 @@ app.get('/health', (_req, res) => {
 app.use('/api/chat', chatRouter);
 app.use('/api/memories', memoriesRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/sessions', sessionsRouter);
 app.use('/api/transcribe', transcribeRouter);
 
 // 404 handler

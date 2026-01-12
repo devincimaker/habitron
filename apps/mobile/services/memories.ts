@@ -86,7 +86,10 @@ export async function extractMemories(
 }
 
 // Save approved memories to database
-export async function saveMemories(memories: ExtractedMemory[]): Promise<void> {
+export async function saveMemories(
+  memories: ExtractedMemory[],
+  sessionId?: string
+): Promise<void> {
   if (memories.length === 0) return;
 
   const token = await getAuthToken();
@@ -97,7 +100,7 @@ export async function saveMemories(memories: ExtractedMemory[]): Promise<void> {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ memories }),
+    body: JSON.stringify({ memories, sessionId }),
   });
 
   if (!response.ok) {

@@ -12,7 +12,7 @@ interface MemoriesState {
   extractMemories: (
     messages: Array<{ role: 'user' | 'assistant'; content: string }>
   ) => Promise<ExtractedMemory[]>;
-  saveMemories: (memories: ExtractedMemory[]) => Promise<void>;
+  saveMemories: (memories: ExtractedMemory[], sessionId?: string) => Promise<void>;
   updateMemory: (
     id: string,
     updates: { content?: string; category?: MemoryCategory }
@@ -48,9 +48,9 @@ export const useMemoriesStore = create<MemoriesState>((set, get) => ({
     }
   },
 
-  saveMemories: async (memories) => {
+  saveMemories: async (memories, sessionId) => {
     try {
-      await memoriesService.saveMemories(memories);
+      await memoriesService.saveMemories(memories, sessionId);
       // Reload memories after saving to get the complete list
       await get().loadMemories();
     } catch (error) {

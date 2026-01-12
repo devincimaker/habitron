@@ -14,12 +14,15 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import { useLocalSearchParams } from 'expo-router';
 import { useSessionStore } from '../../stores/useSessionStore';
+import { useSessionsStore } from '../../stores/useSessionsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useMemoriesStore, ExtractedMemory } from '../../stores/useMemoriesStore';
 import { ChatMessage } from '../../components/ChatMessage';
 import { SuggestionCard } from '../../components/SuggestionCard';
 import { MemoryReviewCard } from '../../components/MemoryReviewCard';
 import { VoiceInputButton } from '../../components/VoiceInputButton';
+import { SessionListItem } from '../../components/SessionListItem';
+import { SessionDetailModal } from '../../components/SessionDetailModal';
 import { Button, Avatar, DisplayMedium, BodyMedium, BodySmall } from '../../components/ui';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { sendMessage, transcribeAudio } from '../../services/api';
@@ -36,13 +39,25 @@ export default function CoachScreen() {
 
   const {
     isActive,
+    sessionId,
     messages,
     isLoading,
     startSession,
     endSession,
     addMessage,
     setLoading,
+    checkAndRecoverSession,
   } = useSessionStore();
+
+  const {
+    sessions,
+    isLoading: isLoadingSessions,
+    loadSessions,
+    loadSessionDetail,
+    selectedSession,
+    clearSelectedSession,
+    deleteSession,
+  } = useSessionsStore();
 
   const { habits, addHabit, removeHabit, updateHabit } = useHabitsStore();
   const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
@@ -53,6 +68,7 @@ export default function CoachScreen() {
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [showSessionDetail, setShowSessionDetail] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const {
@@ -70,12 +86,47 @@ export default function CoachScreen() {
     loadMemories();
   }, [loadMemories]);
 
+  // Load sessions on mount
+  useEffect(() => {
+    loadSessions();
+  }, [loadSessions]);
+
+  // Check for recoverable session on mount
+  useEffect(() => {
+    const checkRecovery = async () => {
+      const result = await checkAndRecoverSession();
+      if (result === 'finalized') {
+        // Refresh session list since we finalized an orphaned session
+        loadSessions();
+      }
+    };
+    checkRecovery();
+  }, [checkAndRecoverSession, loadSessions]);
+
   // Auto-start session when navigated from push notification
   useEffect(() => {
     if (autoStart === 'true' && !isActive && reviewState.phase === 'none') {
       startSession();
     }
   }, [autoStart, isActive, reviewState.phase, startSession]);
+
+  // Handle session press
+  const handleSessionPress = useCallback((id: string) => {
+    loadSessionDetail(id);
+    setShowSessionDetail(true);
+  }, [loadSessionDetail]);
+
+  const handleCloseSessionDetail = useCallback(() => {
+    setShowSessionDetail(false);
+    clearSelectedSession();
+  }, [clearSelectedSession]);
+
+  const handleDeleteSession = useCallback(async () => {
+    if (selectedSession) {
+      await deleteSession(selectedSession.id);
+      handleCloseSessionDetail();
+    }
+  }, [selectedSession, deleteSession, handleCloseSessionDetail]);
 
   const handleStartSession = useCallback(() => {
     startSession();
@@ -133,20 +184,25 @@ export default function CoachScreen() {
 
     if (selectedMemories.length > 0) {
       try {
-        await saveMemories(selectedMemories);
+        // Pass sessionId to link memories to this session
+        await saveMemories(selectedMemories, sessionId || undefined);
       } catch (error) {
         console.error('Failed to save memories:', error);
       }
     }
 
     setReviewState({ phase: 'none' });
-    endSession();
-  }, [reviewState, saveMemories, endSession]);
+    await endSession();
+    // Refresh session list to show the new session
+    loadSessions();
+  }, [reviewState, saveMemories, sessionId, endSession, loadSessions]);
 
-  const handleSkipMemories = useCallback(() => {
+  const handleSkipMemories = useCallback(async () => {
     setReviewState({ phase: 'none' });
-    endSession();
-  }, [endSession]);
+    await endSession();
+    // Refresh session list to show the new session
+    loadSessions();
+  }, [endSession, loadSessions]);
 
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -329,34 +385,58 @@ export default function CoachScreen() {
 
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
 
-  // Not in session - show start button
+  // Not in session - show start button and session history
   if (!isActive && reviewState.phase === 'none') {
     return (
       <View style={styles.container}>
-        <LinearGradient
-          colors={[COLORS.primaryLight, COLORS.primary]}
-          style={styles.startContainer}
-        >
-          <Avatar
-            text="S"
-            size="lg"
-            backgroundColor={COLORS.white}
-            textColor={COLORS.primary}
-            style={styles.coachAvatar}
-          />
-          <DisplayMedium color={COLORS.white} style={styles.coachName}>
-            Coach Sage
-          </DisplayMedium>
-          <BodyMedium color={COLORS.white} style={styles.coachSubtitle}>
-            Ready to help you build better habits
-          </BodyMedium>
-          <Button
-            title="Start Coaching Session"
-            variant="secondary"
-            onPress={handleStartSession}
-            size="lg"
-          />
-        </LinearGradient>
+        <ScrollView style={styles.landingScrollView} contentContainerStyle={styles.landingContent}>
+          <LinearGradient
+            colors={[COLORS.primaryLight, COLORS.primary]}
+            style={styles.startContainer}
+          >
+            <Avatar
+              text="S"
+              size="lg"
+              backgroundColor={COLORS.white}
+              textColor={COLORS.primary}
+              style={styles.coachAvatar}
+            />
+            <DisplayMedium color={COLORS.white} style={styles.coachName}>
+              Coach Sage
+            </DisplayMedium>
+            <BodyMedium color={COLORS.white} style={styles.coachSubtitle}>
+              Ready to help you build better habits
+            </BodyMedium>
+            <Button
+              title="Start Coaching Session"
+              variant="secondary"
+              onPress={handleStartSession}
+              size="lg"
+            />
+          </LinearGradient>
+
+          {/* Previous Sessions */}
+          {sessions.length > 0 && (
+            <View style={styles.sessionsSection}>
+              <Text style={styles.sectionTitle}>Previous Sessions</Text>
+              {sessions.map((session) => (
+                <SessionListItem
+                  key={session.id}
+                  session={session}
+                  onPress={handleSessionPress}
+                />
+              ))}
+            </View>
+          )}
+        </ScrollView>
+
+        {/* Session Detail Modal */}
+        <SessionDetailModal
+          visible={showSessionDetail}
+          session={selectedSession}
+          onClose={handleCloseSessionDetail}
+          onDelete={handleDeleteSession}
+        />
       </View>
     );
   }
@@ -534,12 +614,20 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
+  // Landing screen with session history
+  landingScrollView: {
+    flex: 1,
+  },
+  landingContent: {
+    flexGrow: 1,
+  },
   // Start session screen
   startContainer: {
-    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.xl,
+    paddingTop: SPACING.xxl,
+    paddingBottom: SPACING.xxl,
   },
   coachAvatar: {
     marginBottom: SPACING.md,
@@ -551,6 +639,16 @@ const styles = StyleSheet.create({
     opacity: 0.9,
     marginBottom: SPACING.xl,
     textAlign: 'center',
+  },
+  // Sessions section
+  sessionsSection: {
+    padding: SPACING.md,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.sm,
   },
   // Session header
   sessionHeader: {

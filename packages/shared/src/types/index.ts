@@ -111,3 +111,55 @@ export interface ExtractMemoriesResponse {
     category: MemoryCategory;
   }>;
 }
+
+// Coaching Session Types
+export interface CoachingSessionMessage {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+}
+
+export interface CoachingSessionSummary {
+  id: string;
+  name: string | null;
+  startedAt: number;
+  endedAt: number | null;
+  messageCount: number;
+  memoryCount?: number;
+}
+
+export interface CoachingSessionDetail extends CoachingSessionSummary {
+  messages: CoachingSessionMessage[];
+  memories: Memory[];
+}
+
+export interface CreateSessionRequest {
+  startedAt?: number;  // Optional, defaults to now
+}
+
+export interface CreateSessionResponse {
+  session: {
+    id: string;
+    startedAt: number;
+  };
+}
+
+export interface UpdateSessionRequest {
+  messages?: CoachingSessionMessage[];
+  name?: string;
+  endedAt?: number;
+  isProcessed?: boolean;
+}
+
+export interface FinalizeSessionRequest {
+  generateSummary?: boolean;  // Default true
+  extractMemories?: boolean;  // Default true
+}
+
+export interface GetSessionsResponse {
+  sessions: CoachingSessionSummary[];
+}
+
+export interface GetSessionResponse {
+  session: CoachingSessionDetail;
+}

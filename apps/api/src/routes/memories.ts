@@ -54,7 +54,10 @@ router.post('/extract', authMiddleware, async (req: Request, res: Response): Pro
 // POST /api/memories - Save approved memories
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { memories } = req.body as { memories: Array<{ content: string; category: MemoryCategory }> };
+    const { memories, sessionId } = req.body as {
+      memories: Array<{ content: string; category: MemoryCategory }>;
+      sessionId?: string;
+    };
 
     if (!Array.isArray(memories) || memories.length === 0) {
       res.status(400).json({ error: 'Memories array is required' } satisfies ErrorResponse);
@@ -65,6 +68,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       user_id: req.user!.id,
       content: m.content,
       category: m.category,
+      session_id: sessionId || null,
       source_session_at: new Date().toISOString(),
     }));
 
