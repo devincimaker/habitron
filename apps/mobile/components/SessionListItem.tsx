@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/theme';
+import { COLORS, FONT_SIZES } from '../constants/theme';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
 
 interface SessionListItemProps {
@@ -68,13 +68,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   name: {
-    fontSize: 16,
+    fontSize: FONT_SIZES.body,
     fontWeight: '600',
     color: COLORS.text,
     marginBottom: 2,
   },
   meta: {
-    fontSize: 13,
+    fontSize: FONT_SIZES.footnote,
     color: COLORS.textSecondary,
   },
 });

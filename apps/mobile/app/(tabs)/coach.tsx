@@ -10,9 +10,11 @@ import {
   Platform,
   ActivityIndicator,
   ScrollView,
+  Alert,
 } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { useSessionsStore } from '../../stores/useSessionsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
@@ -23,11 +25,11 @@ import { MemoryReviewCard } from '../../components/MemoryReviewCard';
 import { VoiceInputButton } from '../../components/VoiceInputButton';
 import { SessionListItem } from '../../components/SessionListItem';
 import { SessionDetailModal } from '../../components/SessionDetailModal';
-import { Button, Avatar, DisplayMedium, BodyMedium } from '../../components/ui';
+import { Button, DisplayMedium, BodyMedium } from '../../components/ui';
 import { useAudioRecorder } from '../../hooks/useAudioRecorder';
 import { sendMessage, transcribeAudio } from '../../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../../constants/theme';
+import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET } from '../../constants/theme';
 
 type ReviewState =
   | { phase: 'none' }
@@ -152,7 +154,7 @@ export default function CoachScreen() {
     }
   }, [messages, habits, memories, addMessage, setLoading]);
 
-  const handleEndSession = useCallback(async () => {
+  const performEndSession = useCallback(async () => {
     setPendingAction(null);
 
     // If session has meaningful content, extract memories
@@ -180,6 +182,21 @@ export default function CoachScreen() {
       endSession();
     }
   }, [messages, extractMemories, endSession]);
+
+  const handleEndSession = useCallback(() => {
+    Alert.alert(
+      'End Session',
+      'Are you sure you want to end this coaching session?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Session',
+          style: 'destructive',
+          onPress: performEndSession,
+        },
+      ]
+    );
+  }, [performEndSession]);
 
   const handleToggleMemory = useCallback((index: number) => {
     setReviewState((prev) => {
@@ -228,6 +245,7 @@ export default function CoachScreen() {
     const text = inputText.trim();
     if (!text || isLoading) return;
 
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInputText('');
     setPendingAction(null);
     await sendUserMessage(text);
@@ -296,12 +314,14 @@ export default function CoachScreen() {
   }, [addMessage]);
 
   const handleMicPress = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setTranscriptionError(null);
     setIsRecordingMode(true);
     await startRecording();
   }, [startRecording]);
 
   const handleStopRecording = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     const audioUri = await stopRecording();
     if (!audioUri) {
       setIsRecordingMode(false);
@@ -324,6 +344,7 @@ export default function CoachScreen() {
   }, [stopRecording]);
 
   const handleSendRecording = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const audioUri = await stopRecording();
     if (!audioUri) {
       setIsRecordingMode(false);
@@ -360,50 +381,48 @@ export default function CoachScreen() {
 
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
 
-  // Not in session - show start button and session history
+  const handleStartSession = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    startSession();
+  }, [startSession]);
+
+  // Not in session - show session history with FAB
   if (!isActive && reviewState.phase === 'none') {
     return (
       <View style={styles.container}>
-        <ScrollView style={styles.landingScrollView} contentContainerStyle={styles.landingContent}>
-          <LinearGradient
-            colors={[COLORS.primaryLight, COLORS.primary]}
-            style={styles.startContainer}
-          >
-            <Avatar
-              text="S"
-              size="lg"
-              backgroundColor={COLORS.white}
-              textColor={COLORS.primary}
-              style={styles.coachAvatar}
-            />
-            <DisplayMedium color={COLORS.white} style={styles.coachName}>
-              Coach Sage
-            </DisplayMedium>
-            <BodyMedium color={COLORS.white} style={styles.coachSubtitle}>
-              Ready to help you build better habits
-            </BodyMedium>
-            <Button
-              title="Start Coaching Session"
-              variant="secondary"
-              onPress={startSession}
-              size="lg"
-            />
-          </LinearGradient>
-
-          {/* Previous Sessions */}
-          {sessions.length > 0 && (
-            <View style={styles.sessionsSection}>
-              <Text style={styles.sectionTitle}>Previous Sessions</Text>
-              {sessions.map((session) => (
-                <SessionListItem
-                  key={session.id}
-                  session={session}
-                  onPress={handleSessionPress}
-                />
-              ))}
+        {sessions.length === 0 ? (
+          // Empty state
+          <View style={styles.emptyState}>
+            <View style={styles.emptyIconContainer}>
+              <Feather name="message-circle" size={48} color={COLORS.textLight} />
             </View>
-          )}
-        </ScrollView>
+            <Text style={styles.emptyTitle}>No Sessions Yet</Text>
+            <Text style={styles.emptySubtitle}>
+              Start a coaching session to get personalized guidance on building better habits
+            </Text>
+          </View>
+        ) : (
+          // Session list
+          <ScrollView style={styles.sessionListScrollView} contentContainerStyle={styles.sessionListContent}>
+            <Text style={styles.sectionTitle}>Sessions</Text>
+            {sessions.map((session) => (
+              <SessionListItem
+                key={session.id}
+                session={session}
+                onPress={handleSessionPress}
+              />
+            ))}
+          </ScrollView>
+        )}
+
+        {/* FAB */}
+        <TouchableOpacity
+          style={styles.fab}
+          onPress={handleStartSession}
+          activeOpacity={0.8}
+        >
+          <Feather name="plus" size={28} color={COLORS.white} />
+        </TouchableOpacity>
 
         {/* Session Detail Modal */}
         <SessionDetailModal
@@ -589,41 +608,65 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  // Landing screen with session history
-  landingScrollView: {
+  // Session list
+  sessionListScrollView: {
     flex: 1,
   },
-  landingContent: {
-    flexGrow: 1,
+  sessionListContent: {
+    padding: SPACING.md,
+    paddingBottom: 100, // Space for FAB
   },
-  // Start session screen
-  startContainer: {
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: COLORS.text,
+    marginBottom: SPACING.md,
+  },
+  // Empty state
+  emptyState: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: SPACING.xl,
-    paddingTop: SPACING.xxl,
-    paddingBottom: SPACING.xxl,
   },
-  coachAvatar: {
-    marginBottom: SPACING.md,
+  emptyIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: SPACING.lg,
   },
-  coachName: {
-    marginBottom: SPACING.xs,
-  },
-  coachSubtitle: {
-    opacity: 0.9,
-    marginBottom: SPACING.xl,
-    textAlign: 'center',
-  },
-  // Sessions section
-  sessionsSection: {
-    padding: SPACING.md,
-  },
-  sectionTitle: {
-    fontSize: 18,
+  emptyTitle: {
+    fontSize: 20,
     fontWeight: '600',
     color: COLORS.text,
     marginBottom: SPACING.sm,
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    color: COLORS.textSecondary,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 280,
+  },
+  // FAB
+  fab: {
+    position: 'absolute',
+    bottom: SPACING.xl,
+    right: SPACING.md,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
   },
   // Session header
   sessionHeader: {
@@ -671,7 +714,7 @@ const styles = StyleSheet.create({
   },
   input: {
     flex: 1,
-    minHeight: 40,
+    minHeight: TOUCH_TARGET.min,
     maxHeight: 100,
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.md,
@@ -682,8 +725,8 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
   },
   sendButton: {
-    width: 40,
-    height: 40,
+    width: TOUCH_TARGET.min,
+    height: TOUCH_TARGET.min,
     backgroundColor: COLORS.primary,
     borderRadius: BORDER_RADIUS.full,
     justifyContent: 'center',

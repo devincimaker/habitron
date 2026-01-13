@@ -44,7 +44,7 @@ const styles = StyleSheet.create({
   bubble: {
     maxWidth: '75%',
     padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
   },
   assistantBubble: {
     backgroundColor: COLORS.surface,
