@@ -1,23 +1,32 @@
-import { useCallback, useState } from 'react';
-import { View, StyleSheet, FlatList, RefreshControl } from 'react-native';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import { runOnJS } from 'react-native-reanimated';
-import { useHabitsStore } from '../../stores/useHabitsStore';
-import { HabitItem } from '../../components/HabitItem';
-import { IconPicker } from '../../components/IconPicker';
-import { HabitDetailsModal } from '../../components/HabitDetailsModal';
-import { EmptyState } from '../../components/EmptyState';
-import { MiniCalendar } from '../../components/MiniCalendar';
-import { HabitStatus, HabitWithStatus } from '@habits-coach/shared';
-import { COLORS, SPACING } from '../../constants/theme';
+import { useCallback, useState, useRef, useEffect } from "react";
+import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
+import Animated, {
+  runOnJS,
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withSequence,
+  Easing,
+} from "react-native-reanimated";
+import { useHabitsStore } from "../../stores/useHabitsStore";
+import { HabitItem } from "../../components/HabitItem";
+import { IconPicker } from "../../components/IconPicker";
+import { HabitDetailsModal } from "../../components/HabitDetailsModal";
+import { EmptyState } from "../../components/EmptyState";
+import { MiniCalendar } from "../../components/MiniCalendar";
+import { HabitStatus, HabitWithStatus } from "@habits-coach/shared";
+import { COLORS, SPACING } from "../../constants/theme";
 import {
   canGoToPreviousDay,
   canGoToNextDay,
   getPreviousDay,
   getNextDay,
-} from '../../utils/dateUtils';
+} from "../../utils/dateUtils";
 
-const SWIPE_THRESHOLD = 50;
+const SWIPE_THRESHOLD = 25;
+const SLIDE_DISTANCE = 20;
+const ANIMATION_DURATION = 200;
 
 export default function HabitsScreen() {
   const {
@@ -33,6 +42,44 @@ export default function HabitsScreen() {
 
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [detailsHabitId, setDetailsHabitId] = useState<string | null>(null);
+  const previousDateRef = useRef(selectedDate);
+
+  // Animation values for list transition
+  const translateX = useSharedValue(0);
+  const opacity = useSharedValue(1);
+
+  // Animate when date changes
+  useEffect(() => {
+    if (previousDateRef.current !== selectedDate) {
+      const goingForward = selectedDate > previousDateRef.current;
+      const direction = goingForward ? -1 : 1;
+
+      // Quick slide out and fade, then slide in from opposite side
+      translateX.value = withSequence(
+        withTiming(direction * SLIDE_DISTANCE, {
+          duration: ANIMATION_DURATION / 2,
+          easing: Easing.out(Easing.ease),
+        }),
+        withTiming(-direction * SLIDE_DISTANCE, { duration: 0 }),
+        withTiming(0, {
+          duration: ANIMATION_DURATION / 2,
+          easing: Easing.out(Easing.ease),
+        })
+      );
+
+      opacity.value = withSequence(
+        withTiming(0.3, { duration: ANIMATION_DURATION / 2 }),
+        withTiming(1, { duration: ANIMATION_DURATION / 2 })
+      );
+
+      previousDateRef.current = selectedDate;
+    }
+  }, [selectedDate, translateX, opacity]);
+
+  const listAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: opacity.value,
+  }));
 
   const habitsWithStatus = getHabitsWithStatus();
   const selectedHabit = selectedHabitId
@@ -122,22 +169,27 @@ export default function HabitsScreen() {
   return (
     <GestureDetector gesture={daySwipeGesture}>
       <View style={styles.container}>
-        <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
-
-        <FlatList
-          data={habitsWithStatus}
-          renderItem={renderItem}
-          keyExtractor={keyExtractor}
-          contentContainerStyle={styles.list}
-          refreshControl={
-            <RefreshControl
-              refreshing={isLoading}
-              onRefresh={handleRefresh}
-              tintColor={COLORS.primary}
-            />
-          }
-          ListFooterComponent={<View style={styles.footer} />}
+        <MiniCalendar
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
         />
+
+        <Animated.View style={[styles.listContainer, listAnimatedStyle]}>
+          <FlatList
+            data={habitsWithStatus}
+            renderItem={renderItem}
+            keyExtractor={keyExtractor}
+            contentContainerStyle={styles.list}
+            refreshControl={
+              <RefreshControl
+                refreshing={isLoading}
+                onRefresh={handleRefresh}
+                tintColor={COLORS.primary}
+              />
+            }
+            ListFooterComponent={<View style={styles.footer} />}
+          />
+        </Animated.View>
 
         <IconPicker
           visible={selectedHabitId !== null}
@@ -160,6 +212,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  listContainer: {
+    flex: 1,
   },
   list: {
     paddingTop: SPACING.sm,
