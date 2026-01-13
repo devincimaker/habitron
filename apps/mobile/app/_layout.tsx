@@ -52,7 +52,7 @@ export default function RootLayout() {
       if (data?.action === 'start_coaching') {
         // Only navigate if navigation is ready
         if (navigationState?.key) {
-          router.push('/(tabs)/coach?autoStart=true');
+          router.push('/session?autoStart=true');
         }
       }
     });
@@ -76,6 +76,22 @@ export default function RootLayout() {
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen
+          name="profile"
+          options={{
+            title: 'Profile',
+            presentation: 'modal',
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="session"
+          options={{
+            presentation: 'fullScreenModal',
+            headerShown: false,
+            gestureEnabled: false, // Prevent accidental swipe dismiss
+          }}
+        />
       </Stack>
     </GestureHandlerRootView>
   );

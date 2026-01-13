@@ -1,24 +1,24 @@
 export const COLORS = {
-  primary: '#F5A623',
-  primaryLight: '#FFD180',
-  primaryDark: '#E09000',
+  primary: "#F5A623",
+  primaryLight: "#FFD180",
+  primaryDark: "#E09000",
 
-  background: '#FFFFFF',
-  surface: '#F5F5F5',
+  background: "#FFFFFF",
+  surface: "#F5F5F5",
 
-  text: '#333333',
-  textSecondary: '#666666',
-  textLight: '#999999',
+  text: "#333333",
+  textSecondary: "#666666",
+  textLight: "#999999",
 
-  success: '#4CAF50',
-  error: '#F44336',
-  skipped: '#9E9E9E',
+  success: "#4CAF50",
+  error: "#F44336",
+  skipped: "#9E9E9E",
 
-  white: '#FFFFFF',
-  black: '#000000',
+  white: "#FFFFFF",
+  black: "#000000",
 
-  border: '#E0E0E0',
-  shadow: 'rgba(0, 0, 0, 0.1)',
+  border: "#E0E0E0",
+  shadow: "rgba(0, 0, 0, 0.1)",
 } as const;
 
 export const SPACING = {
@@ -32,8 +32,10 @@ export const SPACING = {
 
 export const FONT_SIZES = {
   xs: 12,
+  footnote: 13, // iOS Footnote
   sm: 14,
   md: 16,
+  body: 17, // iOS Body standard
   lg: 18,
   xl: 24,
   xxl: 32,
@@ -66,15 +68,15 @@ export const SHADOWS = {
 
 // Typography variants (pre-composed styles)
 export const TYPOGRAPHY = {
-  displayLarge: { fontSize: 32, fontWeight: 'bold' as const, lineHeight: 40 },
-  displayMedium: { fontSize: 24, fontWeight: '600' as const, lineHeight: 32 },
-  headingLarge: { fontSize: 18, fontWeight: '600' as const, lineHeight: 26 },
-  headingMedium: { fontSize: 16, fontWeight: '600' as const, lineHeight: 24 },
-  bodyLarge: { fontSize: 16, fontWeight: '400' as const, lineHeight: 24 },
-  bodyMedium: { fontSize: 14, fontWeight: '400' as const, lineHeight: 22 },
-  bodySmall: { fontSize: 12, fontWeight: '400' as const, lineHeight: 18 },
-  label: { fontSize: 14, fontWeight: '500' as const, lineHeight: 20 },
-  caption: { fontSize: 12, fontWeight: '400' as const, lineHeight: 16 },
+  displayLarge: { fontSize: 32, fontWeight: "bold" as const, lineHeight: 40 },
+  displayMedium: { fontSize: 24, fontWeight: "600" as const, lineHeight: 32 },
+  headingLarge: { fontSize: 18, fontWeight: "600" as const, lineHeight: 26 },
+  headingMedium: { fontSize: 16, fontWeight: "600" as const, lineHeight: 24 },
+  bodyLarge: { fontSize: 16, fontWeight: "400" as const, lineHeight: 24 },
+  bodyMedium: { fontSize: 14, fontWeight: "400" as const, lineHeight: 22 },
+  bodySmall: { fontSize: 12, fontWeight: "400" as const, lineHeight: 18 },
+  label: { fontSize: 14, fontWeight: "500" as const, lineHeight: 20 },
+  caption: { fontSize: 12, fontWeight: "400" as const, lineHeight: 16 },
 } as const;
 
 // Avatar sizes
@@ -93,28 +95,35 @@ export const ICON_BUTTON_SIZES = {
 
 // Category colors (centralized from profile.tsx and MemoryReviewCard.tsx)
 export const CATEGORY_COLORS: Record<string, string> = {
-  motivation: '#4CAF50',
-  obstacle: '#F44336',
-  preference: '#2196F3',
-  personal: '#9C27B0',
-  goal: '#FF9800',
-  general: '#607D8B',
+  motivation: "#4CAF50",
+  obstacle: "#F44336",
+  preference: "#2196F3",
+  personal: "#9C27B0",
+  goal: "#FF9800",
+  general: "#607D8B",
 };
 
 export const CATEGORY_LABELS: Record<string, string> = {
-  motivation: 'Motivation',
-  obstacle: 'Obstacle',
-  preference: 'Preference',
-  personal: 'Personal',
-  goal: 'Goal',
-  general: 'General',
+  motivation: "Motivation",
+  obstacle: "Obstacle",
+  preference: "Preference",
+  personal: "Personal",
+  goal: "Goal",
+  general: "General",
 };
+
+// Touch targets (iOS minimum is 44pt)
+export const TOUCH_TARGET = {
+  min: 44,
+  comfortable: 48,
+} as const;
 
 // Input heights
 export const INPUT_HEIGHTS = {
   sm: 40,
-  md: 48,
-  lg: 56,
+  md: 44, // iOS minimum touch target
+  lg: 48,
+  xl: 56,
 } as const;
 
 // Screen padding
@@ -141,4 +150,23 @@ export const STATUS_INDICATOR = {
   size: 28,
   borderRadius: 14,
   borderWidth: 2,
+} as const;
+
+// Center tab button (FAB-style in tab bar)
+export const CENTER_TAB_BUTTON = {
+  size: 48,
+  iconSize: 24,
+} as const;
+
+// Tab bar
+export const TAB_BAR = {
+  height: 56,
+  iconSize: 24,
+  labelSize: FONT_SIZES.xs,
+} as const;
+
+// Header (iOS navigation bar)
+export const HEADER = {
+  height: 44, // iOS standard navigation bar content height
+  profileButtonSize: 32,
 } as const;
