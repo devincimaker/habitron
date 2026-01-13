@@ -16,7 +16,7 @@ interface SessionState {
   // Actions
   startSession: () => Promise<void>;
   endSession: () => Promise<void>;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
   checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
@@ -24,6 +24,14 @@ interface SessionState {
 
 function generateId(): string {
   return `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+}
+
+function toMessagePayload(messages: ChatMessage[]) {
+  return messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    timestamp: m.timestamp,
+  }));
 }
 
 const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
@@ -48,26 +56,16 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       timestamp: now,
     };
 
-    // Optimistically set local state
+    // Initialize local state only - backend session created on first user message
+    // This prevents empty sessions from cluttering session history
     set({
       isActive: true,
+      sessionId: null,
       startedAt: now,
       lastActiveAt: now,
       messages: [welcomeMessage],
       isLoading: false,
     });
-
-    // Create session in backend
-    try {
-      const { id } = await sessionsService.createSession();
-      set({ sessionId: id });
-
-      // Sync the welcome message
-      await get().syncMessages();
-    } catch (error) {
-      console.error('Failed to create session in backend:', error);
-      // Continue with local-only session, will try to sync later
-    }
   },
 
   endSession: async () => {
@@ -83,19 +81,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isLoading: false,
     });
 
-    // Finalize in backend if we have a session ID
-    if (sessionId && messages.length > 0) {
+    // Only finalize if session was persisted to backend (had user messages)
+    // Sessions without user messages have no sessionId due to lazy creation
+    if (sessionId) {
       try {
-        // Sync final messages first
         await sessionsService.updateSession(sessionId, {
-          messages: messages.map(m => ({
-            role: m.role,
-            content: m.content,
-            timestamp: m.timestamp,
-          })),
+          messages: toMessagePayload(messages),
         });
-
-        // Then finalize
         await sessionsService.finalizeSession(sessionId);
       } catch (error) {
         console.error('Failed to finalize session:', error);
@@ -103,19 +95,36 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     }
   },
 
-  addMessage: (messageData) => {
+  addMessage: async (messageData) => {
     const message: ChatMessage = {
       ...messageData,
       id: generateId(),
       timestamp: Date.now(),
     };
+
+    // Add to local state first (optimistic)
     set((state) => ({
       messages: [...state.messages, message],
       lastActiveAt: Date.now(),
     }));
 
-    // Sync to backend (fire and forget, will retry on next message if failed)
-    get().syncMessages();
+    // Create backend session on first user message (lazy creation)
+    // This ensures we only persist sessions that have actual user engagement
+    if (messageData.role === 'user' && !get().sessionId) {
+      try {
+        const { id } = await sessionsService.createSession();
+        set({ sessionId: id });
+      } catch (error) {
+        console.error('Failed to create session in backend:', error);
+        // Continue with local-only, will retry on next message
+        return;
+      }
+    }
+
+    // Sync to backend (only if we have a sessionId)
+    if (get().sessionId) {
+      get().syncMessages();
+    }
   },
 
   syncMessages: async () => {
@@ -126,11 +135,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     set({ isSyncing: true });
     try {
       await sessionsService.updateSession(sessionId, {
-        messages: messages.map(m => ({
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-        })),
+        messages: toMessagePayload(messages),
       });
     } catch (error) {
       console.error('Failed to sync messages:', error);
@@ -154,30 +159,30 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const now = Date.now();
       const elapsed = now - activeSession.updatedAt;
 
-      if (elapsed < SESSION_RECOVERY_WINDOW_MS) {
-        // Recover session - within 10 minute window
-        const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
-          id: `recovered-${i}-${m.timestamp}`,
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-        }));
-
-        set({
-          isActive: true,
-          sessionId: activeSession.id,
-          startedAt: activeSession.startedAt,
-          lastActiveAt: activeSession.updatedAt,
-          messages,
-          isLoading: false,
-        });
-
-        return 'recovered';
-      } else {
-        // Finalize orphaned session - outside 10 minute window
+      // Finalize orphaned session - outside 10 minute window
+      if (elapsed >= SESSION_RECOVERY_WINDOW_MS) {
         await sessionsService.finalizeSession(activeSession.id);
         return 'finalized';
       }
+
+      // Recover session - within 10 minute window
+      const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
+        id: `recovered-${i}-${m.timestamp}`,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      }));
+
+      set({
+        isActive: true,
+        sessionId: activeSession.id,
+        startedAt: activeSession.startedAt,
+        lastActiveAt: activeSession.updatedAt,
+        messages,
+        isLoading: false,
+      });
+
+      return 'recovered';
     } catch (error) {
       console.error('Failed to check/recover session:', error);
       return 'none';
