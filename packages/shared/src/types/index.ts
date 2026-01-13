@@ -1,3 +1,12 @@
+// User Profile types
+export interface UserProfile {
+  id: string;
+  userId: string;
+  name: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // Habit types
 export interface Habit {
   id: string;
@@ -73,6 +82,7 @@ export interface ChatRequest {
     content: string;
     category: MemoryCategory;
   }>;
+  userName?: string;
 }
 
 export interface ChatResponse {

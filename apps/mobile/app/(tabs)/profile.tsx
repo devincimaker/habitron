@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Alert, FlatList, Modal } from
 import { useRouter } from 'expo-router';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useMemoriesStore } from '../../stores/useMemoriesStore';
+import { useProfileStore } from '../../stores/useProfileStore';
 import type { Memory } from '@habits-coach/shared';
 import { Button, Input, Avatar, Card, HeadingLarge, BodyMedium, BodySmall, Caption } from '../../components/ui';
 import {
@@ -19,9 +20,12 @@ export default function ProfileScreen() {
   const { user, signOut } = useAuthStore();
   const { memories, isLoading, loadMemories, updateMemory, deleteMemory } =
     useMemoriesStore();
+  const { name, updateName, isLoading: isProfileLoading } = useProfileStore();
 
   const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
   const [editContent, setEditContent] = useState('');
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editingNameValue, setEditingNameValue] = useState('');
 
   useEffect(() => {
     loadMemories();
@@ -60,6 +64,31 @@ export default function ProfileScreen() {
   const handleCancelEdit = useCallback(() => {
     setEditingMemory(null);
     setEditContent('');
+  }, []);
+
+  const handleEditName = useCallback(() => {
+    setEditingNameValue(name || '');
+    setIsEditingName(true);
+  }, [name]);
+
+  const handleSaveName = useCallback(async () => {
+    const trimmed = editingNameValue.trim();
+    if (trimmed.length < 2) {
+      Alert.alert('Error', trimmed ? 'Name must be at least 2 characters' : 'Please enter your name');
+      return;
+    }
+    const { error } = await updateName(trimmed);
+    if (error) {
+      Alert.alert('Error', 'Failed to update name');
+    } else {
+      setIsEditingName(false);
+      setEditingNameValue('');
+    }
+  }, [editingNameValue, updateName]);
+
+  const handleCancelNameEdit = useCallback(() => {
+    setIsEditingName(false);
+    setEditingNameValue('');
   }, []);
 
   const handleDeleteMemory = useCallback(
@@ -126,11 +155,15 @@ export default function ProfileScreen() {
     <>
       <View style={styles.userSection}>
         <Avatar
-          text={user?.email || '?'}
+          text={name || user?.email || '?'}
           size="lg"
           style={styles.avatar}
         />
-        <BodyMedium>{user?.email || 'Not signed in'}</BodyMedium>
+        {name && <HeadingLarge style={styles.userName}>{name}</HeadingLarge>}
+        <BodyMedium style={styles.userEmail}>{user?.email || 'Not signed in'}</BodyMedium>
+        <TouchableOpacity onPress={handleEditName} style={styles.editNameLink}>
+          <Text style={styles.editNameText}>{name ? 'Edit name' : 'Add name'}</Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.sectionHeader}>
@@ -176,7 +209,7 @@ export default function ProfileScreen() {
         showsVerticalScrollIndicator={false}
       />
 
-      {/* Edit Modal */}
+      {/* Edit Memory Modal */}
       <Modal
         visible={!!editingMemory}
         transparent
@@ -210,6 +243,42 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Modal>
+
+      {/* Edit Name Modal */}
+      <Modal
+        visible={isEditingName}
+        transparent
+        animationType="fade"
+        onRequestClose={handleCancelNameEdit}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <HeadingLarge style={styles.modalTitle}>Edit Name</HeadingLarge>
+            <Input
+              value={editingNameValue}
+              onChangeText={setEditingNameValue}
+              autoFocus
+              placeholder="Your name"
+              autoCapitalize="words"
+              containerStyle={styles.modalInputContainer}
+            />
+            <View style={styles.modalButtons}>
+              <Button
+                title="Cancel"
+                variant="ghost"
+                onPress={handleCancelNameEdit}
+                size="md"
+              />
+              <Button
+                title="Save"
+                onPress={handleSaveName}
+                loading={isProfileLoading}
+                size="md"
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -231,6 +300,19 @@ const styles = StyleSheet.create({
   },
   avatar: {
     marginBottom: SPACING.md,
+  },
+  userName: {
+    marginBottom: SPACING.xs,
+  },
+  userEmail: {
+    color: COLORS.textSecondary,
+  },
+  editNameLink: {
+    marginTop: SPACING.sm,
+  },
+  editNameText: {
+    color: COLORS.primary,
+    ...TYPOGRAPHY.label,
   },
   // Memories section
   sectionHeader: {

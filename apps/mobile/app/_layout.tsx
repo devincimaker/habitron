@@ -6,6 +6,7 @@ import { StyleSheet } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useHabitsStore } from '../stores/useHabitsStore';
+import { useProfileStore } from '../stores/useProfileStore';
 import { useAppStateHandler } from '../hooks/useAppState';
 import { COLORS } from '../constants/theme';
 import {
@@ -17,6 +18,7 @@ import {
 export default function RootLayout() {
   const { session, isInitialized, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
+  const { loadProfile, reset: resetProfile } = useProfileStore();
   const router = useRouter();
   const navigationState = useRootNavigationState();
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
@@ -29,10 +31,11 @@ export default function RootLayout() {
     initialize();
   }, [initialize]);
 
-  // Load habits and register for push notifications when authenticated
+  // Load data and register for push notifications when authenticated
   useEffect(() => {
     if (session) {
       loadHabits();
+      loadProfile();
 
       // Register for push notifications
       registerForPushNotifications().then((token) => {
@@ -40,8 +43,11 @@ export default function RootLayout() {
           savePushToken(token);
         }
       });
+    } else {
+      // Reset profile state on sign out
+      resetProfile();
     }
-  }, [session, loadHabits]);
+  }, [session, loadHabits, loadProfile, resetProfile]);
 
   // Handle notification responses (deep linking when user taps notification)
   useEffect(() => {
@@ -75,6 +81,7 @@ export default function RootLayout() {
       >
         <Stack.Screen name="index" />
         <Stack.Screen name="(auth)" />
+        <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen
           name="profile"

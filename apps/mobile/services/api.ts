@@ -28,7 +28,8 @@ async function getAuthToken(): Promise<string> {
 export async function sendMessage(
   messages: ChatRequest['messages'],
   habits: Habit[],
-  memories?: Memory[]
+  memories?: Memory[],
+  userName?: string
 ): Promise<ChatResponse> {
   const token = await getAuthToken();
 
@@ -57,6 +58,7 @@ export async function sendMessage(
       messages,
       habits: habitData,
       memories: memoriesData,
+      userName,
     } satisfies ChatRequest),
   });
 
