@@ -12,6 +12,7 @@ interface SessionState {
   messages: ChatMessage[];
   isLoading: boolean;
   isSyncing: boolean;  // True while syncing to backend
+  isCreatingSession: boolean;  // True while creating backend session
 
   // Actions
   startSession: () => Promise<void>;
@@ -47,8 +48,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   messages: [],
   isLoading: false,
   isSyncing: false,
+  isCreatingSession: false,
 
   startSession: async () => {
+    // Prevent duplicate session starts from rapid taps
+    if (get().isActive) return;
+
     const now = Date.now();
     const welcomeMessage: ChatMessage = {
       ...INITIAL_MESSAGE,
@@ -110,7 +115,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     // Create backend session on first user message (lazy creation)
     // This ensures we only persist sessions that have actual user engagement
-    if (messageData.role === 'user' && !get().sessionId) {
+    // Guard prevents duplicate sessions from rapid messages
+    if (messageData.role === 'user' && !get().sessionId && !get().isCreatingSession) {
+      set({ isCreatingSession: true });
       try {
         const { id } = await sessionsService.createSession();
         set({ sessionId: id });
@@ -118,6 +125,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         console.error('Failed to create session in backend:', error);
         // Continue with local-only, will retry on next message
         return;
+      } finally {
+        set({ isCreatingSession: false });
       }
     }
 

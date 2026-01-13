@@ -12,9 +12,9 @@ export default function TabLayout() {
   const router = useRouter();
   const { startSession } = useSessionStore();
 
-  const handleNewSession = useCallback(async () => {
+  const handleNewSession = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await startSession();
+    startSession();
     router.push('/session');
   }, [startSession, router]);
 
