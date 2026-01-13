@@ -13,7 +13,7 @@ router.post(
   chatRateLimiter,
   async (req: Request, res: Response): Promise<void> => {
     try {
-      const { messages, habits, memories } = req.body as ChatRequest;
+      const { messages, habits, memories, userName } = req.body as ChatRequest;
 
       // Validate request body
       if (!Array.isArray(messages)) {
@@ -31,7 +31,7 @@ router.post(
       }
 
       // Send to OpenAI
-      const response = await sendMessage({ messages, habits, memories });
+      const response = await sendMessage({ messages, habits, memories, userName });
 
       res.json(response);
     } catch (error) {

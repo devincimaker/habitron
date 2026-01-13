@@ -35,7 +35,7 @@ export default function SignUpScreen() {
     if (error) {
       setError(error.message);
     } else {
-      router.replace('/(tabs)/habits');
+      router.replace('/(onboarding)/name');
     }
   };
 

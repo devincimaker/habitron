@@ -19,6 +19,7 @@ import { useSessionStore } from '../stores/useSessionStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useHabitsStore } from '../stores/useHabitsStore';
 import { useMemoriesStore, ExtractedMemory } from '../stores/useMemoriesStore';
+import { useProfileStore } from '../stores/useProfileStore';
 import { ChatMessage } from '../components/ChatMessage';
 import { SuggestionCard } from '../components/SuggestionCard';
 import { MemoryReviewCard } from '../components/MemoryReviewCard';
@@ -54,6 +55,7 @@ export default function SessionScreen() {
   const { loadSessions } = useSessionsStore();
   const { habits, addHabit, removeHabit, updateHabit } = useHabitsStore();
   const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
+  const { name: userName } = useProfileStore();
 
   const [inputText, setInputText] = useState('');
   const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
@@ -106,7 +108,7 @@ export default function SessionScreen() {
 
     try {
       const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
-      const response = await sendMessage(allMessages, habits, memories);
+      const response = await sendMessage(allMessages, habits, memories, userName || undefined);
       addMessage({ role: 'assistant', content: response.message, action: response.action });
 
       if (response.action) {

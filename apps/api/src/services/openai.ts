@@ -117,9 +117,13 @@ OR when making a habit change:
 
 Remember: Only include "action" when you've understood the user's situation AND have a clear rationale for the change. For discovery and check-in questions, set "action" to null.`;
 
-function buildUserContext(habits: ChatRequest['habits']): string {
+function buildUserContext(habits: ChatRequest['habits'], userName?: string): string {
+  const nameContext = userName
+    ? `The user's name is ${userName}. Use their name naturally in conversation.\n\n`
+    : '';
+
   if (habits.length === 0) {
-    return `## User Status: NEW USER
+    return `${nameContext}## User Status: NEW USER
 The user has no habits tracked yet. This is a discovery session - focus on understanding them deeply before recommending their first habit.`;
   }
 
@@ -130,7 +134,7 @@ The user has no habits tracked yet. This is a discovery session - focus on under
     )
     .join('\n');
 
-  return `## User Status: RETURNING USER
+  return `${nameContext}## User Status: RETURNING USER
 This user already has habits. This is a check-in session - understand how things are going and propose a path forward.
 
 Current habits being tracked:
@@ -160,12 +164,13 @@ function buildConversationContext(
 function buildMessages(
   sessionMessages: ChatRequest['messages'],
   habits: ChatRequest['habits'],
-  memories?: ChatRequest['memories']
+  memories?: ChatRequest['memories'],
+  userName?: string
 ): OpenAI.ChatCompletionMessageParam[] {
   const memoryContext = buildMemoryContext(memories);
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT + memoryContext },
-    { role: 'system', content: buildUserContext(habits) },
+    { role: 'system', content: buildUserContext(habits, userName) },
     { role: 'system', content: buildConversationContext(sessionMessages) },
   ];
 
@@ -182,7 +187,7 @@ function buildMessages(
 export async function sendMessage(
   request: ChatRequest
 ): Promise<ChatResponse> {
-  const messages = buildMessages(request.messages, request.habits, request.memories);
+  const messages = buildMessages(request.messages, request.habits, request.memories, request.userName);
 
   const response = await client.chat.completions.create({
     model: config.openai.model,
