@@ -12,7 +12,7 @@ export function EmptyState() {
 
   const handleStartCoaching = () => {
     startSession();
-    router.push('/(tabs)/coach');
+    router.push('/session');
   };
 
   return (
