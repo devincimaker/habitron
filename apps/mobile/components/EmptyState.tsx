@@ -1,11 +1,13 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { useSessionStore } from '../stores/useSessionStore';
 import { Button, DisplayMedium, BodyMedium } from './ui';
-import { COLORS, SPACING } from '../constants/theme';
+import { SPACING, TAB_BAR } from '../constants/theme';
 
 export function EmptyState() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const startSession = useSessionStore((state) => state.startSession);
 
   const handleStartCoaching = () => {
@@ -14,10 +16,8 @@ export function EmptyState() {
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <Text style={styles.icon}>🌱</Text>
-      </View>
+    <View style={[styles.container, { paddingBottom: TAB_BAR.height + insets.bottom }]}>
+      <Text style={styles.icon}>🌱</Text>
       <DisplayMedium style={styles.title}>No habits yet</DisplayMedium>
       <BodyMedium style={styles.subtitle}>
         Go talk to Habitron to add your first habit
@@ -36,13 +36,11 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.xl,
-  },
-  iconContainer: {
-    marginBottom: SPACING.lg,
+    paddingHorizontal: SPACING.xl,
   },
   icon: {
     fontSize: 64,
+    marginBottom: SPACING.lg,
   },
   title: {
     marginBottom: SPACING.sm,
