@@ -39,7 +39,7 @@ export default function NameOnboardingScreen() {
           <Text style={styles.emoji}>👋</Text>
           <DisplayLarge style={styles.title}>Welcome!</DisplayLarge>
           <BodyMedium style={styles.subtitle}>
-            What should Coach Sage call you?
+            What should Habitron call you?
           </BodyMedium>
         </View>
 

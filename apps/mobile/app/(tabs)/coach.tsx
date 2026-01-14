@@ -537,7 +537,7 @@ export default function CoachScreen() {
             {isLoading && (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator color={COLORS.primary} />
-                <Text style={styles.loadingText}>Sage is thinking...</Text>
+                <Text style={styles.loadingText}>Habitron is thinking...</Text>
               </View>
             )}
             {pendingAction && (

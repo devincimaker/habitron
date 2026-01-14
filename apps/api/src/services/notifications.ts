@@ -91,7 +91,7 @@ export async function scheduleFirstSkipNotification(
         habitId,
         habitName,
         title: "Let's talk about yesterday",
-        body: `You skipped "${habitName}" for the first time. Want to chat with Coach Sage about it?`,
+        body: `You skipped "${habitName}" for the first time. Want to chat with Habitron about it?`,
         data: { action: 'start_coaching' },
       },
     });

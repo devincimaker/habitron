@@ -140,7 +140,7 @@ serve(async (req: Request) => {
           habitId: firstPendingHabit.id,
           habitName: firstPendingHabit.name,
           title: "Let's talk about yesterday",
-          body: `You skipped "${firstPendingHabit.name}" for the first time. Want to chat with Coach Sage about it?`,
+          body: `You skipped "${firstPendingHabit.name}" for the first time. Want to chat with Habitron about it?`,
           data: { action: 'start_coaching' },
         },
       });

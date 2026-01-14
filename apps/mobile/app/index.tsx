@@ -38,7 +38,7 @@ export default function SplashScreen() {
       >
         <View style={styles.content}>
           <Text style={styles.title}>Habits Coach</Text>
-          <Text style={styles.subtitle}>Build better habits with Sage</Text>
+          <Text style={styles.subtitle}>Build better habits with Habitron</Text>
           <ActivityIndicator
             color={COLORS.white}
             style={styles.loader}

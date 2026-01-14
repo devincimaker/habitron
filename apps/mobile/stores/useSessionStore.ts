@@ -37,7 +37,7 @@ function toMessagePayload(messages: ChatMessage[]) {
 
 const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
   role: 'assistant',
-  content: "Hi, I'm Sage - your habits coach. How are things going? What's on your mind today?",
+  content: "Hi, I'm Habitron - your habits coach. How are things going? What's on your mind today?",
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({

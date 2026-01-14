@@ -168,7 +168,7 @@ export default function ProfileScreen() {
 
       <View style={styles.sectionHeader}>
         <HeadingLarge style={styles.sectionTitle}>Memories</HeadingLarge>
-        <BodySmall>Things Coach Sage remembers about you</BodySmall>
+        <BodySmall>Things Habitron remembers about you</BodySmall>
       </View>
     </>
   );
@@ -179,7 +179,7 @@ export default function ProfileScreen() {
       <BodyMedium style={styles.emptyText}>
         {isLoading
           ? 'Loading memories...'
-          : 'No memories yet.\nChat with Coach Sage to build your profile.'}
+          : 'No memories yet.\nChat with Habitron to build your profile.'}
       </BodyMedium>
     </View>
   );

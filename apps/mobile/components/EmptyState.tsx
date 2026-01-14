@@ -20,7 +20,7 @@ export function EmptyState() {
       </View>
       <DisplayMedium style={styles.title}>No habits yet</DisplayMedium>
       <BodyMedium style={styles.subtitle}>
-        Go talk to Coach Sage to add your first habit
+        Go talk to Habitron to add your first habit
       </BodyMedium>
       <Button
         title="Start Coaching Session"
