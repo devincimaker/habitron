@@ -1,29 +1,28 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, FlatList, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Feather } from '@expo/vector-icons';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import { useProfileStore } from '../../stores/useProfileStore';
-import type { Memory } from '@habits-coach/shared';
-import { Button, Input, Avatar, Card, HeadingLarge, BodyMedium, BodySmall, Caption } from '../../components/ui';
+import { Button, Input, Avatar, HeadingLarge, BodyMedium, Caption } from '../../components/ui';
 import {
   COLORS,
   SPACING,
   BORDER_RADIUS,
   TYPOGRAPHY,
-  CATEGORY_COLORS,
-  CATEGORY_LABELS,
+  TAB_BAR,
+  TOUCH_TARGET,
 } from '../../constants/theme';
 
 export default function ProfileScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
-  const { memories, isLoading, loadMemories, updateMemory, deleteMemory } =
-    useMemoriesStore();
+  const { memories, loadMemories } = useMemoriesStore();
   const { name, updateName, isLoading: isProfileLoading } = useProfileStore();
 
-  const [editingMemory, setEditingMemory] = useState<Memory | null>(null);
-  const [editContent, setEditContent] = useState('');
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
 
@@ -44,27 +43,6 @@ export default function ProfileScreen() {
       },
     ]);
   };
-
-  const handleEditMemory = useCallback((memory: Memory) => {
-    setEditingMemory(memory);
-    setEditContent(memory.content);
-  }, []);
-
-  const handleSaveEdit = useCallback(async () => {
-    if (!editingMemory || !editContent.trim()) return;
-    try {
-      await updateMemory(editingMemory.id, { content: editContent.trim() });
-      setEditingMemory(null);
-      setEditContent('');
-    } catch (error) {
-      Alert.alert('Error', 'Failed to update memory');
-    }
-  }, [editingMemory, editContent, updateMemory]);
-
-  const handleCancelEdit = useCallback(() => {
-    setEditingMemory(null);
-    setEditContent('');
-  }, []);
 
   const handleEditName = useCallback(() => {
     setEditingNameValue(name || '');
@@ -91,158 +69,50 @@ export default function ProfileScreen() {
     setEditingNameValue('');
   }, []);
 
-  const handleDeleteMemory = useCallback(
-    (memory: Memory) => {
-      Alert.alert(
-        'Delete Memory',
-        'Are you sure you want to delete this memory?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => deleteMemory(memory.id),
-          },
-        ]
-      );
-    },
-    [deleteMemory]
-  );
-
-  const renderMemory = useCallback(
-    ({ item }: { item: Memory }) => (
-      <Card variant="surface">
-        <View style={styles.memoryHeader}>
-          <View
-            style={[
-              styles.categoryBadge,
-              { backgroundColor: `${CATEGORY_COLORS[item.category]}20` },
-            ]}
-          >
-            <Text
-              style={[
-                styles.categoryText,
-                { color: CATEGORY_COLORS[item.category] },
-              ]}
-            >
-              {CATEGORY_LABELS[item.category]}
-            </Text>
-          </View>
-          <View style={styles.memoryActions}>
-            <TouchableOpacity
-              onPress={() => handleEditMemory(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.editText}>Edit</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => handleDeleteMemory(item)}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-            >
-              <Text style={styles.deleteText}>Delete</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        <BodyMedium color={COLORS.text}>{item.content}</BodyMedium>
-      </Card>
-    ),
-    [handleEditMemory, handleDeleteMemory]
-  );
-
-  const keyExtractor = useCallback((item: Memory) => item.id, []);
-
-  const ListHeader = (
-    <>
-      <View style={styles.userSection}>
-        <Avatar
-          text={name || user?.email || '?'}
-          size="lg"
-          style={styles.avatar}
-        />
-        {name && <HeadingLarge style={styles.userName}>{name}</HeadingLarge>}
-        <BodyMedium style={styles.userEmail}>{user?.email || 'Not signed in'}</BodyMedium>
-        <TouchableOpacity onPress={handleEditName} style={styles.editNameLink}>
-          <Text style={styles.editNameText}>{name ? 'Edit name' : 'Add name'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.sectionHeader}>
-        <HeadingLarge style={styles.sectionTitle}>Memories</HeadingLarge>
-        <BodySmall>Things Habitron remembers about you</BodySmall>
-      </View>
-    </>
-  );
-
-  const ListEmpty = (
-    <View style={styles.emptyState}>
-      <Text style={styles.emptyEmoji}>🧠</Text>
-      <BodyMedium style={styles.emptyText}>
-        {isLoading
-          ? 'Loading memories...'
-          : 'No memories yet.\nChat with Habitron to build your profile.'}
-      </BodyMedium>
-    </View>
-  );
-
-  const ListFooter = (
-    <View style={styles.actions}>
-      <Button
-        title="Sign Out"
-        variant="destructive"
-        onPress={handleLogout}
-        size="lg"
-        fullWidth
-      />
-    </View>
-  );
+  const handleOpenMemories = useCallback(() => {
+    router.push('/memories');
+  }, [router]);
 
   return (
     <View style={styles.container}>
-      <FlatList
-        data={memories}
-        renderItem={renderMemory}
-        keyExtractor={keyExtractor}
-        contentContainerStyle={styles.content}
-        ListHeaderComponent={ListHeader}
-        ListEmptyComponent={ListEmpty}
-        ListFooterComponent={ListFooter}
-        showsVerticalScrollIndicator={false}
-      />
-
-      {/* Edit Memory Modal */}
-      <Modal
-        visible={!!editingMemory}
-        transparent
-        animationType="fade"
-        onRequestClose={handleCancelEdit}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <HeadingLarge style={styles.modalTitle}>Edit Memory</HeadingLarge>
-            <Input
-              value={editContent}
-              onChangeText={setEditContent}
-              multiline
-              autoFocus
-              placeholder="Memory content..."
-              containerStyle={styles.modalInputContainer}
-            />
-            <View style={styles.modalButtons}>
-              <Button
-                title="Cancel"
-                variant="ghost"
-                onPress={handleCancelEdit}
-                size="md"
-              />
-              <Button
-                title="Save"
-                onPress={handleSaveEdit}
-                size="md"
-              />
-            </View>
-          </View>
+      <View style={[styles.content, { paddingBottom: TAB_BAR.height + insets.bottom + SPACING.lg }]}>
+        {/* Profile info */}
+        <View style={styles.userSection}>
+          <Avatar
+            text={name || user?.email || '?'}
+            size="lg"
+            style={styles.avatar}
+          />
+          {name && <HeadingLarge style={styles.userName}>{name}</HeadingLarge>}
+          <BodyMedium style={styles.userEmail}>{user?.email || 'Not signed in'}</BodyMedium>
+          <TouchableOpacity onPress={handleEditName} style={styles.editNameLink}>
+            <Text style={styles.editNameText}>{name ? 'Edit name' : 'Add name'}</Text>
+          </TouchableOpacity>
         </View>
-      </Modal>
+
+        {/* Menu items */}
+        <View style={styles.menuSection}>
+          <TouchableOpacity style={styles.menuRow} onPress={handleOpenMemories}>
+            <View style={styles.menuRowLeft}>
+              <Feather name="database" size={20} color={COLORS.text} style={styles.menuIcon} />
+              <BodyMedium>Memories</BodyMedium>
+            </View>
+            <View style={styles.menuRowRight}>
+              {memories.length > 0 && (
+                <Caption style={styles.menuCount}>{memories.length}</Caption>
+              )}
+              <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* Sign Out */}
+        <View style={styles.actions}>
+          <TouchableOpacity onPress={handleLogout} style={styles.signOutButton}>
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Edit Name Modal */}
       <Modal
@@ -289,9 +159,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
   },
   content: {
+    flex: 1,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.xl,
-    paddingBottom: SPACING.xxl,
   },
   // User section
   userSection: {
@@ -314,56 +184,46 @@ const styles = StyleSheet.create({
     color: COLORS.primary,
     ...TYPOGRAPHY.label,
   },
-  // Memories section
-  sectionHeader: {
-    marginBottom: SPACING.md,
+  // Menu section
+  menuSection: {
+    marginBottom: SPACING.xl,
   },
-  sectionTitle: {
-    marginBottom: SPACING.xs,
-  },
-  // Memory card
-  memoryHeader: {
+  menuRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: SPACING.sm,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.md,
+    minHeight: TOUCH_TARGET.comfortable,
   },
-  categoryBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.sm,
-  },
-  categoryText: {
-    ...TYPOGRAPHY.caption,
-    fontWeight: '600',
-  },
-  memoryActions: {
+  menuRowLeft: {
     flexDirection: 'row',
-    gap: SPACING.md,
-  },
-  editText: {
-    color: COLORS.primary,
-    ...TYPOGRAPHY.label,
-  },
-  deleteText: {
-    color: COLORS.error,
-    ...TYPOGRAPHY.label,
-  },
-  // Empty state
-  emptyState: {
-    paddingVertical: SPACING.xxl,
     alignItems: 'center',
   },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: SPACING.md,
+  menuIcon: {
+    marginRight: SPACING.sm,
   },
-  emptyText: {
-    textAlign: 'center',
+  menuRowRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  menuCount: {
+    color: COLORS.textSecondary,
+    marginRight: SPACING.xs,
   },
   // Actions
   actions: {
-    marginTop: SPACING.xl,
+    marginTop: 'auto',
+    alignItems: 'center',
+  },
+  signOutButton: {
+    paddingVertical: SPACING.md,
+  },
+  signOutText: {
+    color: COLORS.error,
+    ...TYPOGRAPHY.label,
   },
   // Modal
   modalOverlay: {
