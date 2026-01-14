@@ -10,13 +10,17 @@ import { COLORS } from '../../constants/theme';
 
 export default function TabLayout() {
   const router = useRouter();
-  const { startSession } = useSessionStore();
+  const { isActive, startSession } = useSessionStore();
 
   const handleNewSession = useCallback(() => {
+    // Prevent duplicate session screens from rapid taps
+    // startSession() has its own guard, but we also need to guard navigation
+    if (isActive) return;
+
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     startSession();
     router.push('/session');
-  }, [startSession, router]);
+  }, [isActive, startSession, router]);
 
   return (
     <Tabs

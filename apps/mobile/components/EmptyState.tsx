@@ -8,9 +8,12 @@ import { SPACING, TAB_BAR } from '../constants/theme';
 export function EmptyState() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const startSession = useSessionStore((state) => state.startSession);
+  const { isActive, startSession } = useSessionStore();
 
   const handleStartCoaching = () => {
+    // Prevent duplicate session screens from rapid taps
+    if (isActive) return;
+
     startSession();
     router.push('/session');
   };

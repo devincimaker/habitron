@@ -63,6 +63,7 @@ export default function SessionScreen() {
   const [isRecordingMode, setIsRecordingMode] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
 
   const {
@@ -95,11 +96,13 @@ export default function SessionScreen() {
     initSession();
   }, []);
 
-  // Handle closing after session ends
-  const handleClose = useCallback(() => {
+  // Handle session exit - navigate immediately, cleanup in background
+  const exitSession = useCallback(() => {
+    setIsClosing(true);
     loadSessions();
     router.back();
-  }, [router, loadSessions]);
+    endSession(); // Don't await - let it run in background
+  }, [router, loadSessions, endSession]);
 
   // Helper to send message and get AI response
   const sendUserMessage = useCallback(async (text: string) => {
@@ -128,33 +131,30 @@ export default function SessionScreen() {
   const performEndSession = useCallback(async () => {
     setPendingAction(null);
 
-    // If session has meaningful content, extract memories
-    if (messages.length > 2) {
-      setReviewState({ phase: 'extracting' });
-
-      const extracted = await extractMemories(
-        messages.map((m) => ({ role: m.role, content: m.content }))
-      );
-
-      if (extracted.length > 0) {
-        // Show review screen with all memories selected by default
-        setReviewState({
-          phase: 'reviewing',
-          memories: extracted,
-          selected: new Set(extracted.map((_, i) => i)),
-        });
-      } else {
-        // No memories extracted, just end the session
-        setReviewState({ phase: 'none' });
-        await endSession();
-        handleClose();
-      }
-    } else {
-      // Short session, no need to extract
-      await endSession();
-      handleClose();
+    // Short sessions don't need memory extraction
+    if (messages.length <= 2) {
+      exitSession();
+      return;
     }
-  }, [messages, extractMemories, endSession, handleClose]);
+
+    // Extract memories from meaningful conversations
+    setReviewState({ phase: 'extracting' });
+    const extracted = await extractMemories(
+      messages.map((m) => ({ role: m.role, content: m.content }))
+    );
+
+    if (extracted.length === 0) {
+      exitSession();
+      return;
+    }
+
+    // Show review screen with all memories selected by default
+    setReviewState({
+      phase: 'reviewing',
+      memories: extracted,
+      selected: new Set(extracted.map((_, i) => i)),
+    });
+  }, [messages, extractMemories, exitSession]);
 
   const handleEndSession = useCallback(() => {
     Alert.alert(
@@ -200,16 +200,8 @@ export default function SessionScreen() {
       }
     }
 
-    setReviewState({ phase: 'none' });
-    await endSession();
-    handleClose();
-  }, [reviewState, saveMemories, sessionId, endSession, handleClose]);
-
-  const handleSkipMemories = useCallback(async () => {
-    setReviewState({ phase: 'none' });
-    await endSession();
-    handleClose();
-  }, [endSession, handleClose]);
+    exitSession();
+  }, [reviewState, saveMemories, sessionId, exitSession]);
 
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
@@ -351,6 +343,11 @@ export default function SessionScreen() {
 
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
 
+  // Prevent showing empty content during modal dismissal
+  if (isClosing) {
+    return <View style={[styles.container, { paddingTop: insets.top }]} />;
+  }
+
   // Memory review - extracting phase
   if (reviewState.phase === 'extracting') {
     return (
@@ -404,7 +401,7 @@ export default function SessionScreen() {
           <Button
             title="Skip"
             variant="outline"
-            onPress={handleSkipMemories}
+            onPress={exitSession}
             size="md"
             style={styles.skipButton}
           />

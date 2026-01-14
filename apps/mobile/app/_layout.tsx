@@ -7,6 +7,7 @@ import * as Notifications from 'expo-notifications';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useHabitsStore } from '../stores/useHabitsStore';
 import { useProfileStore } from '../stores/useProfileStore';
+import { useSessionStore } from '../stores/useSessionStore';
 import { useAppStateHandler } from '../hooks/useAppState';
 import { COLORS } from '../constants/theme';
 import {
@@ -19,9 +20,12 @@ export default function RootLayout() {
   const { session, isInitialized, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
   const { loadProfile, reset: resetProfile } = useProfileStore();
+  const isSessionActive = useSessionStore((state) => state.isActive);
   const router = useRouter();
   const navigationState = useRootNavigationState();
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  const isSessionActiveRef = useRef(isSessionActive);
+  isSessionActiveRef.current = isSessionActive;
 
   // Handle app state changes for session timeout
   useAppStateHandler();
@@ -56,8 +60,8 @@ export default function RootLayout() {
 
       // Handle coaching session notification
       if (data?.action === 'start_coaching') {
-        // Only navigate if navigation is ready
-        if (navigationState?.key) {
+        // Only navigate if navigation is ready and no session is already active
+        if (navigationState?.key && !isSessionActiveRef.current) {
           router.push('/session?autoStart=true');
         }
       }
