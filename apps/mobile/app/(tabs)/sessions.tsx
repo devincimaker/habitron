@@ -5,12 +5,20 @@ import {
   StyleSheet,
   ScrollView,
   RefreshControl,
+  Alert,
 } from 'react-native';
+import type { CoachingSessionSummary } from '@habits-coach/shared';
 import { Feather } from '@expo/vector-icons';
 import { useSessionsStore } from '../../stores/useSessionsStore';
 import { SessionListItem } from '../../components/SessionListItem';
 import { SessionDetailModal } from '../../components/SessionDetailModal';
 import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
+
+function buildMemoryWarning(memoryCount: number | undefined): string {
+  if (!memoryCount) return '';
+  const noun = memoryCount === 1 ? 'memory' : 'memories';
+  return `\n\nThis will also delete ${memoryCount} associated ${noun}.`;
+}
 
 export default function SessionsScreen() {
   const {
@@ -26,19 +34,16 @@ export default function SessionsScreen() {
   const [showSessionDetail, setShowSessionDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Load sessions on mount
   useEffect(() => {
     loadSessions();
   }, [loadSessions]);
 
-  // Handle pull-to-refresh
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     await loadSessions();
     setRefreshing(false);
   }, [loadSessions]);
 
-  // Handle session press
   const handleSessionPress = useCallback((id: string) => {
     loadSessionDetail(id);
     setShowSessionDetail(true);
@@ -50,13 +55,29 @@ export default function SessionsScreen() {
   }, [clearSelectedSession]);
 
   const handleDeleteSession = useCallback(async () => {
-    if (selectedSession) {
-      await deleteSession(selectedSession.id);
-      handleCloseSessionDetail();
-    }
+    if (!selectedSession) return;
+    await deleteSession(selectedSession.id);
+    handleCloseSessionDetail();
   }, [selectedSession, deleteSession, handleCloseSessionDetail]);
 
-  // Empty state
+  const handleSwipeDelete = useCallback((session: CoachingSessionSummary) => {
+    const sessionName = session.name || 'Untitled Session';
+    const memoryWarning = buildMemoryWarning(session.memoryCount);
+
+    Alert.alert(
+      'Delete Session',
+      `Are you sure you want to delete "${sessionName}"?${memoryWarning}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => deleteSession(session.id),
+        },
+      ]
+    );
+  }, [deleteSession]);
+
   if (sessions.length === 0 && !isLoading) {
     return (
       <View style={styles.container}>
@@ -91,11 +112,11 @@ export default function SessionsScreen() {
             key={session.id}
             session={session}
             onPress={handleSessionPress}
+            onDelete={handleSwipeDelete}
           />
         ))}
       </ScrollView>
 
-      {/* Session Detail Modal */}
       <SessionDetailModal
         visible={showSessionDetail}
         session={selectedSession}
