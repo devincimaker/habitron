@@ -104,6 +104,16 @@ export default function ProfileScreen() {
               <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
             </View>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.menuRow, { marginTop: SPACING.sm }]}
+            onPress={() => { throw new Error('Test Sentry error'); }}
+          >
+            <View style={styles.menuRowLeft}>
+              <Feather name="alert-triangle" size={20} color={COLORS.error} style={styles.menuIcon} />
+              <BodyMedium style={{ color: COLORS.error }}>Test Crash (Sentry)</BodyMedium>
+            </View>
+          </TouchableOpacity>
         </View>
 
         {/* Sign Out */}
