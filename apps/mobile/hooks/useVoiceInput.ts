@@ -3,8 +3,11 @@ import * as Haptics from 'expo-haptics';
 import { useAudioRecorder } from './useAudioRecorder';
 import { transcribeAudio } from '../services/api';
 
+type VoiceInputMode = 'idle' | 'recording' | 'transcribing';
+type PendingAction = 'stop' | 'send' | null;
+
 interface VoiceInputButtonProps {
-  mode: 'idle' | 'recording' | 'transcribing';
+  mode: VoiceInputMode;
   meterLevel: number;
   recordingDuration: number;
   maxDurationMs: number;
@@ -52,7 +55,9 @@ interface UseVoiceInputReturn {
   voiceInputProps: VoiceInputButtonProps;
 }
 
-type PendingAction = 'stop' | 'send' | null;
+function formatTranscriptionError(error: unknown): string {
+  return error instanceof Error ? error.message : 'Failed to transcribe audio';
+}
 
 export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInputReturn {
   const { onSend, onStopSuccess } = options;
@@ -76,19 +81,15 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       if (text.trim() && onStopSuccess) {
         onStopSuccess(text);
       }
-    } catch (error) {
-      console.error('Auto-stop transcription error:', error);
-      setTranscriptionError(
-        error instanceof Error ? error.message : 'Failed to transcribe audio'
-      );
-      // Keep lastAudioUri and pendingAction for retry
+    } catch (err) {
+      console.error('Auto-stop transcription error:', err);
+      setTranscriptionError(formatTranscriptionError(err));
     } finally {
       setIsTranscribing(false);
     }
   }, [onStopSuccess]);
 
   const {
-    isRecording,
     recordingDuration,
     meterLevel,
     isNearingLimit,
@@ -126,12 +127,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       setPendingAction(null);
       setIsRecordingMode(false);
       return text;
-    } catch (error) {
-      console.error('Transcription error:', error);
-      setTranscriptionError(
-        error instanceof Error ? error.message : 'Failed to transcribe audio'
-      );
-      // Keep lastAudioUri and pendingAction for retry
+    } catch (err) {
+      console.error('Transcription error:', err);
+      setTranscriptionError(formatTranscriptionError(err));
       return null;
     } finally {
       setIsTranscribing(false);
@@ -158,12 +156,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       if (text.trim() && onSend) {
         await onSend(text);
       }
-    } catch (error) {
-      console.error('Transcription error:', error);
-      setTranscriptionError(
-        error instanceof Error ? error.message : 'Failed to transcribe audio'
-      );
-      // Keep lastAudioUri and pendingAction for retry
+    } catch (err) {
+      console.error('Transcription error:', err);
+      setTranscriptionError(formatTranscriptionError(err));
     } finally {
       setIsTranscribing(false);
     }
@@ -186,11 +181,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
           onStopSuccess(text);
         }
         setPendingAction(null);
-      } catch (error) {
-        console.error('Retry transcription error:', error);
-        setTranscriptionError(
-          error instanceof Error ? error.message : 'Failed to transcribe audio'
-        );
+      } catch (err) {
+        console.error('Retry transcription error:', err);
+        setTranscriptionError(formatTranscriptionError(err));
       } finally {
         setIsTranscribing(false);
       }
@@ -206,11 +199,12 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const error = transcriptionError || recordingError;
 
   // Compute mode for VoiceInputButton
-  const mode: 'idle' | 'recording' | 'transcribing' = isRecordingMode
-    ? isTranscribing
-      ? 'transcribing'
-      : 'recording'
-    : 'idle';
+  function computeMode(): VoiceInputMode {
+    if (!isRecordingMode) return 'idle';
+    if (isTranscribing) return 'transcribing';
+    return 'recording';
+  }
+  const mode = computeMode();
 
   // Props object ready to spread to VoiceInputButton
   const voiceInputProps: VoiceInputButtonProps = {
