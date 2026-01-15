@@ -25,8 +25,8 @@ import { SuggestionCard } from '../components/SuggestionCard';
 import { MemoryReviewCard } from '../components/MemoryReviewCard';
 import { VoiceInputButton } from '../components/VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from '../components/ui';
-import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import { sendMessage, transcribeAudio } from '../services/api';
+import { useVoiceInput } from '../hooks/useVoiceInput';
+import { sendMessage } from '../services/api';
 import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
 import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET } from '../constants/theme';
 
@@ -60,19 +60,8 @@ export default function SessionScreen() {
   const [inputText, setInputText] = useState('');
   const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
   const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
-  const [isRecordingMode, setIsRecordingMode] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [transcriptionError, setTranscriptionError] = useState<string | null>(null);
   const [isClosing, setIsClosing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
-
-  const {
-    recordingDuration,
-    meterLevel,
-    startRecording,
-    stopRecording,
-    error: recordingError,
-  } = useAudioRecorder();
 
   // Load memories on mount
   useEffect(() => {
@@ -275,66 +264,23 @@ export default function SessionScreen() {
     });
   }, [addMessage]);
 
-  const handleMicPress = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    setTranscriptionError(null);
-    setIsRecordingMode(true);
-    await startRecording();
-  }, [startRecording]);
+  // Voice input hook - handles recording and transcription
+  const {
+    isRecordingMode,
+    voiceInputProps,
+    handleStopRecording,
+  } = useVoiceInput({
+    onSend: sendUserMessage,
+    onStopSuccess: setInputText,
+  });
 
-  const handleStopRecording = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const audioUri = await stopRecording();
-    if (!audioUri) {
-      setIsRecordingMode(false);
-      return;
-    }
-
-    setIsTranscribing(true);
-    try {
-      const text = await transcribeAudio(audioUri);
+  // Custom handler for "stop & edit" flow (puts transcribed text in input field)
+  const handleStopAndEdit = useCallback(async () => {
+    const text = await handleStopRecording();
+    if (text) {
       setInputText(text);
-      setIsRecordingMode(false);
-    } catch (error) {
-      console.error('Transcription error:', error);
-      setTranscriptionError(
-        error instanceof Error ? error.message : 'Failed to transcribe audio'
-      );
-    } finally {
-      setIsTranscribing(false);
     }
-  }, [stopRecording]);
-
-  const handleSendRecording = useCallback(async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const audioUri = await stopRecording();
-    if (!audioUri) {
-      setIsRecordingMode(false);
-      return;
-    }
-
-    setIsTranscribing(true);
-    try {
-      const text = await transcribeAudio(audioUri);
-      setIsRecordingMode(false);
-
-      if (text.trim()) {
-        await sendUserMessage(text);
-      }
-    } catch (error) {
-      console.error('Transcription error:', error);
-      setTranscriptionError(
-        error instanceof Error ? error.message : 'Failed to transcribe audio'
-      );
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, [stopRecording, sendUserMessage]);
-
-  const handleRetryRecording = useCallback(() => {
-    setTranscriptionError(null);
-    setIsRecordingMode(false);
-  }, []);
+  }, [handleStopRecording]);
 
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessageType }) => <ChatMessage message={item} />,
@@ -468,14 +414,8 @@ export default function SessionScreen() {
       <View style={[styles.inputContainer, { paddingBottom: insets.bottom || SPACING.sm }]}>
         {isRecordingMode ? (
           <VoiceInputButton
-            mode={isTranscribing ? 'transcribing' : 'recording'}
-            onMicPress={() => {}}
-            meterLevel={meterLevel}
-            recordingDuration={recordingDuration}
-            onStopPress={handleStopRecording}
-            onSendPress={handleSendRecording}
-            error={transcriptionError || recordingError}
-            onRetry={handleRetryRecording}
+            {...voiceInputProps}
+            onStopPress={handleStopAndEdit}
           />
         ) : (
           <>
@@ -506,7 +446,7 @@ export default function SessionScreen() {
             ) : (
               <VoiceInputButton
                 mode="idle"
-                onMicPress={handleMicPress}
+                onMicPress={voiceInputProps.onMicPress}
               />
             )}
           </>
