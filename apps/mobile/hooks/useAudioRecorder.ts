@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Audio } from 'expo-av';
 import * as Haptics from 'expo-haptics';
+import * as Sentry from '@sentry/react-native';
 
 export const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
 export const WARNING_THRESHOLD_MS = 3.5 * 60 * 1000; // 30 seconds before limit
@@ -109,6 +110,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       return savedUri;
     } catch (err) {
       console.error('Failed to stop recording:', err);
+      Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
       // Even if unload fails, we preserved the URI
       recordingRef.current = null;
       setIsRecording(false);
@@ -190,6 +192,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
     } catch (err) {
       console.error('Failed to start recording:', err);
+      Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
       setError('Failed to start recording');
       setIsRecording(false);
     }

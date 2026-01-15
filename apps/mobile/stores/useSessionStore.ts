@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { ChatMessage } from '@habits-coach/shared';
+import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
 
 const SESSION_RECOVERY_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
@@ -96,6 +97,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         await sessionsService.finalizeSession(sessionId);
       } catch (error) {
         console.error('Failed to finalize session:', error);
+        Sentry.captureException(error, { tags: { feature: 'session' } });
       }
     }
   },
@@ -123,6 +125,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         set({ sessionId: id });
       } catch (error) {
         console.error('Failed to create session in backend:', error);
+        Sentry.captureException(error, { tags: { feature: 'session' } });
         // Continue with local-only, will retry on next message
         return;
       } finally {
@@ -148,6 +151,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       });
     } catch (error) {
       console.error('Failed to sync messages:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
     } finally {
       set({ isSyncing: false });
     }
@@ -194,6 +198,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       return 'recovered';
     } catch (error) {
       console.error('Failed to check/recover session:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
       return 'none';
     }
   },

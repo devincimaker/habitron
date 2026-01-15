@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Session, User } from '@supabase/supabase-js';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 
 interface AuthState {
@@ -43,6 +44,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
     } catch (error) {
       console.error('Error initializing auth:', error);
+      Sentry.captureException(error, { tags: { feature: 'auth' } });
       set({ isLoading: false, isInitialized: true });
     }
   },
