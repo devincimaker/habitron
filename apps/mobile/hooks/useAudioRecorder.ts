@@ -1,7 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Audio } from 'expo-av';
+import * as Haptics from 'expo-haptics';
 
-const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
+export const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
+export const WARNING_THRESHOLD_MS = 3.5 * 60 * 1000; // 30 seconds before limit
 const METERING_INTERVAL_MS = 100;
 
 // Custom recording options that produce m4a format (supported by OpenAI Whisper)
@@ -32,26 +34,41 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
   },
 };
 
+interface UseAudioRecorderOptions {
+  /** Called when recording auto-stops at max duration, with the audio URI */
+  onAutoStop?: (audioUri: string) => void;
+}
+
 interface UseAudioRecorderResult {
   isRecording: boolean;
   recordingDuration: number;
   meterLevel: number; // 0-1 normalized
+  isNearingLimit: boolean; // true when < 30 seconds remain
+  maxDurationMs: number; // expose max duration for UI
   startRecording: () => Promise<void>;
   stopRecording: () => Promise<string | null>; // Returns audio URI
   cancelRecording: () => Promise<void>;
   error: string | null;
 }
 
-export function useAudioRecorder(): UseAudioRecorderResult {
+export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudioRecorderResult {
+  const { onAutoStop } = options;
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [meterLevel, setMeterLevel] = useState(0);
+  const [isNearingLimit, setIsNearingLimit] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const recordingRef = useRef<Audio.Recording | null>(null);
   const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const hasTriggeredWarningRef = useRef(false);
+  const onAutoStopRef = useRef(onAutoStop);
+
+  // Keep ref updated with latest callback
+  onAutoStopRef.current = onAutoStop;
 
   const clearIntervals = useCallback(() => {
     if (meteringIntervalRef.current) {
@@ -69,12 +86,15 @@ export function useAudioRecorder(): UseAudioRecorderResult {
 
     if (!recordingRef.current) {
       setIsRecording(false);
+      setIsNearingLimit(false);
       return null;
     }
 
+    // Anti-fragile: Save URI before attempting unload
+    const savedUri = recordingRef.current.getURI();
+
     try {
       await recordingRef.current.stopAndUnloadAsync();
-      const uri = recordingRef.current.getURI();
       recordingRef.current = null;
 
       // Reset audio mode
@@ -83,13 +103,25 @@ export function useAudioRecorder(): UseAudioRecorderResult {
       });
 
       setIsRecording(false);
+      setIsNearingLimit(false);
       setMeterLevel(0);
 
-      return uri;
+      return savedUri;
     } catch (err) {
       console.error('Failed to stop recording:', err);
-      setError('Failed to stop recording');
+      // Even if unload fails, we preserved the URI
+      recordingRef.current = null;
       setIsRecording(false);
+      setIsNearingLimit(false);
+      setMeterLevel(0);
+
+      // Return saved URI even on error - audio file may still be valid
+      if (savedUri) {
+        console.warn('Recording unload error, but URI preserved:', savedUri);
+        return savedUri;
+      }
+
+      setError('Failed to stop recording');
       return null;
     }
   }, [clearIntervals]);
@@ -116,8 +148,10 @@ export function useAudioRecorder(): UseAudioRecorderResult {
 
       recordingRef.current = recording;
       startTimeRef.current = Date.now();
+      hasTriggeredWarningRef.current = false;
       setIsRecording(true);
       setRecordingDuration(0);
+      setIsNearingLimit(false);
 
       // Start metering interval
       meteringIntervalRef.current = setInterval(async () => {
@@ -136,9 +170,21 @@ export function useAudioRecorder(): UseAudioRecorderResult {
         const elapsed = Date.now() - startTimeRef.current;
         setRecordingDuration(elapsed);
 
+        // Warning state when approaching limit (30 seconds before)
+        if (elapsed >= WARNING_THRESHOLD_MS && !hasTriggeredWarningRef.current) {
+          hasTriggeredWarningRef.current = true;
+          setIsNearingLimit(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+
         // Auto-stop at max duration
         if (elapsed >= MAX_RECORDING_DURATION_MS) {
-          stopRecording();
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+          stopRecording().then((uri) => {
+            if (uri && onAutoStopRef.current) {
+              onAutoStopRef.current(uri);
+            }
+          });
         }
       }, 100);
 
@@ -166,6 +212,7 @@ export function useAudioRecorder(): UseAudioRecorderResult {
     });
 
     setIsRecording(false);
+    setIsNearingLimit(false);
     setMeterLevel(0);
     setRecordingDuration(0);
   }, [clearIntervals]);
@@ -184,6 +231,8 @@ export function useAudioRecorder(): UseAudioRecorderResult {
     isRecording,
     recordingDuration,
     meterLevel,
+    isNearingLimit,
+    maxDurationMs: MAX_RECORDING_DURATION_MS,
     startRecording,
     stopRecording,
     cancelRecording,

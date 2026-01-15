@@ -16,6 +16,8 @@ interface VoiceInputButtonProps {
   // Recording state
   meterLevel?: number; // 0-1
   recordingDuration?: number; // ms
+  maxDurationMs?: number; // max recording duration for display
+  isNearingLimit?: boolean; // true when approaching time limit
   onStopPress?: () => void;
   onSendPress?: () => void;
   // Error state
@@ -31,7 +33,7 @@ function formatDuration(ms: number): string {
 }
 
 // Waveform visualization component
-function Waveform({ level }: { level: number }) {
+function Waveform({ level, isWarning = false }: { level: number; isWarning?: boolean }) {
   const bars = 20;
   const animatedValues = useRef(
     Array.from({ length: bars }, () => new Animated.Value(0.2))
@@ -54,6 +56,8 @@ function Waveform({ level }: { level: number }) {
     });
   }, [level, animatedValues]);
 
+  const barColor = isWarning ? COLORS.error : COLORS.primary;
+
   return (
     <View style={waveformStyles.container}>
       {animatedValues.map((anim, index) => (
@@ -62,6 +66,7 @@ function Waveform({ level }: { level: number }) {
           style={[
             waveformStyles.bar,
             {
+              backgroundColor: barColor,
               height: anim.interpolate({
                 inputRange: [0, 1],
                 outputRange: ['15%', '100%'],
@@ -84,7 +89,6 @@ const waveformStyles = StyleSheet.create({
   },
   bar: {
     width: 3,
-    backgroundColor: COLORS.primary,
     borderRadius: 1.5,
   },
 });
@@ -94,6 +98,8 @@ export function VoiceInputButton({
   onMicPress,
   meterLevel = 0,
   recordingDuration = 0,
+  maxDurationMs,
+  isNearingLimit = false,
   onStopPress,
   onSendPress,
   error,
@@ -135,6 +141,10 @@ export function VoiceInputButton({
   }
 
   // Recording state - full recording interface
+  const durationDisplay = maxDurationMs
+    ? `${formatDuration(recordingDuration)} / ${formatDuration(maxDurationMs)}`
+    : formatDuration(recordingDuration);
+
   return (
     <View style={styles.recordingContainer}>
       {/* Stop button */}
@@ -148,8 +158,10 @@ export function VoiceInputButton({
 
       {/* Waveform and duration */}
       <View style={styles.waveformContainer}>
-        <Waveform level={meterLevel} />
-        <Text style={styles.durationText}>{formatDuration(recordingDuration)}</Text>
+        <Waveform level={meterLevel} isWarning={isNearingLimit} />
+        <Text style={[styles.durationText, isNearingLimit && styles.durationTextWarning]}>
+          {durationDisplay}
+        </Text>
       </View>
 
       {/* Send button */}
@@ -208,6 +220,10 @@ const styles = StyleSheet.create({
     fontSize: FONT_SIZES.xs,
     color: COLORS.textSecondary,
     marginTop: 2,
+  },
+  durationTextWarning: {
+    color: COLORS.error,
+    fontWeight: '600',
   },
   sendButton: {
     width: 36,
