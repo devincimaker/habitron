@@ -16,7 +16,7 @@ export function getLast7Days(): DayInfo[] {
     d.setDate(d.getDate() - i);
 
     days.push({
-      date: d.toISOString().split('T')[0],
+      date: toDateString(d.getFullYear(), d.getMonth() + 1, d.getDate()),
       dayNumber: d.getDate(),
       weekdayLetter: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()],
       isToday: i === 0,

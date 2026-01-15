@@ -1,4 +1,4 @@
-import { useCallback, useState, useRef, useEffect } from "react";
+import { useCallback, useState, useRef, useEffect, useMemo } from "react";
 import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, {
@@ -138,15 +138,19 @@ export default function HabitsScreen() {
     }
   }, [selectedDate, setSelectedDate]);
 
-  const daySwipeGesture = Gesture.Pan()
-    .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
-    .onEnd((event) => {
-      if (event.translationX > SWIPE_THRESHOLD) {
-        runOnJS(navigateToPreviousDay)();
-      } else if (event.translationX < -SWIPE_THRESHOLD) {
-        runOnJS(navigateToNextDay)();
-      }
-    });
+  const daySwipeGesture = useMemo(
+    () =>
+      Gesture.Pan()
+        .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
+        .onEnd((event) => {
+          if (event.translationX > SWIPE_THRESHOLD) {
+            runOnJS(navigateToPreviousDay)();
+          } else if (event.translationX < -SWIPE_THRESHOLD) {
+            runOnJS(navigateToNextDay)();
+          }
+        }),
+    [navigateToPreviousDay, navigateToNextDay]
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: HabitWithStatus }) => (
