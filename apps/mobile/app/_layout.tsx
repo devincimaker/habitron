@@ -15,8 +15,28 @@ import {
   savePushToken,
   addNotificationResponseListener,
 } from '../services/notifications';
+import * as Sentry from '@sentry/react-native';
 
-export default function RootLayout() {
+Sentry.init({
+  dsn: 'https://62fb18b511d16479fcc57e32f34cbf24@o4509554140577792.ingest.de.sentry.io/4510715469561936',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
+
+export default Sentry.wrap(function RootLayout() {
   const { session, isInitialized, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
   const { loadProfile, reset: resetProfile } = useProfileStore();
@@ -106,7 +126,7 @@ export default function RootLayout() {
       </Stack>
     </GestureHandlerRootView>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

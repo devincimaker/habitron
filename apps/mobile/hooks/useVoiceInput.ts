@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react';
 import * as Haptics from 'expo-haptics';
+import * as Sentry from '@sentry/react-native';
 import { useAudioRecorder } from './useAudioRecorder';
 import { transcribeAudio } from '../services/api';
 
@@ -83,6 +84,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       }
     } catch (err) {
       console.error('Auto-stop transcription error:', err);
+      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
       setTranscriptionError(formatTranscriptionError(err));
     } finally {
       setIsTranscribing(false);
@@ -129,6 +131,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       return text;
     } catch (err) {
       console.error('Transcription error:', err);
+      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
       setTranscriptionError(formatTranscriptionError(err));
       return null;
     } finally {
@@ -158,6 +161,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       }
     } catch (err) {
       console.error('Transcription error:', err);
+      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
       setTranscriptionError(formatTranscriptionError(err));
     } finally {
       setIsTranscribing(false);
@@ -183,6 +187,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
         setPendingAction(null);
       } catch (err) {
         console.error('Retry transcription error:', err);
+        Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
         setTranscriptionError(formatTranscriptionError(err));
       } finally {
         setIsTranscribing(false);

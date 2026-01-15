@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { Habit, HabitWithStatus, HabitStatus, getTodayDate } from '@habits-coach/shared';
+import * as Sentry from '@sentry/react-native';
 import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
 import { getLast7Days } from '../utils/dateUtils';
@@ -139,6 +140,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
       }
     } catch (error) {
       console.error('Failed to set habit status:', error);
+      Sentry.captureException(error, { tags: { feature: 'habits' } });
       throw error;
     }
   },
