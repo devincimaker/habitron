@@ -146,6 +146,13 @@ export default function SessionScreen() {
   }, [messages, extractMemories, exitSession]);
 
   const handleEndSession = useCallback(() => {
+    // Skip confirmation if user hasn't sent any messages
+    const hasUserMessages = messages.some((m) => m.role === 'user');
+    if (!hasUserMessages) {
+      performEndSession();
+      return;
+    }
+
     Alert.alert(
       'End Session',
       'Are you sure you want to end this coaching session?',
@@ -158,7 +165,7 @@ export default function SessionScreen() {
         },
       ]
     );
-  }, [performEndSession]);
+  }, [messages, performEndSession]);
 
   const handleToggleMemory = useCallback((index: number) => {
     setReviewState((prev) => {
