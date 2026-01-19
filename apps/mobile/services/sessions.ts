@@ -4,6 +4,7 @@ import type {
   CoachingSessionDetail,
   CoachingSessionMessage,
 } from '@habits-coach/shared';
+import { handleFetchError } from './fetchErrorHandler';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -23,8 +24,7 @@ export async function getSessions(): Promise<CoachingSessionSummary[]> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to fetch sessions');
+    await handleFetchError(response, 'Failed to fetch sessions');
   }
 
   const data = await response.json();
@@ -44,8 +44,7 @@ export async function getActiveSession(): Promise<{
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to fetch active session');
+    await handleFetchError(response, 'Failed to fetch active session');
   }
 
   const data = await response.json();
@@ -60,8 +59,7 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to fetch session');
+    await handleFetchError(response, 'Failed to fetch session');
   }
 
   const data = await response.json();
@@ -80,8 +78,7 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to create session');
+    await handleFetchError(response, 'Failed to create session');
   }
 
   const data = await response.json();
@@ -108,8 +105,7 @@ export async function updateSession(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to update session');
+    await handleFetchError(response, 'Failed to update session');
   }
 }
 
@@ -129,8 +125,7 @@ export async function finalizeSession(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to finalize session');
+    await handleFetchError(response, 'Failed to finalize session');
   }
 
   return response.json();
@@ -145,7 +140,6 @@ export async function deleteSession(id: string): Promise<void> {
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to delete session');
+    await handleFetchError(response, 'Failed to delete session');
   }
 }
