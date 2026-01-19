@@ -45,7 +45,7 @@ jobs:
 
       - name: Create improvement branch
         run: |
-          BRANCH_NAME="improve/daily-$(date +%Y-%m-%d)"
+          BRANCH_NAME="improve/daily-$(date +%Y-%m-%d)-${{ github.run_number }}"
           git checkout -b "$BRANCH_NAME"
           echo "BRANCH_NAME=$BRANCH_NAME" >> $GITHUB_ENV
 
