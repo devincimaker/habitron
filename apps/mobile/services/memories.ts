@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import type { Memory, MemoryCategory, ExtractMemoriesResponse } from '@habits-coach/shared';
+import { handleFetchError } from './fetchErrorHandler';
 
 // Type for extracted memory before saving (no id yet)
 export interface ExtractedMemory {
@@ -77,8 +78,7 @@ export async function extractMemories(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to extract memories');
+    await handleFetchError(response, 'Failed to extract memories');
   }
 
   const data = (await response.json()) as ExtractMemoriesResponse;
@@ -104,8 +104,7 @@ export async function saveMemories(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'Failed to save memories');
+    await handleFetchError(response, 'Failed to save memories');
   }
 }
 
