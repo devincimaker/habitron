@@ -1,5 +1,14 @@
 Do not try to keep old code around as "backwards compatibility" if it is not being used anymore. We are ok with changing code and removing old code to implement new patterns and systems.
 
+## Development
+
+To start the dev server (mobile app + API), run from the repo root:
+```bash
+pnpm dev
+```
+
+In worktrees, this will use the `IOS_SIMULATOR` and `EXPO_PORT` values from `apps/mobile/.env`.
+
 ## Supabase Migrations
 
 When pushing database migrations:
