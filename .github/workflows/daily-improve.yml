@@ -75,24 +75,28 @@ jobs:
           2. Run 'pnpm --filter @habits-coach/mobile test' to verify mobile tests pass
           3. If tests fail, fix the issues or revert your changes
 
-          IMPORTANT - After completing your changes, create a file called IMPROVEMENT_SUMMARY.md in the repo root with the following sections:
-
-          # Improvement Summary
-
-          ## What was changed
-          List each file that was modified/created/deleted with a one-line description of the change.
-
-          ## Why this improvement was chosen
-          Explain why you picked this particular improvement over other options. What made it the best candidate?
-
-          ## How it improves the code
-          Explain the concrete benefits: reduced duplication, better testability, simpler logic, etc.
-
-          ## Testing
-          Confirm that tests pass and mention any new tests added.
-
           Start by exploring the codebase to find the best improvement opportunity.
           "
+
+      - name: Generate improvement summary
+        if: ${{ !cancelled() }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude --print --dangerously-skip-permissions "
+          Look at the git diff of uncommitted changes in this repo. Write a concise PR description with these sections:
+
+          ## What was changed
+          List each file modified with a one-line description.
+
+          ## Why this improvement
+          Why was this chosen over other options?
+
+          ## How it improves the code
+          Concrete benefits (reduced duplication, better testability, etc.)
+
+          Output ONLY the markdown content, nothing else.
+          " > /tmp/improvement_summary.md || echo "Could not generate summary" > /tmp/improvement_summary.md
 
       - name: Check for changes
         id: check_changes
@@ -108,18 +112,6 @@ jobs:
         run: |
           pnpm --filter @habits-coach/api test
           pnpm --filter @habits-coach/mobile test
-
-      - name: Prepare summary for PR
-        if: steps.check_changes.outputs.has_changes == 'true'
-        run: |
-          # Save summary content for PR body
-          if [ -f IMPROVEMENT_SUMMARY.md ]; then
-            cp IMPROVEMENT_SUMMARY.md /tmp/IMPROVEMENT_SUMMARY.md
-            # Remove summary file from repo (we only want it in the PR description)
-            rm IMPROVEMENT_SUMMARY.md
-          else
-            echo "No summary file found" > /tmp/IMPROVEMENT_SUMMARY.md
-          fi
 
       - name: Commit changes
         if: steps.check_changes.outputs.has_changes == 'true'
@@ -153,9 +145,9 @@ jobs:
           )
 
           # Add the improvement summary
-          if [ -f /tmp/IMPROVEMENT_SUMMARY.md ]; then
+          if [ -f /tmp/improvement_summary.md ]; then
             PR_BODY="$PR_BODY
-          $(cat /tmp/IMPROVEMENT_SUMMARY.md)
+          $(cat /tmp/improvement_summary.md)
           "
           fi
 
