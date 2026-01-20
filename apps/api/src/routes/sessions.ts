@@ -1,9 +1,8 @@
 import { Router, Request, Response } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
-import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
+import { getSupabaseClient } from '../services/supabase.js';
 import type {
   CoachingSessionMessage,
   CoachingSessionSummary,
@@ -15,7 +14,6 @@ import type {
 } from '@habits-coach/shared';
 
 const router: Router = Router();
-const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
 
 // Database row types
 interface DbSession {
@@ -43,6 +41,8 @@ interface DbMemory {
 // GET /api/sessions - List sessions (last 50)
 router.get('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    const supabase = getSupabaseClient();
+
     // Get sessions with memory count
     const { data: sessions, error } = await supabase
       .from('coaching_sessions')
@@ -87,6 +87,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
 // GET /api/sessions/active - Get active (unprocessed) session if exists
 router.get('/active', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('coaching_sessions')
       .select('*')
@@ -126,6 +127,8 @@ router.get('/active', authMiddleware, async (req: Request, res: Response): Promi
 router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const supabase = getSupabaseClient();
 
     const { data: session, error } = await supabase
       .from('coaching_sessions')
@@ -180,6 +183,8 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
   try {
     const { startedAt } = req.body as CreateSessionRequest;
 
+    const supabase = getSupabaseClient();
+
     const { data, error } = await supabase
       .from('coaching_sessions')
       .insert({
@@ -209,6 +214,8 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
   try {
     const { id } = req.params;
     const { messages, name, endedAt, isProcessed } = req.body as UpdateSessionRequest;
+
+    const supabase = getSupabaseClient();
 
     const updates: Record<string, unknown> = {};
     if (messages !== undefined) updates.messages = messages;
@@ -242,6 +249,8 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
   try {
     const { id } = req.params;
     const { generateSummary = true, extractMemories: shouldExtract = true } = req.body as FinalizeSessionRequest;
+
+    const supabase = getSupabaseClient();
 
     // Get session
     const { data: session, error } = await supabase
@@ -334,6 +343,8 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
 router.delete('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const supabase = getSupabaseClient();
 
     const { error } = await supabase
       .from('coaching_sessions')

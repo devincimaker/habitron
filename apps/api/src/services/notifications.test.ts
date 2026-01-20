@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   scheduleFirstSkipNotification,
-  setSupabaseClient,
   getNext9AM,
 } from './notifications.js';
+import { setSupabaseClient } from './supabase.js';
 
 // Helper to create a chainable mock query builder
 function createMockQueryBuilder(resolveValue: unknown) {

@@ -1,12 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { createClient } from '@supabase/supabase-js';
-import { config } from '../config.js';
-
-// Create Supabase client with service role key for verification
-const supabase = createClient(
-  config.supabase.url,
-  config.supabase.serviceRoleKey
-);
+import { getSupabaseClient } from '../services/supabase.js';
 
 // Extend Express Request to include user
 declare global {
@@ -35,6 +28,7 @@ export async function authMiddleware(
   const token = authHeader.substring(7);
 
   try {
+    const supabase = getSupabaseClient();
     const {
       data: { user },
       error,

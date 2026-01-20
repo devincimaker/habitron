@@ -1,25 +1,4 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { config } from '../config.js';
-
-// Default Supabase client - can be overridden for testing
-let supabase: SupabaseClient = createClient(
-  config.supabase.url,
-  config.supabase.serviceRoleKey
-);
-
-/**
- * Set a custom Supabase client (for testing).
- */
-export function setSupabaseClient(client: SupabaseClient): void {
-  supabase = client;
-}
-
-/**
- * Get the current Supabase client.
- */
-export function getSupabaseClient(): SupabaseClient {
-  return supabase;
-}
+import { getSupabaseClient } from './supabase.js';
 
 /**
  * Schedule a first-skip notification for a user.
@@ -30,6 +9,8 @@ export async function scheduleFirstSkipNotification(
   userId: string,
   habitId: string
 ): Promise<{ scheduled: boolean; reason?: string }> {
+  const supabase = getSupabaseClient();
+
   // Check if user already received first-skip notification
   const { data: flags } = await supabase
     .from('user_notification_flags')

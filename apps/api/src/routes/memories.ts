@@ -1,17 +1,15 @@
 import { Router, Request, Response } from 'express';
-import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
 import { extractMemories } from '../services/memories.js';
-import { config } from '../config.js';
+import { getSupabaseClient } from '../services/supabase.js';
 import type { ExtractMemoriesRequest, ErrorResponse, MemoryCategory } from '@habits-coach/shared';
 
 const router: Router = Router();
 
-const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
-
 // GET /api/memories - Get all memories for user
 router.get('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
+    const supabase = getSupabaseClient();
     const { data, error } = await supabase
       .from('memories')
       .select('*')
@@ -35,6 +33,8 @@ router.post('/extract', authMiddleware, async (req: Request, res: Response): Pro
       res.status(400).json({ error: 'Messages array is required' } satisfies ErrorResponse);
       return;
     }
+
+    const supabase = getSupabaseClient();
 
     // Fetch existing memories for deduplication
     const { data: existingMemories } = await supabase
@@ -64,6 +64,8 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    const supabase = getSupabaseClient();
+
     const memoriesData = memories.map((m) => ({
       user_id: req.user!.id,
       content: m.content,
@@ -87,6 +89,8 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
   try {
     const { id } = req.params;
     const { content, category } = req.body as { content?: string; category?: MemoryCategory };
+
+    const supabase = getSupabaseClient();
 
     const updates: { content?: string; category?: MemoryCategory } = {};
     if (content !== undefined) updates.content = content;
@@ -117,6 +121,8 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 router.delete('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
+
+    const supabase = getSupabaseClient();
 
     const { error } = await supabase
       .from('memories')
