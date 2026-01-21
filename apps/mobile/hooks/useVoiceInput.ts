@@ -69,27 +69,40 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   const [lastAudioUri, setLastAudioUri] = useState<string | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction>(null);
 
-  // Handle auto-stop at max duration - transcribe and put in input field
-  const handleAutoStop = useCallback(async (audioUri: string) => {
+  // Helper to handle transcription with consistent error handling
+  const transcribeWithErrorHandling = useCallback(async (
+    audioUri: string,
+    onSuccess: (text: string) => void | Promise<void>,
+    errorPrefix = 'Transcription'
+  ): Promise<string | null> => {
     setIsTranscribing(true);
-    setPendingAction('stop');
-    setLastAudioUri(audioUri);
     try {
       const text = await transcribeAudio(audioUri);
+      await onSuccess(text);
+      return text;
+    } catch (err) {
+      console.error(`${errorPrefix} error:`, err);
+      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
+      setTranscriptionError(formatTranscriptionError(err));
+      return null;
+    } finally {
+      setIsTranscribing(false);
+    }
+  }, []);
+
+  // Handle auto-stop at max duration - transcribe and put in input field
+  const handleAutoStop = useCallback(async (audioUri: string) => {
+    setPendingAction('stop');
+    setLastAudioUri(audioUri);
+    await transcribeWithErrorHandling(audioUri, (text) => {
       setLastAudioUri(null);
       setPendingAction(null);
       setIsRecordingMode(false);
       if (text.trim() && onStopSuccess) {
         onStopSuccess(text);
       }
-    } catch (err) {
-      console.error('Auto-stop transcription error:', err);
-      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
-      setTranscriptionError(formatTranscriptionError(err));
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, [onStopSuccess]);
+    }, 'Auto-stop transcription');
+  }, [onStopSuccess, transcribeWithErrorHandling]);
 
   const {
     recordingDuration,
@@ -120,24 +133,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       return null;
     }
 
-    setIsTranscribing(true);
     setPendingAction('stop');
     setLastAudioUri(audioUri);
-    try {
-      const text = await transcribeAudio(audioUri);
+    return await transcribeWithErrorHandling(audioUri, (text) => {
       setLastAudioUri(null);
       setPendingAction(null);
       setIsRecordingMode(false);
-      return text;
-    } catch (err) {
-      console.error('Transcription error:', err);
-      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
-      setTranscriptionError(formatTranscriptionError(err));
-      return null;
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, [stopRecording]);
+    });
+  }, [stopRecording, transcribeWithErrorHandling]);
 
   const handleSendRecording = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -147,11 +150,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       return;
     }
 
-    setIsTranscribing(true);
     setPendingAction('send');
     setLastAudioUri(audioUri);
-    try {
-      const text = await transcribeAudio(audioUri);
+    await transcribeWithErrorHandling(audioUri, async (text) => {
       setLastAudioUri(null);
       setPendingAction(null);
       setIsRecordingMode(false);
@@ -159,22 +160,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
       if (text.trim() && onSend) {
         await onSend(text);
       }
-    } catch (err) {
-      console.error('Transcription error:', err);
-      Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
-      setTranscriptionError(formatTranscriptionError(err));
-    } finally {
-      setIsTranscribing(false);
-    }
-  }, [stopRecording, onSend]);
+    });
+  }, [stopRecording, onSend, transcribeWithErrorHandling]);
 
   const handleRetryRecording = useCallback(async () => {
     // If we have a saved audio URI, retry transcription
     if (lastAudioUri) {
       setTranscriptionError(null);
-      setIsTranscribing(true);
-      try {
-        const text = await transcribeAudio(lastAudioUri);
+      await transcribeWithErrorHandling(lastAudioUri, async (text) => {
         setLastAudioUri(null);
         setIsRecordingMode(false);
 
@@ -185,20 +178,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
           onStopSuccess(text);
         }
         setPendingAction(null);
-      } catch (err) {
-        console.error('Retry transcription error:', err);
-        Sentry.captureException(err, { tags: { feature: 'voice-transcription' } });
-        setTranscriptionError(formatTranscriptionError(err));
-      } finally {
-        setIsTranscribing(false);
-      }
+      }, 'Retry transcription');
     } else {
       // No saved audio, just reset
       setTranscriptionError(null);
       setPendingAction(null);
       setIsRecordingMode(false);
     }
-  }, [lastAudioUri, pendingAction, onSend, onStopSuccess]);
+  }, [lastAudioUri, pendingAction, onSend, onStopSuccess, transcribeWithErrorHandling]);
 
   // Combined error from recording or transcription
   const error = transcriptionError || recordingError;
