@@ -14,3 +14,10 @@ In worktrees, this will use the `IOS_SIMULATOR` and `EXPO_PORT` values from `app
 When pushing database migrations:
 - If working in a git worktree (tmp/feature-*), check if there's a Supabase branch database configured in the worktree's `.env` files. If the branch database credentials fail, STOP and ask the user before proceeding.
 - If working from root directory, it's safe to push to the main database.
+
+## Linear Integration
+
+- **Workspace**: fioris
+- **Team**: Habitron team
+- **Project URL**: https://linear.app/fioris/team/HAB/active
+- **Issue Identifier**: HAB
