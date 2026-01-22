@@ -96,7 +96,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         });
         await sessionsService.finalizeSession(sessionId);
       } catch (error) {
-        console.error('Failed to finalize session:', error);
+        // Use warn to avoid red screen - session is ended locally regardless
+        console.warn('Failed to finalize session:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
       }
     }
@@ -124,7 +125,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         const { id } = await sessionsService.createSession();
         set({ sessionId: id });
       } catch (error) {
-        console.error('Failed to create session in backend:', error);
+        // Use warn to avoid red screen - continue with local-only mode
+        console.warn('Failed to create session in backend:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
         // Continue with local-only, will retry on next message
         return;
@@ -150,7 +152,8 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         messages: toMessagePayload(messages),
       });
     } catch (error) {
-      console.error('Failed to sync messages:', error);
+      // Use warn to avoid red screen - messages are stored locally
+      console.warn('Failed to sync messages:', error);
       Sentry.captureException(error, { tags: { feature: 'session' } });
     } finally {
       set({ isSyncing: false });
@@ -197,7 +200,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
       return 'recovered';
     } catch (error) {
-      console.error('Failed to check/recover session:', error);
+      // Use warn instead of error to avoid red screen in dev mode
+      // This is not critical - we can just start a new session
+      console.warn('Failed to check/recover session:', error);
       Sentry.captureException(error, { tags: { feature: 'session' } });
       return 'none';
     }
