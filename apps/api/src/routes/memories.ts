@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
 import { extractMemories } from '../services/memories.js';
 import { config } from '../config.js';
+import { validateRequest } from '../utils/validation.js';
 import type { ExtractMemoriesRequest, ErrorResponse, MemoryCategory } from '@habits-coach/shared';
 
 const router: Router = Router();
@@ -31,8 +32,7 @@ router.post('/extract', authMiddleware, async (req: Request, res: Response): Pro
   try {
     const { messages } = req.body as ExtractMemoriesRequest;
 
-    if (!Array.isArray(messages) || messages.length === 0) {
-      res.status(400).json({ error: 'Messages array is required' } satisfies ErrorResponse);
+    if (!validateRequest(req.body, [{ field: 'messages', type: 'array', allowEmpty: false }], res)) {
       return;
     }
 
@@ -59,8 +59,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
       sessionId?: string;
     };
 
-    if (!Array.isArray(memories) || memories.length === 0) {
-      res.status(400).json({ error: 'Memories array is required' } satisfies ErrorResponse);
+    if (!validateRequest(req.body, [{ field: 'memories', type: 'array', allowEmpty: false }], res)) {
       return;
     }
 

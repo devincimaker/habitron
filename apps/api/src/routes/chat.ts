@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { sendMessage } from '../services/openai.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { chatRateLimiter } from '../middleware/rateLimit.js';
+import { validateRequest } from '../utils/validation.js';
 import type { ChatRequest, ErrorResponse } from '@habits-coach/shared';
 
 const router: Router = Router();
@@ -16,17 +17,16 @@ router.post(
       const { messages, habits, memories, userName } = req.body as ChatRequest;
 
       // Validate request body
-      if (!Array.isArray(messages)) {
-        res.status(400).json({
-          error: 'Invalid request: messages must be an array',
-        } satisfies ErrorResponse);
-        return;
-      }
-
-      if (!Array.isArray(habits)) {
-        res.status(400).json({
-          error: 'Invalid request: habits must be an array',
-        } satisfies ErrorResponse);
+      if (
+        !validateRequest(
+          req.body,
+          [
+            { field: 'messages', type: 'array' },
+            { field: 'habits', type: 'array' },
+          ],
+          res
+        )
+      ) {
         return;
       }
 
