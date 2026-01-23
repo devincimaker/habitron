@@ -10,6 +10,8 @@
     "submit:ios": "pnpm --filter @habits-coach/mobile submit:ios",
     "start": "turbo start --ui tui",
     "typecheck": "turbo typecheck",
+    "test": "turbo test",
+    "test:coverage": "turbo test:coverage",
     "clean": "turbo clean && rm -rf node_modules",
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
