@@ -4,6 +4,7 @@ import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
+import { dbDateToTimestamp } from '@habits-coach/shared';
 import type {
   CoachingSessionMessage,
   CoachingSessionSummary,
@@ -71,8 +72,8 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
     const result: CoachingSessionSummary[] = (sessions as DbSession[]).map(s => ({
       id: s.id,
       name: s.name,
-      startedAt: new Date(s.started_at).getTime(),
-      endedAt: s.ended_at ? new Date(s.ended_at).getTime() : null,
+      startedAt: dbDateToTimestamp(s.started_at)!,
+      endedAt: dbDateToTimestamp(s.ended_at),
       messageCount: s.messages?.length || 0,
       memoryCount: memoryCountMap.get(s.id) || 0,
     }));
@@ -109,11 +110,11 @@ router.get('/active', authMiddleware, async (req: Request, res: Response): Promi
       session: {
         id: session.id,
         name: session.name,
-        startedAt: new Date(session.started_at).getTime(),
+        startedAt: dbDateToTimestamp(session.started_at)!,
         endedAt: null,
         messageCount: session.messages?.length || 0,
         messages: session.messages || [],
-        updatedAt: new Date(session.updated_at).getTime(),
+        updatedAt: dbDateToTimestamp(session.updated_at)!,
       },
     });
   } catch (error) {
@@ -154,8 +155,8 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
       session: {
         id: s.id,
         name: s.name,
-        startedAt: new Date(s.started_at).getTime(),
-        endedAt: s.ended_at ? new Date(s.ended_at).getTime() : null,
+        startedAt: dbDateToTimestamp(s.started_at)!,
+        endedAt: dbDateToTimestamp(s.ended_at),
         messageCount: s.messages?.length || 0,
         messages: s.messages || [],
         memories: (memories as DbMemory[]).map(m => ({
@@ -163,9 +164,9 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
           content: m.content,
           category: m.category,
           sessionId: m.session_id,
-          sourceSessionAt: m.source_session_at ? new Date(m.source_session_at).getTime() : undefined,
-          createdAt: new Date(m.created_at).getTime(),
-          updatedAt: new Date(m.updated_at).getTime(),
+          sourceSessionAt: dbDateToTimestamp(m.source_session_at) ?? undefined,
+          createdAt: dbDateToTimestamp(m.created_at)!,
+          updatedAt: dbDateToTimestamp(m.updated_at)!,
         })),
       },
     });
@@ -195,7 +196,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
     res.json({
       session: {
         id: data.id,
-        startedAt: new Date(data.started_at).getTime(),
+        startedAt: dbDateToTimestamp(data.started_at)!,
       },
     });
   } catch (error) {

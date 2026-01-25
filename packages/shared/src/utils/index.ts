@@ -16,3 +16,11 @@ export function formatDate(date: Date): string {
     day: 'numeric',
   });
 }
+
+/**
+ * Convert database date string to Unix timestamp (milliseconds)
+ * Returns null if the input is null or undefined
+ */
+export function dbDateToTimestamp(dateString: string | null | undefined): number | null {
+  return dateString ? new Date(dateString).getTime() : null;
+}
