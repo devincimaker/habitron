@@ -1,20 +1,12 @@
-import { supabase } from './supabase';
 import type {
   CoachingSessionSummary,
   CoachingSessionDetail,
   CoachingSessionMessage,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
+import { getAuthToken } from './authUtils';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
-
-async function getAuthToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
-  }
-  return session.access_token;
-}
 
 export async function getSessions(): Promise<CoachingSessionSummary[]> {
   const token = await getAuthToken();

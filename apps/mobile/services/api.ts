@@ -1,5 +1,5 @@
-import { supabase } from './supabase';
 import type { ChatRequest, ChatResponse, Habit, Memory } from '@habits-coach/shared';
+import { getAuthToken } from './authUtils';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -11,18 +11,6 @@ class ApiError extends Error {
     super(message);
     this.name = 'ApiError';
   }
-}
-
-async function getAuthToken(): Promise<string> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    throw new ApiError('Not authenticated', 401);
-  }
-
-  return session.access_token;
 }
 
 export async function sendMessage(
