@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
+import { formatConversationText } from '../utils/messages.js';
 import type { CoachingSessionMessage } from '@habits-coach/shared';
 
 const client = new OpenAI({ apiKey: config.openai.apiKey });
@@ -24,9 +25,7 @@ Return ONLY the summary text, nothing else.`;
 export async function generateSessionSummary(
   messages: CoachingSessionMessage[]
 ): Promise<string> {
-  const conversationText = messages
-    .map((m) => `${m.role === 'user' ? 'User' : 'Coach'}: ${m.content}`)
-    .join('\n');
+  const conversationText = formatConversationText(messages);
 
   const response = await client.chat.completions.create({
     model: config.openai.model,

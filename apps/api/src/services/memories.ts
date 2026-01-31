@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { config } from '../config.js';
 import { getTokenLimitParam } from './openai.js';
+import { formatConversationText } from '../utils/messages.js';
 import type { ExtractMemoriesRequest, ExtractMemoriesResponse, MemoryCategory } from '@habits-coach/shared';
 
 const client = new OpenAI({
@@ -50,9 +51,7 @@ export async function extractMemories(
   existingMemories: ExistingMemory[] = []
 ): Promise<ExtractMemoriesResponse> {
   // Format conversation for extraction
-  const conversationText = messages
-    .map((m) => `${m.role === 'user' ? 'User' : 'Coach'}: ${m.content}`)
-    .join('\n');
+  const conversationText = formatConversationText(messages);
 
   // Format existing memories for deduplication context
   const existingMemoriesText =
