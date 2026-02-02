@@ -3,17 +3,20 @@ import { supabase } from '../services/supabase';
 
 interface ProfileState {
   name: string | null;
+  dailyReminderEnabled: boolean;
   isLoading: boolean;
   isInitialized: boolean;
 
   // Actions
   loadProfile: () => Promise<void>;
   updateName: (name: string) => Promise<{ error: Error | null }>;
+  updateDailyReminder: (enabled: boolean) => Promise<{ error: Error | null }>;
   reset: () => void;
 }
 
 export const useProfileStore = create<ProfileState>((set) => ({
   name: null,
+  dailyReminderEnabled: true,
   isLoading: false,
   isInitialized: false,
 
@@ -28,7 +31,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
 
     const { data, error } = await supabase
       .from('user_profiles')
-      .select('name')
+      .select('name, daily_reminder_enabled')
       .eq('user_id', user.id)
       .single();
 
@@ -39,6 +42,7 @@ export const useProfileStore = create<ProfileState>((set) => ({
 
     set({
       name: data?.name ?? null,
+      dailyReminderEnabled: data?.daily_reminder_enabled ?? true,
       isLoading: false,
       isInitialized: true,
     });
@@ -70,7 +74,28 @@ export const useProfileStore = create<ProfileState>((set) => ({
     return { error: null };
   },
 
+  updateDailyReminder: async (enabled: boolean) => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      return { error: new Error('Not authenticated') };
+    }
+
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert(
+        { user_id: user.id, daily_reminder_enabled: enabled },
+        { onConflict: 'user_id' }
+      );
+
+    if (error) {
+      return { error };
+    }
+
+    set({ dailyReminderEnabled: enabled });
+    return { error: null };
+  },
+
   reset: () => {
-    set({ name: null, isLoading: false, isInitialized: false });
+    set({ name: null, dailyReminderEnabled: true, isLoading: false, isInitialized: false });
   },
 }));

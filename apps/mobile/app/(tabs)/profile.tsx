@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Modal, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
@@ -21,7 +21,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { memories, loadMemories } = useMemoriesStore();
-  const { name, updateName, isLoading: isProfileLoading } = useProfileStore();
+  const { name, dailyReminderEnabled, updateName, updateDailyReminder, isLoading: isProfileLoading } = useProfileStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -73,6 +73,13 @@ export default function ProfileScreen() {
     router.push('/memories');
   }, [router]);
 
+  const handleToggleReminder = useCallback(async (enabled: boolean) => {
+    const { error } = await updateDailyReminder(enabled);
+    if (error) {
+      Alert.alert('Error', 'Failed to update notification settings');
+    }
+  }, [updateDailyReminder]);
+
   return (
     <View style={styles.container}>
       <View style={[styles.content, { paddingBottom: TAB_BAR.height + insets.bottom + SPACING.lg }]}>
@@ -104,6 +111,18 @@ export default function ProfileScreen() {
               <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
             </View>
           </TouchableOpacity>
+
+          <View style={[styles.menuRow, { marginTop: SPACING.sm }]}>
+            <View style={styles.menuRowLeft}>
+              <Feather name="bell" size={20} color={COLORS.text} style={styles.menuIcon} />
+              <BodyMedium>Daily reminder</BodyMedium>
+            </View>
+            <Switch
+              value={dailyReminderEnabled}
+              onValueChange={handleToggleReminder}
+              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+            />
+          </View>
 
           <TouchableOpacity
             style={[styles.menuRow, { marginTop: SPACING.sm }]}
