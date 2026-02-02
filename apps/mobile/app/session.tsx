@@ -12,6 +12,7 @@ import {
   ScrollView,
   Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -383,9 +384,12 @@ export default function SessionScreen() {
     >
       {/* Header with end session button */}
       <View style={styles.sessionHeader}>
-        <Text style={styles.sessionTitle}>Session Active</Text>
-        <TouchableOpacity onPress={handleEndSession} activeOpacity={0.7}>
-          <Text style={styles.endSessionText}>End Session</Text>
+        <TouchableOpacity
+          style={styles.closeButton}
+          onPress={handleEndSession}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="close" size={32} color={COLORS.textLight} />
         </TouchableOpacity>
       </View>
 
@@ -471,25 +475,22 @@ const styles = StyleSheet.create({
   // Session header
   sessionHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     alignItems: 'center',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.background,
   },
-  sessionTitle: {
-    ...TYPOGRAPHY.label,
-    color: COLORS.success,
-  },
-  endSessionText: {
-    ...TYPOGRAPHY.label,
-    color: COLORS.error,
+  closeButton: {
+    width: TOUCH_TARGET.min,
+    height: TOUCH_TARGET.min,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   // Messages
   messageList: {
-    paddingVertical: SPACING.md,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
   },
   loadingContainer: {
     flexDirection: 'row',
