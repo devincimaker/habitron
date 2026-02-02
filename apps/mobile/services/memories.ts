@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import type { Memory, MemoryCategory, ExtractMemoriesResponse } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
+import { getAuthToken } from './authUtils';
 
 // Type for extracted memory before saving (no id yet)
 export interface ExtractedMemory {
@@ -33,18 +34,6 @@ function mapDbMemoryToMemory(dbMemory: DbMemory): Memory {
     createdAt: new Date(dbMemory.created_at).getTime(),
     updatedAt: new Date(dbMemory.updated_at).getTime(),
   };
-}
-
-async function getAuthToken(): Promise<string> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
-  }
-
-  return session.access_token;
 }
 
 // Get all memories for the current user
