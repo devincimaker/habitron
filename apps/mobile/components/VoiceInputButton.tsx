@@ -7,6 +7,7 @@ import {
   Animated,
   ActivityIndicator,
 } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../constants/theme';
 
 interface VoiceInputButtonProps {
@@ -125,7 +126,7 @@ export function VoiceInputButton({
         onPress={onMicPress}
         activeOpacity={0.7}
       >
-        <Text style={styles.micIcon}>🎤</Text>
+        <Feather name="mic" size={24} color="#333" />
       </TouchableOpacity>
     );
   }
@@ -184,9 +185,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: COLORS.surface,
     borderRadius: BORDER_RADIUS.full,
-  },
-  micIcon: {
-    fontSize: 20,
   },
   recordingContainer: {
     flex: 1,
