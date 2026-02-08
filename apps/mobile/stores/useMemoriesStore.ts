@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { Memory, MemoryCategory } from '@habits-coach/shared';
 import * as memoriesService from '../services/memories';
 import type { ExtractedMemory } from '../services/memories';
+import { handleStoreAction } from './storeUtils';
 
 interface MemoriesState {
   memories: Memory[];
@@ -28,14 +29,12 @@ export const useMemoriesStore = create<MemoriesState>((set, get) => ({
   isLoading: false,
 
   loadMemories: async () => {
-    set({ isLoading: true });
-    try {
-      const memories = await memoriesService.getMemories();
-      set({ memories, isLoading: false });
-    } catch (error) {
-      console.error('Failed to load memories:', error);
-      set({ isLoading: false });
-    }
+    await handleStoreAction({
+      action: async () => await memoriesService.getMemories(),
+      onSuccess: (memories) => set({ memories }),
+      context: 'load memories',
+      setState: (state) => set(state),
+    });
   },
 
   extractMemories: async (messages) => {
@@ -60,29 +59,35 @@ export const useMemoriesStore = create<MemoriesState>((set, get) => ({
   },
 
   updateMemory: async (id, updates) => {
-    try {
-      await memoriesService.updateMemory(id, updates);
-      set((state) => ({
-        memories: state.memories.map((m) =>
-          m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m
-        ),
-      }));
-    } catch (error) {
-      console.error('Failed to update memory:', error);
-      throw error;
-    }
+    await handleStoreAction({
+      action: async () => await memoriesService.updateMemory(id, updates),
+      onSuccess: () => {
+        set((state) => ({
+          memories: state.memories.map((m) =>
+            m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m
+          ),
+        }));
+      },
+      context: 'update memory',
+      setLoading: false,
+      rethrow: true,
+      setState: () => {},
+    });
   },
 
   deleteMemory: async (id) => {
-    try {
-      await memoriesService.deleteMemory(id);
-      set((state) => ({
-        memories: state.memories.filter((m) => m.id !== id),
-      }));
-    } catch (error) {
-      console.error('Failed to delete memory:', error);
-      throw error;
-    }
+    await handleStoreAction({
+      action: async () => await memoriesService.deleteMemory(id),
+      onSuccess: () => {
+        set((state) => ({
+          memories: state.memories.filter((m) => m.id !== id),
+        }));
+      },
+      context: 'delete memory',
+      setLoading: false,
+      rethrow: true,
+      setState: () => {},
+    });
   },
 
   clearMemories: () => {

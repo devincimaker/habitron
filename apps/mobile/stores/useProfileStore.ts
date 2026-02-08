@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '../services/supabase';
+import { handleStoreAction } from './storeUtils';
 
 interface ProfileState {
   name: string | null;
@@ -21,30 +22,35 @@ export const useProfileStore = create<ProfileState>((set) => ({
   isInitialized: false,
 
   loadProfile: async () => {
-    set({ isLoading: true });
+    await handleStoreAction({
+      action: async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return { user: null, profile: null };
+        }
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ isLoading: false, isInitialized: true });
-      return;
-    }
+        const { data, error } = await supabase
+          .from('user_profiles')
+          .select('name, daily_reminder_enabled')
+          .eq('user_id', user.id)
+          .single();
 
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('name, daily_reminder_enabled')
-      .eq('user_id', user.id)
-      .single();
+        // PGRST116 = "no rows returned" which is fine for new users
+        if (error && error.code !== 'PGRST116') {
+          console.error('Error loading profile:', error);
+        }
 
-    // PGRST116 = "no rows returned" which is fine for new users
-    if (error && error.code !== 'PGRST116') {
-      console.error('Error loading profile:', error);
-    }
-
-    set({
-      name: data?.name ?? null,
-      dailyReminderEnabled: data?.daily_reminder_enabled ?? true,
-      isLoading: false,
-      isInitialized: true,
+        return { user, profile: data };
+      },
+      onSuccess: ({ user, profile }) => {
+        set({
+          name: profile?.name ?? null,
+          dailyReminderEnabled: profile?.daily_reminder_enabled ?? true,
+          isInitialized: true,
+        });
+      },
+      context: 'load profile',
+      setState: (state) => set(state),
     });
   },
 

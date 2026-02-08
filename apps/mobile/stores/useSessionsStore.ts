@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { CoachingSessionSummary, CoachingSessionDetail } from '@habits-coach/shared';
 import * as sessionsService from '../services/sessions';
+import { handleStoreAction } from './storeUtils';
 
 interface SessionsState {
   sessions: CoachingSessionSummary[];
@@ -23,38 +24,38 @@ export const useSessionsStore = create<SessionsState>((set) => ({
   isLoadingDetail: false,
 
   loadSessions: async () => {
-    set({ isLoading: true });
-    try {
-      const sessions = await sessionsService.getSessions();
-      set({ sessions, isLoading: false });
-    } catch (error) {
-      console.error('Failed to load sessions:', error);
-      set({ isLoading: false });
-    }
+    await handleStoreAction({
+      action: async () => await sessionsService.getSessions(),
+      onSuccess: (sessions) => set({ sessions }),
+      context: 'load sessions',
+      setState: (state) => set(state),
+    });
   },
 
   loadSessionDetail: async (id: string) => {
-    set({ isLoadingDetail: true });
-    try {
-      const session = await sessionsService.getSession(id);
-      set({ selectedSession: session, isLoadingDetail: false });
-    } catch (error) {
-      console.error('Failed to load session detail:', error);
-      set({ isLoadingDetail: false });
-    }
+    await handleStoreAction({
+      action: async () => await sessionsService.getSession(id),
+      onSuccess: (session) => set({ selectedSession: session }),
+      context: 'load session detail',
+      loadingKey: 'isLoadingDetail',
+      setState: (state) => set(state),
+    });
   },
 
   deleteSession: async (id: string) => {
-    try {
-      await sessionsService.deleteSession(id);
-      set((state) => ({
-        sessions: state.sessions.filter((s) => s.id !== id),
-        selectedSession: state.selectedSession?.id === id ? null : state.selectedSession,
-      }));
-    } catch (error) {
-      console.error('Failed to delete session:', error);
-      throw error;
-    }
+    await handleStoreAction({
+      action: async () => await sessionsService.deleteSession(id),
+      onSuccess: () => {
+        set((state) => ({
+          sessions: state.sessions.filter((s) => s.id !== id),
+          selectedSession: state.selectedSession?.id === id ? null : state.selectedSession,
+        }));
+      },
+      context: 'delete session',
+      setLoading: false,
+      rethrow: true,
+      setState: () => {},
+    });
   },
 
   clearSelectedSession: () => {

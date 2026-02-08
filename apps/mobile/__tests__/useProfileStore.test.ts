@@ -69,7 +69,7 @@ describe('useProfileStore', () => {
       await useProfileStore.getState().loadProfile();
 
       expect(mockGetUser).toHaveBeenCalled();
-      expect(mockSelect).toHaveBeenCalledWith('name');
+      expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled');
       expect(mockEq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(useProfileStore.getState().name).toBe('John');
       expect(useProfileStore.getState().isInitialized).toBe(true);
