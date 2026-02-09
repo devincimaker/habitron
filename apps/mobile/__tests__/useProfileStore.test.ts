@@ -45,6 +45,7 @@ describe('useProfileStore', () => {
     // Reset store state before each test
     useProfileStore.setState({
       name: null,
+      dailyReminderEnabled: true,
       isLoading: false,
       isInitialized: false,
     });
@@ -62,16 +63,17 @@ describe('useProfileStore', () => {
         data: { user: { id: mockUserId } },
       });
       mockSingle.mockResolvedValue({
-        data: { name: 'John' },
+        data: { name: 'John', daily_reminder_enabled: true },
         error: null,
       });
 
       await useProfileStore.getState().loadProfile();
 
       expect(mockGetUser).toHaveBeenCalled();
-      expect(mockSelect).toHaveBeenCalledWith('name');
+      expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled');
       expect(mockEq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(useProfileStore.getState().name).toBe('John');
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(true);
       expect(useProfileStore.getState().isInitialized).toBe(true);
       expect(useProfileStore.getState().isLoading).toBe(false);
     });
@@ -150,13 +152,14 @@ describe('useProfileStore', () => {
         data: { user: { id: mockUserId } },
       });
       mockSingle.mockResolvedValue({
-        data: { name: null },
+        data: { name: null, daily_reminder_enabled: false },
         error: null,
       });
 
       await useProfileStore.getState().loadProfile();
 
       expect(useProfileStore.getState().name).toBeNull();
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
       expect(useProfileStore.getState().isInitialized).toBe(true);
     });
   });
@@ -243,6 +246,7 @@ describe('useProfileStore', () => {
       // Set some state first
       useProfileStore.setState({
         name: 'Test User',
+        dailyReminderEnabled: false,
         isLoading: true,
         isInitialized: true,
       });
@@ -250,6 +254,7 @@ describe('useProfileStore', () => {
       useProfileStore.getState().reset();
 
       expect(useProfileStore.getState().name).toBeNull();
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(true);
       expect(useProfileStore.getState().isLoading).toBe(false);
       expect(useProfileStore.getState().isInitialized).toBe(false);
     });
