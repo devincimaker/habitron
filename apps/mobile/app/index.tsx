@@ -25,7 +25,7 @@ export default function SplashScreen() {
     if (!profileInitialized) return;
 
     // Navigate based on profile state
-    const destination = name ? '/(tabs)/habits' : '/(onboarding)/name';
+    const destination = name ? '/(tabs)/today' : '/(onboarding)/name';
     const timer = setTimeout(() => router.replace(destination), 1500);
     return () => clearTimeout(timer);
   }, [authInitialized, session, profileInitialized, name, router]);

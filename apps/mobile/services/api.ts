@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { ChatRequest, ChatResponse, Habit, Memory } from '@habits-coach/shared';
+import type { ChatRequest, ChatResponse } from '@habits-coach/shared';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -25,28 +25,8 @@ async function getAuthToken(): Promise<string> {
   return session.access_token;
 }
 
-export async function sendMessage(
-  messages: ChatRequest['messages'],
-  habits: Habit[],
-  memories?: Memory[],
-  userName?: string
-): Promise<ChatResponse> {
+export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
   const token = await getAuthToken();
-
-  // Map habits to the request format
-  const habitData: ChatRequest['habits'] = habits.map((h) => ({
-    id: h.id,
-    name: h.name,
-    frequency: h.frequency,
-    timeOfDay: h.timeOfDay,
-    reason: h.reason,
-  }));
-
-  // Map memories to the request format
-  const memoriesData: ChatRequest['memories'] = memories?.map((m) => ({
-    content: m.content,
-    category: m.category,
-  }));
 
   const response = await fetch(`${API_URL}/api/chat`, {
     method: 'POST',
@@ -54,12 +34,7 @@ export async function sendMessage(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      messages,
-      habits: habitData,
-      memories: memoriesData,
-      userName,
-    } satisfies ChatRequest),
+    body: JSON.stringify(request),
   });
 
   if (!response.ok) {

@@ -1,214 +1,181 @@
-import { useCallback, useState, useRef, useEffect, useMemo } from "react";
-import { View, StyleSheet, FlatList, RefreshControl } from "react-native";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, {
-  runOnJS,
-  useSharedValue,
-  useAnimatedStyle,
-  withTiming,
-  withSequence,
-  Easing,
-} from "react-native-reanimated";
-import { useHabitsStore } from "../../stores/useHabitsStore";
-import { HabitItem } from "../../components/HabitItem";
-import { IconPicker } from "../../components/IconPicker";
-import { HabitDetailsModal } from "../../components/HabitDetailsModal";
-import { EmptyState } from "../../components/EmptyState";
-import { MiniCalendar } from "../../components/MiniCalendar";
-import { HabitStatus, HabitWithStatus } from "@habits-coach/shared";
-import { COLORS, SPACING } from "../../constants/theme";
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
-  canGoToPreviousDay,
-  canGoToNextDay,
-  getPreviousDay,
-  getNextDay,
-} from "../../utils/dateUtils";
-
-const SWIPE_THRESHOLD = 25;
-const SLIDE_DISTANCE = 20;
-const ANIMATION_DURATION = 200;
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import type {
+  Goal,
+  Habit,
+  HabitDraft,
+  HabitStatus,
+} from '@habits-coach/shared';
+import { IconPicker } from '../../components/IconPicker';
+import { HabitEditorModal } from '../../components/HabitEditorModal';
+import { HabitItem } from '../../components/HabitItem';
+import { MiniCalendar } from '../../components/MiniCalendar';
+import { SectionHeader } from '../../components/SectionHeader';
+import { BodyMedium, Card, Caption, Label } from '../../components/ui';
+import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
+import { useGoalsStore } from '../../stores/useGoalsStore';
+import { useHabitsStore } from '../../stores/useHabitsStore';
+import { BORDER_RADIUS, COLORS, SPACING } from '../../constants/theme';
 
 export default function HabitsScreen() {
   const {
     habits,
     isLoading,
     loadHabits,
-    setHabitStatus,
+    addHabit,
     updateHabit,
+    setHabitStatus,
     getHabitsWithStatus,
     selectedDate,
     setSelectedDate,
   } = useHabitsStore();
+  const { goals, loadGoals } = useGoalsStore();
+  const { plansByDate, loadPlan, updateOutcomeForHabit } = useDailyPlansStore();
 
-  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
-  const [detailsHabitId, setDetailsHabitId] = useState<string | null>(null);
-  const previousDateRef = useRef(selectedDate);
-
-  // Animation values for list transition
-  const translateX = useSharedValue(0);
-  const opacity = useSharedValue(1);
-
-  // Animate when date changes
-  useEffect(() => {
-    if (previousDateRef.current !== selectedDate) {
-      const goingForward = selectedDate > previousDateRef.current;
-      const direction = goingForward ? -1 : 1;
-
-      // Quick slide out and fade, then slide in from opposite side
-      translateX.value = withSequence(
-        withTiming(direction * SLIDE_DISTANCE, {
-          duration: ANIMATION_DURATION / 2,
-          easing: Easing.out(Easing.ease),
-        }),
-        withTiming(-direction * SLIDE_DISTANCE, { duration: 0 }),
-        withTiming(0, {
-          duration: ANIMATION_DURATION / 2,
-          easing: Easing.out(Easing.ease),
-        })
-      );
-
-      opacity.value = withSequence(
-        withTiming(0.3, { duration: ANIMATION_DURATION / 2 }),
-        withTiming(1, { duration: ANIMATION_DURATION / 2 })
-      );
-
-      previousDateRef.current = selectedDate;
-    }
-  }, [selectedDate, translateX, opacity]);
-
-  const listAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-    opacity: opacity.value,
-  }));
+  const [iconPickerHabitId, setIconPickerHabitId] = useState<string | null>(null);
+  const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+  const [showHabitEditor, setShowHabitEditor] = useState(false);
 
   const habitsWithStatus = getHabitsWithStatus();
-  const selectedHabit = selectedHabitId
-    ? habitsWithStatus.find((h) => h.id === selectedHabitId)
-    : null;
-  const detailsHabit = detailsHabitId
-    ? habits.find((h) => h.id === detailsHabitId) || null
-    : null;
+  const selectedPlan = plansByDate[selectedDate] ?? null;
+  const completedCount = useMemo(
+    () => habitsWithStatus.filter((habit) => habit.todayStatus === 'completed').length,
+    [habitsWithStatus]
+  );
+
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadHabits(), loadGoals(), loadPlan(selectedDate)]);
+  }, [loadGoals, loadHabits, loadPlan, selectedDate]);
+
+  useEffect(() => {
+    refreshAll();
+  }, [refreshAll]);
+
+  useEffect(() => {
+    void loadPlan(selectedDate);
+  }, [selectedDate, loadPlan]);
 
   const handleStatusChange = useCallback(
     async (habitId: string, status: HabitStatus) => {
       await setHabitStatus(habitId, status);
-    },
-    [setHabitStatus]
-  );
 
-  const handleLongPress = useCallback((habitId: string) => {
-    setSelectedHabitId(habitId);
-  }, []);
+      if (selectedPlan) {
+        await updateOutcomeForHabit(
+          selectedDate,
+          habitId,
+          status === 'completed' ? 'completed_as_planned' : 'not_done'
+        );
+      }
+    },
+    [selectedDate, selectedPlan, setHabitStatus, updateOutcomeForHabit]
+  );
 
   const handleSelectIcon = useCallback(
     async (icon: string) => {
-      if (selectedHabitId) {
-        await updateHabit(selectedHabitId, { icon });
-        setSelectedHabitId(null);
+      if (!iconPickerHabitId) return;
+      await updateHabit(iconPickerHabitId, { icon });
+      setIconPickerHabitId(null);
+    },
+    [iconPickerHabitId, updateHabit]
+  );
+
+  const handleSaveHabit = useCallback(
+    async (draft: HabitDraft) => {
+      if (editingHabit) {
+        await updateHabit(editingHabit.id, draft);
+      } else {
+        await addHabit(draft);
       }
     },
-    [selectedHabitId, updateHabit]
+    [addHabit, editingHabit, updateHabit]
   );
 
-  const handleCloseIconPicker = useCallback(() => {
-    setSelectedHabitId(null);
+  const openHabitEditor = useCallback((habit?: Habit | null) => {
+    setEditingHabit(habit ?? null);
+    setShowHabitEditor(true);
   }, []);
 
-  const handleHabitPress = useCallback((habitId: string) => {
-    setDetailsHabitId(habitId);
-  }, []);
-
-  const handleCloseDetails = useCallback(() => {
-    setDetailsHabitId(null);
-  }, []);
-
-  const handleRefresh = useCallback(async () => {
-    await loadHabits();
-  }, [loadHabits]);
-
-  const navigateToPreviousDay = useCallback(() => {
-    if (canGoToPreviousDay(selectedDate)) {
-      setSelectedDate(getPreviousDay(selectedDate));
-    }
-  }, [selectedDate, setSelectedDate]);
-
-  const navigateToNextDay = useCallback(() => {
-    if (canGoToNextDay(selectedDate)) {
-      setSelectedDate(getNextDay(selectedDate));
-    }
-  }, [selectedDate, setSelectedDate]);
-
-  const daySwipeGesture = useMemo(
-    () =>
-      Gesture.Pan()
-        .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
-        .onEnd((event) => {
-          if (event.translationX > SWIPE_THRESHOLD) {
-            runOnJS(navigateToPreviousDay)();
-          } else if (event.translationX < -SWIPE_THRESHOLD) {
-            runOnJS(navigateToNextDay)();
-          }
-        }),
-    [navigateToPreviousDay, navigateToNextDay]
-  );
-
-  const renderItem = useCallback(
-    ({ item }: { item: HabitWithStatus }) => (
-      <HabitItem
-        habit={item}
-        onStatusChange={handleStatusChange}
-        onLongPress={handleLongPress}
-        onPress={handleHabitPress}
-      />
-    ),
-    [handleStatusChange, handleLongPress, handleHabitPress]
-  );
-
-  const keyExtractor = useCallback((item: HabitWithStatus) => item.id, []);
-
-  if (!isLoading && habits.length === 0) {
-    return <EmptyState />;
-  }
+  const selectedHabit = iconPickerHabitId
+    ? habitsWithStatus.find((habit) => habit.id === iconPickerHabitId)
+    : null;
 
   return (
-    <GestureDetector gesture={daySwipeGesture}>
-      <View style={styles.container}>
-        <MiniCalendar
-          selectedDate={selectedDate}
-          onSelectDate={setSelectedDate}
-        />
-
-        <Animated.View style={[styles.listContainer, listAnimatedStyle]}>
-          <FlatList
-            data={habitsWithStatus}
-            renderItem={renderItem}
-            keyExtractor={keyExtractor}
-            contentContainerStyle={styles.list}
-            refreshControl={
-              <RefreshControl
-                refreshing={isLoading}
-                onRefresh={handleRefresh}
-                tintColor={COLORS.primary}
-              />
-            }
-            ListFooterComponent={<View style={styles.footer} />}
+    <View style={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.content}
+        refreshControl={
+          <RefreshControl
+            refreshing={isLoading}
+            onRefresh={refreshAll}
+            tintColor={COLORS.primary}
           />
-        </Animated.View>
+        }
+      >
+        <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
-        <IconPicker
-          visible={selectedHabitId !== null}
-          selectedIcon={selectedHabit?.icon}
-          onSelectIcon={handleSelectIcon}
-          onClose={handleCloseIconPicker}
+        <Card style={styles.summaryCard}>
+          <Label>{completedCount}/{habitsWithStatus.length}</Label>
+          <Caption>
+            Habits completed for {selectedDate}. Long-press an icon to change it, or tap a habit to edit details.
+          </Caption>
+        </Card>
+
+        <SectionHeader
+          title="Habits"
+          subtitle="Recurring commitments that still shape the plan"
+          actionLabel="Add"
+          onPressAction={() => openHabitEditor()}
         />
 
-        <HabitDetailsModal
-          visible={detailsHabitId !== null}
-          habit={detailsHabit}
-          onClose={handleCloseDetails}
-        />
-      </View>
-    </GestureDetector>
+        {habits.length > 0 ? (
+          <View style={styles.habitList}>
+            {habitsWithStatus.map((habit) => (
+              <HabitItem
+                key={habit.id}
+                habit={habit}
+                onStatusChange={handleStatusChange}
+                onLongPress={setIconPickerHabitId}
+                onPress={(habitId) => {
+                  const selected = habits.find((candidate) => candidate.id === habitId);
+                  if (selected) {
+                    openHabitEditor(selected);
+                  }
+                }}
+              />
+            ))}
+          </View>
+        ) : (
+          <Card variant="surface">
+            <BodyMedium>
+              You do not have any habits yet. Add one here or let Habitron suggest one in a session.
+            </BodyMedium>
+          </Card>
+        )}
+      </ScrollView>
+
+      <IconPicker
+        visible={iconPickerHabitId !== null}
+        selectedIcon={selectedHabit?.icon}
+        onSelectIcon={handleSelectIcon}
+        onClose={() => setIconPickerHabitId(null)}
+      />
+
+      <HabitEditorModal
+        visible={showHabitEditor}
+        habit={editingHabit}
+        goals={goals as Goal[]}
+        onClose={() => {
+          setShowHabitEditor(false);
+          setEditingHabit(null);
+        }}
+        onSave={handleSaveHabit}
+      />
+    </View>
   );
 }
 
@@ -217,13 +184,15 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  listContainer: {
-    flex: 1,
+  content: {
+    paddingBottom: SPACING.xxl,
   },
-  list: {
-    paddingTop: SPACING.sm,
+  summaryCard: {
+    marginHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    borderRadius: BORDER_RADIUS.md,
   },
-  footer: {
-    height: SPACING.xxl,
+  habitList: {
+    paddingHorizontal: SPACING.md,
   },
 });

@@ -8,6 +8,10 @@ import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { COLORS } from '../../constants/theme';
 
+export const unstable_settings = {
+  initialRouteName: 'today',
+};
+
 export default function TabLayout() {
   const router = useRouter();
   const { isActive, startSession } = useSessionStore();
@@ -33,24 +37,52 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
+        name="today"
+        options={{
+          title: 'Today',
+          headerTitle: 'Today',
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{
+          title: 'Tasks',
+          headerTitle: 'Tasks',
+        }}
+      />
+      <Tabs.Screen
         name="habits"
         options={{
           title: 'Habits',
-          headerTitle: 'My Habits',
+          headerTitle: 'Habits',
+        }}
+      />
+      <Tabs.Screen
+        name="journal"
+        options={{
+          title: 'Journal',
+          headerTitle: 'Journal',
+        }}
+      />
+      {/* Hide old screens that are no longer tabs */}
+      <Tabs.Screen
+        name="diary"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="coach"
+        options={{
+          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen
         name="sessions"
         options={{
-          title: 'Sessions',
-          headerTitle: 'Sessions',
-        }}
-      />
-      {/* Hide old screens that are no longer tabs */}
-      <Tabs.Screen
-        name="coach"
-        options={{
-          href: null, // Hide from tab bar
+          title: 'Coach History',
+          headerTitle: 'Coach History',
+          href: null,
         }}
       />
       <Tabs.Screen

@@ -24,7 +24,7 @@ export default function LoginScreen() {
     if (error) {
       setError(error.message);
     } else {
-      router.replace('/(tabs)/habits');
+      router.replace('/(tabs)/today');
     }
   };
 

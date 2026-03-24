@@ -10,7 +10,9 @@ interface DbHabit {
   time_of_day: 'morning' | 'afternoon' | 'evening' | 'anytime' | null;
   reason: string | null;
   icon: string | null;
+  goal_id: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 interface DbHabitLog {
@@ -30,7 +32,9 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
     timeOfDay: dbHabit.time_of_day ?? undefined,
     reason: dbHabit.reason ?? undefined,
     icon: dbHabit.icon ?? undefined,
+    goalId: dbHabit.goal_id ?? undefined,
     createdAt: new Date(dbHabit.created_at).getTime(),
+    updatedAt: new Date(dbHabit.updated_at).getTime(),
   };
 }
 
@@ -50,7 +54,7 @@ export async function getHabits(): Promise<Habit[]> {
 }
 
 export async function addHabit(
-  habit: Omit<Habit, 'id' | 'createdAt'>
+  habit: Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<Habit> {
   const {
     data: { user },
@@ -69,6 +73,7 @@ export async function addHabit(
       time_of_day: habit.timeOfDay ?? null,
       reason: habit.reason ?? null,
       icon: habit.icon ?? null,
+      goal_id: habit.goalId ?? null,
     })
     .select()
     .single();
@@ -92,7 +97,7 @@ export async function removeHabit(habitId: string): Promise<void> {
 
 export async function updateHabit(
   habitId: string,
-  updates: Partial<Omit<Habit, 'id' | 'createdAt'>>
+  updates: Partial<Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>>
 ): Promise<void> {
   const updateData: Partial<DbHabit> = {};
 
@@ -102,6 +107,7 @@ export async function updateHabit(
     updateData.time_of_day = updates.timeOfDay;
   if (updates.reason !== undefined) updateData.reason = updates.reason;
   if (updates.icon !== undefined) updateData.icon = updates.icon;
+  if (updates.goalId !== undefined) updateData.goal_id = updates.goalId ?? null;
 
   const { error } = await supabase
     .from('habits')

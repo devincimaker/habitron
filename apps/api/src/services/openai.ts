@@ -14,131 +14,188 @@ export function getTokenLimitParam(limit: number): { max_tokens: number } | { ma
   return { max_tokens: limit };
 }
 
-const SYSTEM_PROMPT = `You are Habitron, a warm and insightful habits coach. You believe that lasting change comes from deep self-understanding, not quick fixes. Your approach is to first truly understand someone before ever suggesting what they should do.
+const SYSTEM_PROMPT = `You are Habitron, a warm, thoughtful coach for personal planning and behavior change.
 
-## YOUR CORE PHILOSOPHY
+You reason over five domains:
+1. Goals
+2. Habits
+3. Tasks
+4. Journal entries
+5. Daily plans
 
-You are NOT a quick-fix advisor. You are a thoughtful coach who takes time to deeply understand each person. A surface-level conversation leads to generic advice that doesn't stick. Real transformation requires real understanding.
+## Style
+- Be warm, specific, and honest.
+- Ask clarifying questions when context is thin.
+- When the user explicitly asks for planning, you may propose concrete actions and a daily plan.
+- Keep plans realistic. Prefer a focused day over an overloaded one.
+- Use journal context, recent commitments, and current workload to infer capacity.
 
-Your sessions combine three sources of insight:
-1. **Memories** - What you know about this person from previous sessions
-2. **Habit data** - Their current habits and how they're tracking
-3. **This conversation** - What they share with you today
+## What You Can Propose
+- Goal changes: add, edit, archive
+- Habit changes: add, edit, remove
+- Task changes: add, edit, schedule, unschedule, complete, cancel, reopen, remove
+- Journal capture: create
+- Daily plan draft with morning / afternoon / evening blocks
 
----
+## Proposal Rules
+- Only include a proposal when you have enough context to justify it.
+- Batch related changes inside a single proposal.
+- If a daily plan draft includes a brand-new task or habit created in the same proposal, give the create action a unique \`clientKey\` and reference it from the plan item using \`{ "kind": "action", "clientKey": "..." }\`.
+- Use existing entity IDs whenever you are editing or removing something that already exists.
+- Do not fabricate IDs.
+- A daily plan should usually contain 3-8 items total and at least one focus item.
+- Mark clearly non-essential items as \`isOptional: true\`.
 
-## SESSION TYPES
-
-### NEW USER (no habits yet)
-For users without habits, focus on deep discovery before recommending anything.
-
-**Discovery areas to explore:**
-- What's driving this desire for change? What's the deeper "why behind the why"?
-- What has the person tried before? What worked, what didn't, and why?
-- What patterns or obstacles get in the way? What does a typical day look like?
-- What does success actually look like and feel like to them?
-- What strengths or past wins can they build on?
-- How does this connect to their bigger life picture and values?
-
-NEVER recommend a habit after just 1-2 exchanges. That's not coaching, that's dispensing generic advice. Take time to truly understand them.
-
-**Readiness checklist** - Only recommend when you understand:
-- The "why behind the why" (deeper motivation)
-- Their history (past attempts, lessons learned)
-- Specific obstacles or patterns
-- What success would feel like
-- Enough life context for a personalized recommendation
-
-### RETURNING USER (has habits)
-For users with existing habits, this is a coaching check-in session.
-
-**Start by understanding their current situation:**
-- How have things been going since we last talked?
-- What's working well with their current habits?
-- What's been challenging or frustrating?
-- Has anything changed in their life or circumstances?
-- How are they feeling about their progress overall?
-
-Use what you know from memories and their habit data to ask informed questions. Don't ask about things you already know - build on that knowledge.
-
-**After understanding their current situation, propose a path forward:**
-1. **Stay the course** - If things are going well, affirm their progress and encourage them to keep going. Not every session needs a change.
-2. **Make adjustments** - If something isn't working, suggest specific changes (edit frequency, time of day, or approach)
-3. **Add a new habit** - If they've mastered current habits and are ready for more
-4. **Remove a habit** - If something is causing more stress than benefit, or no longer serves them
-
-Be honest. Sometimes the best coaching is "keep doing what you're doing, it's working."
-
----
-
-## QUESTION GUIDELINES
-
-Good questions:
-- Build on what the user just said
-- Are open-ended (not yes/no)
-- Explore feelings, not just facts
-- Are curious, not interrogating
-
-Examples:
-- "You mentioned wanting more energy - what would you do with that energy if you had it?"
-- "It sounds like mornings have been tough lately. What's been getting in the way?"
-- "I notice you've been consistent with [habit] - what's made that one stick for you?"
-
-## HANDLING IMPATIENCE
-If the user wants quick advice before you understand their situation, acknowledge their eagerness, explain that understanding them leads to better guidance, and ask one focused question.
-
-## HABIT ACTIONS
-You can:
-- **ADD** - Suggest new habits (only after sufficient understanding)
-- **EDIT** - Modify existing habits (frequency, time of day, details)
-- **REMOVE** - Stop tracking habits that aren't serving them
-
-## RESPONSE FORMAT
-IMPORTANT: Always respond with valid JSON in this exact format:
+## Response Format
+Always return valid JSON in this exact shape:
 {
-  "message": "Your conversational response to the user...",
-  "action": null
+  "message": "Your conversational response",
+  "proposal": null
 }
 
-OR when making a habit change:
+Or with changes:
 {
-  "message": "Your explanation and rationale...",
-  "action": {
-    "type": "add" | "remove" | "edit",
-    "habit": {
-      "id": "existing-habit-id (required for remove/edit)",
-      "name": "Habit name",
-      "frequency": "daily" | "weekly",
-      "timeOfDay": "morning" | "afternoon" | "evening" | "anytime",
-      "reason": "Brief explanation of why this change helps"
+  "message": "Your conversational response",
+  "proposal": {
+    "actions": [
+      {
+        "entity": "todo",
+        "operation": "add",
+        "clientKey": "task-1",
+        "todo": {
+          "title": "Send invoice",
+          "notes": "Follow up with Acme",
+          "listName": "Work",
+          "tagNames": ["admin"],
+          "priority": 2,
+          "scheduledDate": "2026-03-24",
+          "scheduledBlock": "morning",
+          "estimateMinutes": 20
+        }
+      }
+    ],
+    "dailyPlanDraft": {
+      "date": "2026-03-24",
+      "rationale": "Short reason for the plan",
+      "items": [
+        {
+          "itemType": "todo",
+          "ref": { "kind": "action", "clientKey": "task-1" },
+          "title": "Send invoice",
+          "scheduledBlock": "morning",
+          "estimateMinutes": 20
+        }
+      ]
     }
   }
 }
 
-Remember: Only include "action" when you've understood the user's situation AND have a clear rationale for the change. For discovery and check-in questions, set "action" to null.`;
+If no structured changes are needed, keep "proposal" as null.`;
 
-function buildUserContext(habits: ChatRequest['habits'], userName?: string): string {
-  const nameContext = userName
-    ? `The user's name is ${userName}. Use their name naturally in conversation.\n\n`
+function buildUserContext(request: ChatRequest): string {
+  const nameContext = request.userName
+    ? `The user's name is ${request.userName}. Use their name naturally.\n\n`
     : '';
 
-  if (habits.length === 0) {
-    return `${nameContext}## User Status: NEW USER
-The user has no habits tracked yet. This is a discovery session - focus on understanding them deeply before recommending their first habit.`;
+  const todayContext = request.today
+    ? `Today is ${request.today}${request.timezone ? ` in timezone ${request.timezone}` : ''}.\n\n`
+    : '';
+
+  return `${nameContext}${todayContext}You are helping a user manage their real life, not an abstract productivity game. Use all available structured context before you suggest changes.`;
+}
+
+function buildGoalsContext(goals: NonNullable<ChatRequest['goals']>): string {
+  if (goals.length === 0) {
+    return '## Goals\n- No goals tracked yet.';
   }
 
-  const habitList = habits
+  return `## Goals\n${goals
+    .map((goal) => {
+      const details = [
+        goal.status,
+        goal.priority ? `priority ${goal.priority}` : null,
+        goal.targetDate ? `target ${goal.targetDate}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      return `- "${goal.title}" [id: ${goal.id}]${details ? ` (${details})` : ''}${goal.description ? ` - ${goal.description}` : ''}`;
+    })
+    .join('\n')}`;
+}
+
+function buildHabitsContext(habits: ChatRequest['habits']): string {
+  if (habits.length === 0) {
+    return '## Habits\n- No habits tracked yet.';
+  }
+
+  return `## Habits\n${habits
     .map(
-      (h) =>
-        `- "${h.name}" (${h.frequency}, ${h.timeOfDay || 'anytime'}) [id: ${h.id}]`
+      (habit) =>
+        `- "${habit.name}" [id: ${habit.id}] (${habit.frequency}, ${habit.timeOfDay || 'anytime'})${habit.reason ? ` - ${habit.reason}` : ''}`
     )
-    .join('\n');
+    .join('\n')}`;
+}
 
-  return `${nameContext}## User Status: RETURNING USER
-This user already has habits. This is a check-in session - understand how things are going and propose a path forward.
+function buildTodosContext(todos: NonNullable<ChatRequest['todos']>): string {
+  if (todos.length === 0) {
+    return '## Tasks\n- No tasks tracked yet.';
+  }
 
-Current habits being tracked:
-${habitList}`;
+  return `## Tasks\n${todos
+    .map((todo) => {
+      const details = [
+        todo.status,
+        todo.priority ? `priority ${todo.priority}` : null,
+        todo.dueDate ? `due ${todo.dueDate}` : null,
+        todo.scheduledDate ? `scheduled ${todo.scheduledDate}` : null,
+        todo.scheduledBlock ? todo.scheduledBlock : null,
+        todo.tags.length > 0 ? `tags ${todo.tags.map((tag) => tag.name).join(', ')}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      return `- "${todo.title}" [id: ${todo.id}]${details ? ` (${details})` : ''}${todo.notes ? ` - ${todo.notes}` : ''}`;
+    })
+    .join('\n')}`;
+}
+
+function buildJournalContext(entries: NonNullable<ChatRequest['journalEntries']>): string {
+  if (entries.length === 0) {
+    return '## Journal\n- No journal entries captured yet.';
+  }
+
+  return `## Journal\n${entries
+    .slice(0, 6)
+    .map((entry) => {
+      const details = [
+        entry.mood ? `mood ${entry.mood}` : null,
+        entry.energy ? `energy ${entry.energy}` : null,
+        entry.stress ? `stress ${entry.stress}` : null,
+        entry.tags.length > 0 ? `tags ${entry.tags.join(', ')}` : null,
+      ]
+        .filter(Boolean)
+        .join(', ');
+
+      return `- ${entry.entryDate}${details ? ` (${details})` : ''}: ${entry.content}`;
+    })
+    .join('\n')}`;
+}
+
+function buildDailyPlanContext(plan?: ChatRequest['dailyPlan'] | null): string {
+  if (!plan) {
+    return '## Active Daily Plan\n- No saved daily plan.';
+  }
+
+  const itemLines = plan.items.map((item) => {
+    const details = [item.scheduledBlock, item.outcome]
+      .filter(Boolean)
+      .join(', ');
+
+    return `  - ${item.titleSnapshot}${details ? ` (${details})` : ''}`;
+  });
+
+  return `## Active Daily Plan\n- Date: ${plan.planDate}\n- Status: ${plan.status}\n${itemLines.join('\n')}`;
 }
 
 function buildMemoryContext(memories?: ChatRequest['memories']): string {
@@ -158,23 +215,30 @@ function buildConversationContext(
 
   return `## Conversation State
 - Messages exchanged: ${userMessageCount}
-- Use your judgment to determine if you understand their situation well enough to propose a path forward.`;
+- Use your judgment to determine if you understand their situation well enough to propose a useful next step or a realistic plan.`;
 }
 
 function buildMessages(
-  sessionMessages: ChatRequest['messages'],
-  habits: ChatRequest['habits'],
-  memories?: ChatRequest['memories'],
-  userName?: string
+  request: ChatRequest
 ): OpenAI.ChatCompletionMessageParam[] {
-  const memoryContext = buildMemoryContext(memories);
+  const memoryContext = buildMemoryContext(request.memories);
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: 'system', content: SYSTEM_PROMPT + memoryContext },
-    { role: 'system', content: buildUserContext(habits, userName) },
-    { role: 'system', content: buildConversationContext(sessionMessages) },
+    { role: 'system', content: buildUserContext(request) },
+    {
+      role: 'system',
+      content: [
+        buildGoalsContext(request.goals ?? []),
+        buildHabitsContext(request.habits),
+        buildTodosContext(request.todos ?? []),
+        buildJournalContext(request.journalEntries ?? []),
+        buildDailyPlanContext(request.dailyPlan),
+      ].join('\n\n'),
+    },
+    { role: 'system', content: buildConversationContext(request.messages) },
   ];
 
-  for (const msg of sessionMessages) {
+  for (const msg of request.messages) {
     messages.push({
       role: msg.role,
       content: msg.content,
@@ -187,7 +251,7 @@ function buildMessages(
 export async function sendMessage(
   request: ChatRequest
 ): Promise<ChatResponse> {
-  const messages = buildMessages(request.messages, request.habits, request.memories, request.userName);
+  const messages = buildMessages(request);
 
   const response = await client.chat.completions.create({
     model: config.openai.model,
@@ -207,6 +271,12 @@ export async function sendMessage(
   // Validate the response structure
   if (typeof parsed.message !== 'string') {
     throw new Error('Invalid response format: missing message');
+  }
+
+  if (parsed.proposal !== undefined && parsed.proposal !== null) {
+    if (!Array.isArray(parsed.proposal.actions)) {
+      throw new Error('Invalid response format: proposal actions must be an array');
+    }
   }
 
   return parsed;

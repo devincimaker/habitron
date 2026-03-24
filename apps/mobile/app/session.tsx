@@ -16,20 +16,27 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
+import { getTodayDate } from '@habits-coach/shared';
 import { useSessionStore } from '../stores/useSessionStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useHabitsStore } from '../stores/useHabitsStore';
+import { useGoalsStore } from '../stores/useGoalsStore';
+import { useTodosStore } from '../stores/useTodosStore';
+import { useJournalStore } from '../stores/useJournalStore';
+import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useMemoriesStore, ExtractedMemory } from '../stores/useMemoriesStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import { ChatMessage } from '../components/ChatMessage';
-import { SuggestionCard } from '../components/SuggestionCard';
+import { CoachProposalCard } from '../components/CoachProposalCard';
 import { MemoryReviewCard } from '../components/MemoryReviewCard';
 import { VoiceInputButton } from '../components/VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from '../components/ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { sendMessage } from '../services/api';
-import { ChatMessage as ChatMessageType, HabitAction } from '@habits-coach/shared';
+import type { ChatMessage as ChatMessageType, ChatRequest, CoachProposal } from '@habits-coach/shared';
 import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET } from '../constants/theme';
+import { applyCoachProposal } from '../utils/applyCoachProposal';
+import { getProposalAppliedMessage } from '../utils/coachProposal';
 
 type ReviewState =
   | { phase: 'none' }
@@ -39,7 +46,9 @@ type ReviewState =
 export default function SessionScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { autoStart } = useLocalSearchParams<{ autoStart?: string }>();
+  const { autoPrompt } = useLocalSearchParams<{
+    autoPrompt?: string;
+  }>();
 
   const {
     isActive,
@@ -55,19 +64,37 @@ export default function SessionScreen() {
 
   const { loadSessions } = useSessionsStore();
   const { habits, addHabit, removeHabit, updateHabit } = useHabitsStore();
+  const { goals, loadGoals, addGoal, updateGoal, archiveGoal } = useGoalsStore();
+  const {
+    todos,
+    loadTodos,
+    addTodo,
+    updateTodo,
+    setTodoStatus,
+    removeTodo,
+  } = useTodosStore();
+  const { entries: journalEntries, loadEntries, addEntry } = useJournalStore();
+  const { plansByDate, loadPlan, saveAcceptedPlan } = useDailyPlansStore();
   const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
   const { name: userName } = useProfileStore();
 
   const [inputText, setInputText] = useState('');
-  const [pendingAction, setPendingAction] = useState<HabitAction | null>(null);
+  const [pendingProposal, setPendingProposal] = useState<CoachProposal | null>(null);
   const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
   const [isClosing, setIsClosing] = useState(false);
   const flatListRef = useRef<FlatList>(null);
+  const hasSentAutoPrompt = useRef(false);
+  const today = getTodayDate();
+  const todayPlan = plansByDate[today] ?? null;
 
   // Load memories on mount
   useEffect(() => {
     loadMemories();
-  }, [loadMemories]);
+    loadGoals();
+    loadTodos();
+    loadEntries();
+    loadPlan(today);
+  }, [loadEntries, loadGoals, loadMemories, loadPlan, loadTodos, today]);
 
   // Start session on mount if not already active
   useEffect(() => {
@@ -100,12 +127,38 @@ export default function SessionScreen() {
     setLoading(true);
 
     try {
-      const allMessages = [...messages, { role: 'user' as const, content: text, id: '', timestamp: 0 }];
-      const response = await sendMessage(allMessages, habits, memories, userName || undefined);
-      addMessage({ role: 'assistant', content: response.message, action: response.action });
+      const allMessages = [
+        ...messages,
+        { role: 'user' as const, content: text, id: '', timestamp: 0 },
+      ];
+      const request: ChatRequest = {
+        messages: allMessages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+        habits,
+        goals,
+        todos,
+        journalEntries: journalEntries.slice(0, 10),
+        dailyPlan: todayPlan,
+        memories: memories.map((memory) => ({
+          content: memory.content,
+          category: memory.category,
+        })),
+        userName: userName || undefined,
+        today,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      };
 
-      if (response.action) {
-        setPendingAction(response.action);
+      const response = await sendMessage(request);
+      addMessage({
+        role: 'assistant',
+        content: response.message,
+        proposal: response.proposal ?? undefined,
+      });
+
+      if (response.proposal) {
+        setPendingProposal(response.proposal);
       }
     } catch (error) {
       console.error('Error sending message:', error);
@@ -116,10 +169,22 @@ export default function SessionScreen() {
     } finally {
       setLoading(false);
     }
-  }, [messages, habits, memories, addMessage, setLoading]);
+  }, [
+    addMessage,
+    journalEntries,
+    goals,
+    habits,
+    memories,
+    messages,
+    setLoading,
+    today,
+    todayPlan,
+    todos,
+    userName,
+  ]);
 
   const performEndSession = useCallback(async () => {
-    setPendingAction(null);
+    setPendingProposal(null);
 
     // Short sessions don't need memory extraction
     if (messages.length <= 2) {
@@ -206,71 +271,96 @@ export default function SessionScreen() {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setInputText('');
-    setPendingAction(null);
+    setPendingProposal(null);
     await sendUserMessage(text);
   }, [inputText, isLoading, sendUserMessage]);
 
-  const handleConfirmAction = useCallback(async () => {
-    if (!pendingAction) return;
+  const handleConfirmProposal = useCallback(async () => {
+    if (!pendingProposal) return;
 
     try {
-      switch (pendingAction.type) {
-        case 'add':
-          await addHabit({
-            name: pendingAction.habit.name,
-            frequency: pendingAction.habit.frequency,
-            timeOfDay: pendingAction.habit.timeOfDay,
-            reason: pendingAction.habit.reason,
-          });
-          addMessage({
-            role: 'assistant',
-            content: `Great! I've added "${pendingAction.habit.name}" to your habits. You can track it on your Habits screen.`,
-          });
-          break;
+      await applyCoachProposal(pendingProposal, {
+        addGoal,
+        updateGoal,
+        archiveGoal,
+        addHabit,
+        updateHabit,
+        removeHabit,
+        addTodo,
+        updateTodo,
+        setTodoStatus,
+        removeTodo,
+        addJournalEntry: addEntry,
+        saveAcceptedPlan,
+        existingPlanId:
+          pendingProposal.dailyPlanDraft?.date === today ? todayPlan?.id : undefined,
+      });
 
-        case 'remove':
-          if (pendingAction.habit.id) {
-            await removeHabit(pendingAction.habit.id);
-            addMessage({
-              role: 'assistant',
-              content: `Done! I've removed "${pendingAction.habit.name}" from your habits.`,
-            });
-          }
-          break;
+      addMessage({
+        role: 'assistant',
+        content: getProposalAppliedMessage(pendingProposal),
+      });
 
-        case 'edit':
-          if (pendingAction.habit.id) {
-            await updateHabit(pendingAction.habit.id, {
-              name: pendingAction.habit.name,
-              frequency: pendingAction.habit.frequency,
-              timeOfDay: pendingAction.habit.timeOfDay,
-              reason: pendingAction.habit.reason,
-            });
-            addMessage({
-              role: 'assistant',
-              content: `Updated! "${pendingAction.habit.name}" has been modified.`,
-            });
-          }
-          break;
-      }
+      await Promise.all([
+        loadGoals(),
+        loadTodos(),
+        loadEntries(),
+        loadPlan(today),
+      ]);
     } catch (error) {
-      console.error('Error executing action:', error);
+      console.error('Error executing proposal:', error);
       addMessage({
         role: 'assistant',
         content: 'Sorry, there was an error. Please try again.',
       });
     }
 
-    setPendingAction(null);
-  }, [pendingAction, addHabit, removeHabit, updateHabit, addMessage]);
+    setPendingProposal(null);
+  }, [
+    addEntry,
+    addGoal,
+    addHabit,
+    addMessage,
+    addTodo,
+    archiveGoal,
+    loadEntries,
+    loadGoals,
+    loadPlan,
+    loadTodos,
+    pendingProposal,
+    removeHabit,
+    removeTodo,
+    saveAcceptedPlan,
+    setTodoStatus,
+    today,
+    todayPlan?.id,
+    updateGoal,
+    updateHabit,
+    updateTodo,
+  ]);
 
-  const handleDismissAction = useCallback(() => {
-    setPendingAction(null);
+  const handleDismissProposal = useCallback(() => {
+    setPendingProposal(null);
     addMessage({
       role: 'assistant',
       content: 'No problem! Is there anything else you would like to work on?',
     });
   }, [addMessage]);
+
+  useEffect(() => {
+    if (autoPrompt !== 'plan-day' || hasSentAutoPrompt.current) {
+      return;
+    }
+
+    if (!isActive || reviewState.phase !== 'none' || isLoading) {
+      return;
+    }
+
+    hasSentAutoPrompt.current = true;
+    sendUserMessage(
+      'Plan my day using my goals, habits, tasks, journal, and anything you already know about me.'
+    );
+  }, [autoPrompt, isActive, isLoading, reviewState.phase, sendUserMessage]);
 
   // Voice input hook - handles recording and transcription
   const {
@@ -410,11 +500,11 @@ export default function SessionScreen() {
                 <Text style={styles.loadingText}>Habitron is thinking...</Text>
               </View>
             )}
-            {pendingAction && (
-              <SuggestionCard
-                action={pendingAction}
-                onConfirm={handleConfirmAction}
-                onDismiss={handleDismissAction}
+            {pendingProposal && (
+              <CoachProposalCard
+                proposal={pendingProposal}
+                onConfirm={handleConfirmProposal}
+                onDismiss={handleDismissProposal}
               />
             )}
           </>

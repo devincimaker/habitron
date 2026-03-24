@@ -7,6 +7,12 @@ export interface DayInfo {
   isToday: boolean;
 }
 
+export interface UpcomingDayOption {
+  date: string;
+  label: string;
+  secondaryLabel: string;
+}
+
 export function getLast7Days(): DayInfo[] {
   const days: DayInfo[] = [];
   const today = new Date();
@@ -20,6 +26,33 @@ export function getLast7Days(): DayInfo[] {
       dayNumber: d.getDate(),
       weekdayLetter: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()],
       isToday: i === 0,
+    });
+  }
+
+  return days;
+}
+
+export function getUpcomingDays(count = 7): UpcomingDayOption[] {
+  const days: UpcomingDayOption[] = [];
+  const today = new Date();
+
+  for (let i = 0; i < count; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+
+    const dateString = toDateString(
+      date.getFullYear(),
+      date.getMonth() + 1,
+      date.getDate()
+    );
+
+    days.push({
+      date: dateString,
+      label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' }),
+      secondaryLabel: date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
     });
   }
 
@@ -58,6 +91,28 @@ export function formatDateString(dateStr: string): string {
     month: 'long',
     day: 'numeric',
   });
+}
+
+export function formatShortDate(dateStr: string): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  return date.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+export function formatRelativeDateLabel(dateStr: string): string {
+  const today = getTodayDate();
+  if (dateStr === today) {
+    return 'Today';
+  }
+
+  const tomorrow = getNextDay(today);
+  if (dateStr === tomorrow) {
+    return 'Tomorrow';
+  }
+
+  return formatShortDate(dateStr);
 }
 
 export function toDateString(year: number, month: number, day: number): string {

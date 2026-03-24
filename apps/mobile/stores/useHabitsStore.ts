@@ -14,9 +14,9 @@ interface HabitsState {
   // Actions
   loadHabits: () => Promise<void>;
   setSelectedDate: (date: string) => Promise<void>;
-  addHabit: (habit: Omit<Habit, 'id' | 'createdAt'>) => Promise<void>;
+  addHabit: (habit: Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Habit>;
   removeHabit: (habitId: string) => Promise<void>;
-  updateHabit: (habitId: string, updates: Partial<Omit<Habit, 'id' | 'createdAt'>>) => Promise<void>;
+  updateHabit: (habitId: string, updates: Partial<Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<Habit>;
   setHabitStatus: (habitId: string, status: HabitStatus) => Promise<void>;
   getHabitsWithStatus: () => HabitWithStatus[];
   clearHabits: () => void;
@@ -76,6 +76,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     try {
       const habit = await habitsService.addHabit(habitData);
       set((state) => ({ habits: [...state.habits, habit] }));
+      return habit;
     } catch (error) {
       console.error('Failed to add habit:', error);
       throw error;
@@ -109,11 +110,13 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   updateHabit: async (habitId, updates) => {
     try {
       await habitsService.updateHabit(habitId, updates);
+      const updatedHabit = { ...get().habits.find((habit) => habit.id === habitId)!, ...updates };
       set((state) => ({
         habits: state.habits.map((h) =>
-          h.id === habitId ? { ...h, ...updates } : h
+          h.id === habitId ? updatedHabit : h
         ),
       }));
+      return updatedHabit;
     } catch (error) {
       console.error('Failed to update habit:', error);
       throw error;

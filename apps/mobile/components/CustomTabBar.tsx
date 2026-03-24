@@ -12,8 +12,10 @@ import { COLORS, TAB_BAR, CENTER_TAB_BUTTON } from '../constants/theme';
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
 const TAB_ICONS: Record<string, { active: IoniconsName; inactive: IoniconsName }> = {
-  habits: { active: 'checkmark-circle', inactive: 'checkmark-circle-outline' },
-  sessions: { active: 'chatbubbles', inactive: 'chatbubbles-outline' },
+  today: { active: 'today', inactive: 'today-outline' },
+  tasks: { active: 'checkbox', inactive: 'checkbox-outline' },
+  habits: { active: 'repeat', inactive: 'repeat-outline' },
+  journal: { active: 'book', inactive: 'book-outline' },
 };
 
 interface CustomTabBarProps {
@@ -97,8 +99,11 @@ function TabButton({
 export function CustomTabBar({ state, descriptors, navigation, onNewSession }: CustomTabBarProps) {
   const insets = useSafeAreaInsets();
 
-  // Filter to only show tabs that have icons defined (habits, sessions)
+  // Filter to only show routes that belong in the bottom navigation
   const visibleRoutes = state.routes.filter(route => TAB_ICONS[route.name]);
+  const splitIndex = Math.ceil(visibleRoutes.length / 2);
+  const leftRoutes = visibleRoutes.slice(0, splitIndex);
+  const rightRoutes = visibleRoutes.slice(splitIndex);
 
   // Helper to render a tab
   const renderTab = (route: { key: string; name: string }) => {
@@ -135,16 +140,18 @@ export function CustomTabBar({ state, descriptors, navigation, onNewSession }: C
 
       {/* Tab items container: Left Tab | Center Button | Right Tab */}
       <View style={styles.tabsContainer}>
-        {/* Left tab */}
-        {visibleRoutes[0] && renderTab(visibleRoutes[0])}
+        <View style={styles.tabGroup}>
+          {leftRoutes.map(renderTab)}
+        </View>
 
         {/* Center button - floating half out */}
         <View style={styles.centerButtonContainer}>
           <CenterTabButton onPress={onNewSession} />
         </View>
 
-        {/* Right tab */}
-        {visibleRoutes[1] && renderTab(visibleRoutes[1])}
+        <View style={styles.tabGroup}>
+          {rightRoutes.map(renderTab)}
+        </View>
       </View>
     </View>
   );
@@ -171,6 +178,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     height: TAB_BAR.height,
     alignItems: 'center',
+  },
+  tabGroup: {
+    flex: 1,
+    flexDirection: 'row',
+    height: '100%',
   },
   tabButton: {
     flex: 1,

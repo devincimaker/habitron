@@ -49,6 +49,8 @@ interface UseVoiceInputReturn {
   handleStopRecording: () => Promise<string | null>;
   /** Stop recording, transcribe, and send directly */
   handleSendRecording: () => Promise<void>;
+  /** Cancel recording mode and discard audio */
+  handleCancelRecording: () => Promise<void>;
   /** Clear error and exit recording mode */
   handleRetryRecording: () => void;
 
@@ -98,6 +100,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     maxDurationMs,
     startRecording,
     stopRecording,
+    cancelRecording,
     error: recordingError,
   } = useAudioRecorder({
     onAutoStop: handleAutoStop,
@@ -203,6 +206,15 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
   // Combined error from recording or transcription
   const error = transcriptionError || recordingError;
 
+  const handleCancelRecording = useCallback(async () => {
+    setTranscriptionError(null);
+    setLastAudioUri(null);
+    setPendingAction(null);
+    setIsTranscribing(false);
+    setIsRecordingMode(false);
+    await cancelRecording();
+  }, [cancelRecording]);
+
   // Compute mode for VoiceInputButton
   function computeMode(): VoiceInputMode {
     if (!isRecordingMode) return 'idle';
@@ -236,6 +248,7 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     handleMicPress,
     handleStopRecording,
     handleSendRecording,
+    handleCancelRecording,
     handleRetryRecording,
     voiceInputProps,
   };

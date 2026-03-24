@@ -8,6 +8,10 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useHabitsStore } from '../stores/useHabitsStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import { useSessionStore } from '../stores/useSessionStore';
+import { useGoalsStore } from '../stores/useGoalsStore';
+import { useTodosStore } from '../stores/useTodosStore';
+import { useJournalStore } from '../stores/useJournalStore';
+import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useAppStateHandler } from '../hooks/useAppState';
 import { COLORS } from '../constants/theme';
 import {
@@ -39,6 +43,14 @@ Sentry.init({
 export default Sentry.wrap(function RootLayout() {
   const { session, isInitialized, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
+  const clearHabits = useHabitsStore((state) => state.clearHabits);
+  const loadGoals = useGoalsStore((state) => state.loadGoals);
+  const clearGoals = useGoalsStore((state) => state.clearGoals);
+  const loadTodos = useTodosStore((state) => state.loadTodos);
+  const clearTodos = useTodosStore((state) => state.clearTodos);
+  const loadEntries = useJournalStore((state) => state.loadEntries);
+  const clearEntries = useJournalStore((state) => state.clearEntries);
+  const clearPlans = useDailyPlansStore((state) => state.clearPlans);
   const { loadProfile, reset: resetProfile } = useProfileStore();
   const isSessionActive = useSessionStore((state) => state.isActive);
   const router = useRouter();
@@ -59,6 +71,9 @@ export default Sentry.wrap(function RootLayout() {
   useEffect(() => {
     if (session) {
       loadHabits();
+      loadGoals();
+      loadTodos();
+      loadEntries();
       loadProfile();
 
       // Register for push notifications
@@ -69,9 +84,27 @@ export default Sentry.wrap(function RootLayout() {
       });
     } else {
       // Reset profile state on sign out
+      clearHabits();
+      clearGoals();
+      clearTodos();
+      clearEntries();
+      clearPlans();
       resetProfile();
     }
-  }, [session, loadHabits, loadProfile, resetProfile]);
+  }, [
+    session,
+    clearEntries,
+    clearGoals,
+    clearHabits,
+    clearPlans,
+    clearTodos,
+    loadEntries,
+    loadGoals,
+    loadHabits,
+    loadProfile,
+    loadTodos,
+    resetProfile,
+  ]);
 
   // Handle notification responses (deep linking when user taps notification)
   useEffect(() => {
