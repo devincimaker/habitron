@@ -267,19 +267,48 @@ export async function sendMessage(
   }
 
   const parsed = JSON.parse(content) as ChatResponse;
+  const normalizedProposal = normalizeProposal(parsed.proposal);
 
   // Validate the response structure
   if (typeof parsed.message !== 'string') {
     throw new Error('Invalid response format: missing message');
   }
 
-  if (parsed.proposal !== undefined && parsed.proposal !== null) {
-    if (!Array.isArray(parsed.proposal.actions)) {
-      throw new Error('Invalid response format: proposal actions must be an array');
-    }
+  return {
+    ...parsed,
+    proposal: normalizedProposal,
+  };
+}
+
+function normalizeProposal(
+  proposal: ChatResponse['proposal']
+): ChatResponse['proposal'] {
+  if (proposal === undefined || proposal === null) {
+    return proposal;
   }
 
-  return parsed;
+  if (typeof proposal !== 'object') {
+    throw new Error('Invalid response format: proposal must be an object');
+  }
+
+  const rawProposal = proposal as unknown as Record<string, unknown>;
+  const rawActions = rawProposal.actions;
+
+  if (rawActions === undefined || rawActions === null) {
+    return {
+      ...rawProposal,
+      actions: [],
+    } as NonNullable<ChatResponse['proposal']>;
+  }
+
+  if (Array.isArray(rawActions)) {
+    return proposal;
+  }
+
+  return {
+    ...rawProposal,
+    actions: [rawActions],
+  } as NonNullable<ChatResponse['proposal']>;
 }
 
 export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {

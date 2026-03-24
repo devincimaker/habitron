@@ -5,8 +5,7 @@ import type {
   CoachingSessionMessage,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+import { createApiUrl } from './apiUrl';
 
 async function getAuthToken(): Promise<string> {
   const { data: { session } } = await supabase.auth.getSession();
@@ -19,7 +18,7 @@ async function getAuthToken(): Promise<string> {
 export async function getSessions(): Promise<CoachingSessionSummary[]> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions`, {
+  const response = await fetch(createApiUrl('/api/sessions'), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -39,7 +38,7 @@ export async function getActiveSession(): Promise<{
 } | null> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions/active`, {
+  const response = await fetch(createApiUrl('/api/sessions/active'), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -54,7 +53,7 @@ export async function getActiveSession(): Promise<{
 export async function getSession(id: string): Promise<CoachingSessionDetail> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions/${id}`, {
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
     headers: { Authorization: `Bearer ${token}` },
   });
 
@@ -69,7 +68,7 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
 export async function createSession(): Promise<{ id: string; startedAt: number }> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions`, {
+  const response = await fetch(createApiUrl('/api/sessions'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -95,7 +94,7 @@ export async function updateSession(
 ): Promise<void> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions/${id}`, {
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
@@ -115,7 +114,7 @@ export async function finalizeSession(
 ): Promise<{ name: string }> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions/${id}/finalize`, {
+  const response = await fetch(createApiUrl(`/api/sessions/${id}/finalize`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -134,7 +133,7 @@ export async function finalizeSession(
 export async function deleteSession(id: string): Promise<void> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/sessions/${id}`, {
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
     method: 'DELETE',
     headers: { Authorization: `Bearer ${token}` },
   });

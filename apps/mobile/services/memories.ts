@@ -1,14 +1,13 @@
 import { supabase } from './supabase';
 import type { Memory, MemoryCategory, ExtractMemoriesResponse } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
+import { createApiUrl } from './apiUrl';
 
 // Type for extracted memory before saving (no id yet)
 export interface ExtractedMemory {
   content: string;
   category: MemoryCategory;
 }
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
 
 // Database row type (snake_case from Supabase)
 interface DbMemory {
@@ -68,7 +67,7 @@ export async function extractMemories(
 ): Promise<ExtractedMemory[]> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/memories/extract`, {
+  const response = await fetch(createApiUrl('/api/memories/extract'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -94,7 +93,7 @@ export async function saveMemories(
 
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/memories`, {
+  const response = await fetch(createApiUrl('/api/memories'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

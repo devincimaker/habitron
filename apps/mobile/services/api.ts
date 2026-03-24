@@ -1,7 +1,6 @@
 import { supabase } from './supabase';
 import type { ChatRequest, ChatResponse } from '@habits-coach/shared';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3001';
+import { createApiUrl } from './apiUrl';
 
 class ApiError extends Error {
   constructor(
@@ -28,7 +27,7 @@ async function getAuthToken(): Promise<string> {
 export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
   const token = await getAuthToken();
 
-  const response = await fetch(`${API_URL}/api/chat`, {
+  const response = await fetch(createApiUrl('/api/chat'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -71,7 +70,7 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
     name: `recording.${extension}`,
   } as unknown as Blob);
 
-  const response = await fetch(`${API_URL}/api/transcribe`, {
+  const response = await fetch(createApiUrl('/api/transcribe'), {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -97,7 +96,7 @@ export async function notifyFirstSkip(habitId: string): Promise<void> {
   try {
     const token = await getAuthToken();
 
-    const response = await fetch(`${API_URL}/api/notifications/first-skip`, {
+    const response = await fetch(createApiUrl('/api/notifications/first-skip'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

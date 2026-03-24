@@ -33,6 +33,7 @@ import { VoiceInputButton } from '../components/VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from '../components/ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { sendMessage } from '../services/api';
+import { getCoachRequestErrorMessage } from '../services/apiUrl';
 import type { ChatMessage as ChatMessageType, ChatRequest, CoachProposal } from '@habits-coach/shared';
 import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET } from '../constants/theme';
 import { applyCoachProposal } from '../utils/applyCoachProposal';
@@ -161,10 +162,10 @@ export default function SessionScreen() {
         setPendingProposal(response.proposal);
       }
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.warn('Error sending message:', error);
       addMessage({
         role: 'assistant',
-        content: 'Sorry, I had trouble processing that. Please try again.',
+        content: getCoachRequestErrorMessage(error),
       });
     } finally {
       setLoading(false);

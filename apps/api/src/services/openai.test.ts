@@ -1,11 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 // Create a hoisted mock reference
+const mockChatCompletionsCreate = vi.hoisted(() => vi.fn());
 const mockTranscriptionsCreate = vi.hoisted(() => vi.fn());
 
 vi.mock('openai', () => {
   return {
     default: class MockOpenAI {
+      chat = {
+        completions: {
+          create: mockChatCompletionsCreate,
+        },
+      };
       audio = {
         transcriptions: {
           create: mockTranscriptionsCreate,
@@ -25,11 +31,101 @@ vi.mock('../config.js', () => ({
   },
 }));
 
-import { transcribeAudio } from './openai.js';
+import { sendMessage, transcribeAudio } from './openai.js';
+
+describe('sendMessage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockChatCompletionsCreate.mockReset();
+    mockTranscriptionsCreate.mockReset();
+  });
+
+  it('normalizes proposals without actions to an empty array', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'Here is a focused day plan.',
+              proposal: {
+                dailyPlanDraft: {
+                  date: '2026-03-24',
+                  rationale: 'Protect the morning for deep work.',
+                  items: [
+                    {
+                      itemType: 'note',
+                      title: 'Deep work block',
+                      scheduledBlock: 'morning',
+                    },
+                  ],
+                },
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Plan my day.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+      timezone: 'America/Argentina/Buenos_Aires',
+    });
+
+    expect(result.proposal?.actions).toEqual([]);
+    expect(result.proposal?.dailyPlanDraft?.date).toBe('2026-03-24');
+  });
+
+  it('wraps a single proposal action in an array', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'I added the task.',
+              proposal: {
+                actions: {
+                  entity: 'todo',
+                  operation: 'add',
+                  todo: {
+                    title: 'Send invoice',
+                  },
+                },
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Add a task.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+    });
+
+    expect(result.proposal?.actions).toHaveLength(1);
+    expect(result.proposal?.actions[0]).toMatchObject({
+      entity: 'todo',
+      operation: 'add',
+    });
+  });
+});
 
 describe('transcribeAudio', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockChatCompletionsCreate.mockReset();
     mockTranscriptionsCreate.mockReset();
   });
 
