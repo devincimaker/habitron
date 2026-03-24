@@ -1,16 +1,27 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { JournalEntry, JournalEntryDraft, JournalMood } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
 import { OptionChips } from './OptionChips';
 import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { JOURNAL_MOODS } from '../constants/journal';
-import { COLORS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
 
 interface JournalEntryModalProps {
   visible: boolean;
   entry?: JournalEntry | null;
+  recentTags?: string[];
+  autoStartVoice?: boolean;
   onClose: () => void;
   onSave: (draft: JournalEntryDraft) => Promise<void>;
 }
@@ -52,6 +63,8 @@ function parseTags(value: string): string[] {
 export function JournalEntryModal({
   visible,
   entry,
+  recentTags = [],
+  autoStartVoice = false,
   onClose,
   onSave,
 }: JournalEntryModalProps) {
@@ -62,11 +75,13 @@ export function JournalEntryModal({
   const [tagsText, setTagsText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const allowTranscriptionRef = useRef(true);
+  const hasAutoStartedVoiceRef = useRef(false);
 
   useEffect(() => {
     if (!visible) return;
 
     allowTranscriptionRef.current = true;
+    hasAutoStartedVoiceRef.current = false;
     setContent(entry?.content ?? '');
     setMood(entry?.mood);
     setEnergy(entry?.energy);
@@ -95,10 +110,27 @@ export function JournalEntryModal({
     },
   });
 
+  useEffect(() => {
+    if (!visible || !autoStartVoice || hasAutoStartedVoiceRef.current) {
+      return;
+    }
+
+    hasAutoStartedVoiceRef.current = true;
+    void voiceInputProps.onMicPress();
+  }, [autoStartVoice, visible, voiceInputProps]);
+
   const moodHelperText = useMemo(() => {
     if (!mood) return 'Optional, but useful for reflection and coaching.';
     return `Selected mood: ${JOURNAL_MOODS.find((option) => option.value === mood)?.label}`;
   }, [mood]);
+
+  const addSuggestedTag = useCallback((tag: string) => {
+    const nextTags = parseTags(tagsText);
+    const exists = nextTags.some((current) => current.toLowerCase() === tag.toLowerCase());
+    if (exists) return;
+
+    setTagsText(formatTags([...nextTags, tag]));
+  }, [tagsText]);
 
   const handleDismiss = useCallback(async () => {
     allowTranscriptionRef.current = false;
@@ -132,11 +164,40 @@ export function JournalEntryModal({
       presentationStyle="pageSheet"
       onRequestClose={() => void handleDismiss()}
     >
-      <View style={styles.container}>
-        <ScrollView contentContainerStyle={styles.content}>
-          <HeadingLarge style={styles.title}>
-            {entry ? 'Edit Journal Entry' : 'New Journal Entry'}
-          </HeadingLarge>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
+        <View style={styles.topBar}>
+          <View style={styles.topBarCopy}>
+            <HeadingLarge>{entry ? 'Edit entry' : autoStartVoice ? 'Voice note' : 'New entry'}</HeadingLarge>
+            <Caption>
+              {autoStartVoice
+                ? 'Start talking and the transcript will appear below.'
+                : 'Capture what mattered, then save it.'}
+            </Caption>
+          </View>
+          <Pressable
+            style={styles.dismissButton}
+            onPress={() => void handleDismiss()}
+            accessibilityLabel="Close journal editor"
+          >
+            <Feather name="x" size={18} color={COLORS.text} />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          <Input
+            label="Entry"
+            placeholder="What happened, what mattered, and what should the coach understand?"
+            value={content}
+            onChangeText={setContent}
+            multiline
+            autoFocus={!autoStartVoice}
+          />
 
           <View style={styles.section}>
             <Label>Mood</Label>
@@ -149,54 +210,62 @@ export function JournalEntryModal({
           </View>
 
           <Input
-            label="What's on your mind?"
-            placeholder="Write freely. What happened, what mattered, and what should Habitron understand about your day?"
-            value={content}
-            onChangeText={setContent}
-            multiline
-            autoFocus
+            label="Tags"
+            placeholder="reflection, work, health"
+            value={tagsText}
+            onChangeText={setTagsText}
+            autoCapitalize="none"
           />
 
-          <View style={styles.section}>
-            <Label>Tags</Label>
-            <Input
-              placeholder="reflection, work, health"
-              value={tagsText}
-              onChangeText={setTagsText}
-              autoCapitalize="none"
-              containerStyle={styles.inlineInput}
-            />
-            <Caption>Separate tags with commas.</Caption>
+          {recentTags.length > 0 ? (
+            <View style={styles.section}>
+              <Caption>Recent tags</Caption>
+              <View style={styles.suggestedTags}>
+                {recentTags.slice(0, 6).map((tag) => (
+                  <Pressable
+                    key={tag}
+                    style={styles.suggestedTagChip}
+                    onPress={() => addSuggestedTag(tag)}
+                  >
+                    <Caption color={COLORS.primaryDark}>#{tag}</Caption>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          ) : null}
+
+          <View style={styles.dualSectionRow}>
+            <View style={[styles.section, styles.halfSection]}>
+              <Label>Energy</Label>
+              <OptionChips
+                options={SCALE_OPTIONS}
+                selectedValue={energy}
+                onChange={(value) => setEnergy(value)}
+              />
+            </View>
+
+            <View style={[styles.section, styles.halfSection]}>
+              <Label>Stress</Label>
+              <OptionChips
+                options={SCALE_OPTIONS}
+                selectedValue={stress}
+                onChange={(value) => setStress(value)}
+              />
+            </View>
           </View>
 
-          <View style={styles.section}>
-            <Label>Energy</Label>
-            <OptionChips
-              options={SCALE_OPTIONS}
-              selectedValue={energy}
-              onChange={(value) => setEnergy(value)}
-            />
-          </View>
-
-          <View style={styles.section}>
-            <Label>Stress</Label>
-            <OptionChips
-              options={SCALE_OPTIONS}
-              selectedValue={stress}
-              onChange={(value) => setStress(value)}
-            />
-          </View>
-
-          <View style={styles.dictationSection}>
-            <Label>Voice Dictation</Label>
+          <View style={styles.voiceCard}>
+            <View style={styles.voiceCopy}>
+              <Label>Voice dictation</Label>
+              <Caption>
+                Speak naturally. The transcription stays in the language you used.
+              </Caption>
+            </View>
             <View style={styles.dictationControl}>
               <VoiceInputButton {...voiceInputProps} />
             </View>
-            <Caption>
-              Record a thought and Habitron will transcribe it into the journal entry.
-            </Caption>
             {isRecordingMode || isTranscribing ? (
-              <Caption color={COLORS.primaryDark} style={styles.helperText}>
+              <Caption color={COLORS.primaryDark}>
                 Keep this sheet open until transcription finishes.
               </Caption>
             ) : null}
@@ -204,16 +273,23 @@ export function JournalEntryModal({
         </ScrollView>
 
         <View style={styles.footer}>
-          <Button title="Cancel" variant="ghost" onPress={() => void handleDismiss()} size="md" />
+          <Button
+            title="Cancel"
+            variant="ghost"
+            onPress={() => void handleDismiss()}
+            size="md"
+            style={styles.footerSecondaryButton}
+          />
           <Button
             title={entry ? 'Save Entry' : 'Add Entry'}
             onPress={handleSave}
             loading={isSaving}
             disabled={!content.trim()}
             size="md"
+            style={styles.footerPrimaryButton}
           />
         </View>
-      </View>
+      </KeyboardAvoidingView>
     </Modal>
   );
 }
@@ -223,36 +299,83 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
   },
-  content: {
-    padding: SPACING.lg,
-    paddingBottom: SPACING.xl,
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.lg,
+    paddingBottom: SPACING.md,
+    gap: SPACING.md,
   },
-  title: {
-    marginBottom: SPACING.lg,
+  topBarCopy: {
+    flex: 1,
+    gap: 4,
+  },
+  dismissButton: {
+    width: 36,
+    height: 36,
+    borderRadius: BORDER_RADIUS.full,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surface,
+  },
+  content: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.xl,
+    gap: SPACING.lg,
   },
   section: {
-    marginBottom: SPACING.md,
-  },
-  inlineInput: {
-    marginBottom: SPACING.xs,
-  },
-  dictationSection: {
-    marginBottom: SPACING.md,
-  },
-  dictationControl: {
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.sm,
+    gap: SPACING.sm,
   },
   helperText: {
+    marginTop: 2,
+  },
+  suggestedTags: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  suggestedTagChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 6,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+  },
+  dualSectionRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.lg,
+  },
+  halfSection: {
+    flex: 1,
+  },
+  voiceCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: BORDER_RADIUS.lg,
+    padding: SPACING.md,
+    gap: SPACING.sm,
+  },
+  voiceCopy: {
+    gap: 4,
+  },
+  dictationControl: {
     marginTop: SPACING.xs,
+    marginBottom: SPACING.xs,
   },
   footer: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
     backgroundColor: COLORS.background,
+  },
+  footerSecondaryButton: {
+    flex: 1,
+  },
+  footerPrimaryButton: {
+    flex: 1.6,
   },
 });

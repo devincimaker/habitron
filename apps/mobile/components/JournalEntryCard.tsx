@@ -1,8 +1,9 @@
 import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { JournalEntry } from '@habits-coach/shared';
-import { BodyMedium, Button, Caption, HeadingLarge } from './ui';
+import { BodyLarge, BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
-import { JOURNAL_MOOD_BY_VALUE } from '../constants/journal';
+import { JOURNAL_MOOD_BY_VALUE, JOURNAL_MOOD_STYLES } from '../constants/journal';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
@@ -11,12 +12,38 @@ interface JournalEntryCardProps {
 }
 
 function formatEntryTimestamp(timestamp: number): string {
-  return new Intl.DateTimeFormat(undefined, {
+  const formatter = new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
-  }).format(new Date(timestamp));
+  });
+
+  const entryDate = new Date(timestamp);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  const isSameDay = (left: Date, right: Date) =>
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate();
+
+  if (isSameDay(entryDate, today)) {
+    return `Today · ${new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(entryDate)}`;
+  }
+
+  if (isSameDay(entryDate, yesterday)) {
+    return `Yesterday · ${new Intl.DateTimeFormat(undefined, {
+      hour: 'numeric',
+      minute: '2-digit',
+    }).format(entryDate)}`;
+  }
+
+  return formatter.format(entryDate);
 }
 
 export function JournalEntryCard({
@@ -25,6 +52,12 @@ export function JournalEntryCard({
   onDelete,
 }: JournalEntryCardProps) {
   const mood = entry.mood ? JOURNAL_MOOD_BY_VALUE[entry.mood] : null;
+  const moodStyle = entry.mood ? JOURNAL_MOOD_STYLES[entry.mood] : null;
+  const [leadText, ...remainingParagraphs] = entry.content
+    .split(/\n+/)
+    .map((chunk) => chunk.trim())
+    .filter(Boolean);
+  const supportingText = remainingParagraphs.join(' ');
 
   const handleDelete = () => {
     Alert.alert(
@@ -47,25 +80,64 @@ export function JournalEntryCard({
         <View style={styles.headerCopy}>
           <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
           {mood ? (
-            <HeadingLarge style={styles.moodLabel}>
-              {mood.emoji} {mood.label}
-            </HeadingLarge>
+            <View
+              style={[
+                styles.moodBadge,
+                {
+                  backgroundColor: moodStyle?.surface,
+                  borderColor: moodStyle?.border,
+                },
+              ]}
+            >
+              <Caption color={moodStyle?.text}>
+                {mood.emoji} {mood.label}
+              </Caption>
+            </View>
           ) : null}
         </View>
+
         <View style={styles.actions}>
-          <Button title="Edit" variant="ghost" size="sm" onPress={() => onEdit(entry)} />
-          <Button title="Delete" variant="ghost" size="sm" onPress={handleDelete} />
+          <Pressable
+            style={styles.iconButton}
+            onPress={() => onEdit(entry)}
+            accessibilityLabel="Edit journal entry"
+          >
+            <Feather name="edit-3" size={16} color={COLORS.textSecondary} />
+          </Pressable>
+          <Pressable
+            style={styles.iconButton}
+            onPress={handleDelete}
+            accessibilityLabel="Delete journal entry"
+          >
+            <Feather name="trash-2" size={16} color={COLORS.error} />
+          </Pressable>
         </View>
       </View>
 
-      <BodyMedium numberOfLines={4} color={COLORS.text}>
-        {entry.content}
-      </BodyMedium>
+      <BodyLarge style={styles.entryLead} numberOfLines={3}>
+        {leadText ?? entry.content}
+      </BodyLarge>
 
-      <View style={styles.metaRow}>
-        {entry.energy ? <Caption>Energy {entry.energy}</Caption> : null}
-        {entry.stress ? <Caption>Stress {entry.stress}</Caption> : null}
-      </View>
+      {supportingText ? (
+        <BodyMedium numberOfLines={3} color={COLORS.text}>
+          {supportingText}
+        </BodyMedium>
+      ) : null}
+
+      {(entry.energy || entry.stress) ? (
+        <View style={styles.metaRow}>
+          {entry.energy ? (
+            <View style={styles.metaPill}>
+              <Caption color={COLORS.text}>Energy {entry.energy}</Caption>
+            </View>
+          ) : null}
+          {entry.stress ? (
+            <View style={styles.metaPill}>
+              <Caption color={COLORS.text}>Stress {entry.stress}</Caption>
+            </View>
+          ) : null}
+        </View>
+      ) : null}
 
       {entry.tags.length > 0 ? (
         <View style={styles.tagsRow}>
@@ -83,7 +155,7 @@ export function JournalEntryCard({
 const styles = StyleSheet.create({
   card: {
     backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.md,
+    borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
     padding: SPACING.md,
@@ -97,17 +169,41 @@ const styles = StyleSheet.create({
   },
   headerCopy: {
     flex: 1,
+    gap: SPACING.xs,
   },
-  moodLabel: {
-    marginTop: 2,
+  moodBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
   },
   actions: {
     flexDirection: 'row',
     gap: SPACING.xs,
   },
+  iconButton: {
+    width: 32,
+    height: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.surface,
+  },
+  entryLead: {
+    color: COLORS.text,
+    fontWeight: '600',
+  },
   metaRow: {
     flexDirection: 'row',
-    gap: SPACING.md,
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  metaPill: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.surface,
   },
   tagsRow: {
     flexDirection: 'row',
@@ -116,7 +212,7 @@ const styles = StyleSheet.create({
   },
   tagChip: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 6,
+    paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.primaryLight,
   },
