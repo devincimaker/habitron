@@ -179,12 +179,14 @@ export function VoiceInputButton({
 
 const styles = StyleSheet.create({
   micButton: {
-    width: 40,
-    height: 40,
+    width: 48,
+    height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.background,
     borderRadius: BORDER_RADIUS.full,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
   recordingContainer: {
     flex: 1,

@@ -46,6 +46,10 @@ function formatEntryTimestamp(timestamp: number): string {
   return formatter.format(entryDate);
 }
 
+function formatScale(label: string, value: number): string {
+  return `${label} ${value}/5`;
+}
+
 export function JournalEntryCard({
   entry,
   onEdit,
@@ -58,13 +62,22 @@ export function JournalEntryCard({
     .map((chunk) => chunk.trim())
     .filter(Boolean);
   const supportingText = remainingParagraphs.join(' ');
+  const wasEdited = entry.updatedAt - entry.createdAt > 60_000;
+  const visibleTags = entry.tags.slice(0, 3);
+  const hiddenTagCount = Math.max(0, entry.tags.length - visibleTags.length);
 
-  const handleDelete = () => {
+  const detailPills = [
+    entry.energy ? formatScale('Energy', entry.energy) : null,
+    entry.stress ? formatScale('Stress', entry.stress) : null,
+  ].filter(Boolean) as string[];
+
+  const handleOpenActions = () => {
     Alert.alert(
-      'Delete Entry',
-      'Are you sure you want to delete this journal entry?',
+      'Entry actions',
+      'Choose what to do with this reflection.',
       [
         { text: 'Cancel', style: 'cancel' },
+        { text: 'Edit', onPress: () => onEdit(entry) },
         {
           text: 'Delete',
           style: 'destructive',
@@ -75,10 +88,22 @@ export function JournalEntryCard({
   };
 
   return (
-    <Pressable style={styles.card} onPress={() => onEdit(entry)}>
+    <Pressable
+      style={styles.card}
+      onPress={() => onEdit(entry)}
+      accessibilityLabel="Open journal entry"
+    >
       <View style={styles.header}>
         <View style={styles.headerCopy}>
-          <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
+          <View style={styles.timeRow}>
+            <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
+            {wasEdited ? (
+              <View style={styles.editedBadge}>
+                <Caption color={COLORS.textLight}>Edited</Caption>
+              </View>
+            ) : null}
+          </View>
+
           {mood ? (
             <View
               style={[
@@ -96,22 +121,17 @@ export function JournalEntryCard({
           ) : null}
         </View>
 
-        <View style={styles.actions}>
-          <Pressable
-            style={styles.iconButton}
-            onPress={() => onEdit(entry)}
-            accessibilityLabel="Edit journal entry"
-          >
-            <Feather name="edit-3" size={16} color={COLORS.textSecondary} />
-          </Pressable>
-          <Pressable
-            style={styles.iconButton}
-            onPress={handleDelete}
-            accessibilityLabel="Delete journal entry"
-          >
-            <Feather name="trash-2" size={16} color={COLORS.error} />
-          </Pressable>
-        </View>
+        <Pressable
+          style={styles.actionButton}
+          onPress={(event) => {
+            event.stopPropagation();
+            handleOpenActions();
+          }}
+          accessibilityLabel="Journal entry actions"
+          hitSlop={10}
+        >
+          <Feather name="more-horizontal" size={18} color={COLORS.textSecondary} />
+        </Pressable>
       </View>
 
       <BodyLarge style={styles.entryLead} numberOfLines={3}>
@@ -119,33 +139,33 @@ export function JournalEntryCard({
       </BodyLarge>
 
       {supportingText ? (
-        <BodyMedium numberOfLines={3} color={COLORS.text}>
+        <BodyMedium numberOfLines={2} color={COLORS.textSecondary}>
           {supportingText}
         </BodyMedium>
       ) : null}
 
-      {(entry.energy || entry.stress) ? (
+      {detailPills.length > 0 ? (
         <View style={styles.metaRow}>
-          {entry.energy ? (
-            <View style={styles.metaPill}>
-              <Caption color={COLORS.text}>Energy {entry.energy}</Caption>
+          {detailPills.map((detail) => (
+            <View key={`${entry.id}-${detail}`} style={styles.metaPill}>
+              <Caption color={COLORS.text}>{detail}</Caption>
             </View>
-          ) : null}
-          {entry.stress ? (
-            <View style={styles.metaPill}>
-              <Caption color={COLORS.text}>Stress {entry.stress}</Caption>
-            </View>
-          ) : null}
+          ))}
         </View>
       ) : null}
 
-      {entry.tags.length > 0 ? (
+      {visibleTags.length > 0 ? (
         <View style={styles.tagsRow}>
-          {entry.tags.map((tag) => (
+          {visibleTags.map((tag) => (
             <View key={`${entry.id}-${tag}`} style={styles.tagChip}>
               <Caption color={COLORS.primaryDark}>#{tag}</Caption>
             </View>
           ))}
+          {hiddenTagCount > 0 ? (
+            <View style={styles.moreTagChip}>
+              <Caption color={COLORS.textSecondary}>+{hiddenTagCount} more</Caption>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </Pressable>
@@ -154,12 +174,12 @@ export function JournalEntryCard({
 
 const styles = StyleSheet.create({
   card: {
+    gap: SPACING.sm,
+    padding: SPACING.md,
     backgroundColor: COLORS.background,
-    borderRadius: BORDER_RADIUS.lg,
+    borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
     borderColor: COLORS.border,
-    padding: SPACING.md,
-    gap: SPACING.sm,
   },
   header: {
     flexDirection: 'row',
@@ -171,6 +191,18 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: SPACING.xs,
   },
+  timeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  editedBadge: {
+    paddingHorizontal: SPACING.xs + 2,
+    paddingVertical: 2,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.surface,
+  },
   moodBadge: {
     alignSelf: 'flex-start',
     paddingHorizontal: SPACING.sm,
@@ -178,17 +210,13 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     borderWidth: 1,
   },
-  actions: {
-    flexDirection: 'row',
-    gap: SPACING.xs,
-  },
-  iconButton: {
-    width: 32,
-    height: 32,
+  actionButton: {
+    width: 36,
+    height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#FAFAFA',
   },
   entryLead: {
     color: COLORS.text,
@@ -201,7 +229,7 @@ const styles = StyleSheet.create({
   },
   metaPill: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.surface,
   },
@@ -212,8 +240,14 @@ const styles = StyleSheet.create({
   },
   tagChip: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
+    paddingVertical: 5,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.primaryLight,
+  },
+  moreTagChip: {
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 5,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.surface,
   },
 });

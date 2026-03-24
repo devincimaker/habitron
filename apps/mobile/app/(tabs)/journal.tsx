@@ -6,13 +6,28 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
-import { ScrollView as HorizontalScrollView } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import Animated, {
+  FadeInDown,
+  FadeInUp,
+  LinearTransition,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { JournalEntry, JournalEntryDraft, JournalMood } from '@habits-coach/shared';
+import type {
+  JournalEntry,
+  JournalEntryDraft,
+  JournalMood,
+} from '@habits-coach/shared';
 import { JournalEntryCard } from '../../components/JournalEntryCard';
 import { JournalEntryModal } from '../../components/JournalEntryModal';
-import { BodyMedium, Button, Caption, Card, HeadingLarge, Input } from '../../components/ui';
+import {
+  BodyMedium,
+  Caption,
+  HeadingLarge,
+  Input,
+} from '../../components/ui';
 import { useJournalStore } from '../../stores/useJournalStore';
 import {
   BORDER_RADIUS,
@@ -26,7 +41,76 @@ import {
   JOURNAL_MOOD_STYLES,
 } from '../../constants/journal';
 
+interface JournalSection {
+  key: string;
+  title: string;
+  entries: JournalEntry[];
+}
+
+function parseJournalDate(entryDate: string): Date {
+  return new Date(`${entryDate}T12:00:00`);
+}
+
+function isSameDay(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function formatSectionTitle(entryDate: string): string {
+  const date = parseJournalDate(entryDate);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+
+  if (isSameDay(date, today)) {
+    return 'Today';
+  }
+
+  if (isSameDay(date, yesterday)) {
+    return 'Yesterday';
+  }
+
+  return new Intl.DateTimeFormat(undefined, {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+  }).format(date);
+}
+
+function groupEntriesByDate(entries: JournalEntry[]): JournalSection[] {
+  const groupedEntries = new Map<string, JournalEntry[]>();
+
+  for (const entry of entries) {
+    const sectionEntries = groupedEntries.get(entry.entryDate) ?? [];
+    sectionEntries.push(entry);
+    groupedEntries.set(entry.entryDate, sectionEntries);
+  }
+
+  return Array.from(groupedEntries.entries()).map(([entryDate, sectionEntries]) => ({
+    key: entryDate,
+    title: formatSectionTitle(entryDate),
+    entries: sectionEntries,
+  }));
+}
+
+function formatCountLabel(
+  count: number,
+  singular: string,
+  plural = `${singular}s`
+): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 export default function JournalScreen() {
+  const router = useRouter();
+  const params = useLocalSearchParams<{
+    compose?: string | string[];
+    voice?: string | string[];
+    prompt?: string | string[];
+  }>();
   const insets = useSafeAreaInsets();
   const {
     entries,
@@ -39,10 +123,12 @@ export default function JournalScreen() {
   } = useJournalStore();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [selectedMood, setSelectedMood] = useState<JournalMood | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
   const [editingEntry, setEditingEntry] = useState<JournalEntry | null>(null);
   const [showEditor, setShowEditor] = useState(false);
+  const [editorPrompt, setEditorPrompt] = useState<string | null>(null);
+  const [autoStartVoice, setAutoStartVoice] = useState(false);
 
   useEffect(() => {
     void loadEntries();
@@ -59,12 +145,16 @@ export default function JournalScreen() {
         entry.content.toLowerCase().includes(normalizedQuery) ||
         entry.tags.some((tag) => tag.toLowerCase().includes(normalizedQuery));
 
-      const matchesTag = !selectedTag || entry.tags.includes(selectedTag);
       const matchesMood = !selectedMood || entry.mood === selectedMood;
 
-      return matchesQuery && matchesTag && matchesMood;
+      return matchesQuery && matchesMood;
     });
-  }, [entries, searchQuery, selectedMood, selectedTag]);
+  }, [entries, searchQuery, selectedMood]);
+
+  const groupedEntries = useMemo(
+    () => groupEntriesByDate(filteredEntries),
+    [filteredEntries]
+  );
 
   const handleSaveEntry = useCallback(
     async (draft: JournalEntryDraft) => {
@@ -84,21 +174,68 @@ export default function JournalScreen() {
     [removeEntry]
   );
 
-  const openEditor = useCallback((entry?: JournalEntry | null) => {
-    setEditingEntry(entry ?? null);
-    setShowEditor(true);
+  const clearFilters = useCallback(() => {
+    setSearchQuery('');
+    setSelectedMood(null);
+    setShowFilters(false);
+  }, []);
+
+  const openEditor = useCallback(
+    (options?: {
+      entry?: JournalEntry | null;
+      prompt?: string | null;
+      autoStartVoice?: boolean;
+    }) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setEditingEntry(options?.entry ?? null);
+      setEditorPrompt(options?.prompt ?? null);
+      setAutoStartVoice(Boolean(options?.autoStartVoice));
+      setShowEditor(true);
+    },
+    []
+  );
+
+  const closeEditor = useCallback(() => {
+    setShowEditor(false);
+    setEditingEntry(null);
+    setEditorPrompt(null);
+    setAutoStartVoice(false);
   }, []);
 
   const activeFilterCount =
-    Number(Boolean(searchQuery.trim())) +
-    Number(Boolean(selectedTag)) +
-    Number(Boolean(selectedMood));
+    Number(Boolean(searchQuery.trim())) + Number(Boolean(selectedMood));
   const showEmptyFeed = entries.length === 0;
   const showEmptyResults = !showEmptyFeed && filteredEntries.length === 0;
+
+  useEffect(() => {
+    const composeParam = Array.isArray(params.compose)
+      ? params.compose[0]
+      : params.compose;
+
+    if (!composeParam || showEditor) {
+      return;
+    }
+
+    const promptParam = Array.isArray(params.prompt) ? params.prompt[0] : params.prompt;
+    const voiceParam = Array.isArray(params.voice) ? params.voice[0] : params.voice;
+
+    openEditor({
+      prompt: promptParam ?? null,
+      autoStartVoice: voiceParam === '1' || voiceParam === 'true',
+    });
+    router.replace('/journal');
+  }, [openEditor, params.compose, params.prompt, params.voice, router, showEditor]);
+
+  useEffect(() => {
+    if (activeFilterCount > 0) {
+      setShowFilters(true);
+    }
+  }, [activeFilterCount]);
 
   return (
     <View style={styles.container}>
       <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
         contentContainerStyle={[
           styles.content,
           {
@@ -107,6 +244,7 @@ export default function JournalScreen() {
           },
         ]}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="interactive"
         refreshControl={
           <RefreshControl
             refreshing={isLoading}
@@ -115,38 +253,81 @@ export default function JournalScreen() {
           />
         }
       >
-        <View style={styles.searchPanel}>
-          <Input
-            placeholder="Search reflections or tags"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            containerStyle={styles.searchInput}
-          />
+        <Animated.View
+          entering={FadeInUp.duration(180)}
+          layout={LinearTransition.duration(180)}
+        >
+          <Pressable
+            style={styles.launcherButton}
+            onPress={() => openEditor()}
+            accessibilityLabel="Create a new journal entry"
+          >
+            <View style={styles.launcherIcon}>
+              <Feather name="edit-3" size={18} color={COLORS.primaryDark} />
+            </View>
 
-          {activeFilterCount > 0 ? (
+            <View style={styles.launcherCopy}>
+              <HeadingLarge>New entry</HeadingLarge>
+            </View>
+
+            <Feather name="chevron-right" size={18} color={COLORS.textSecondary} />
+          </Pressable>
+        </Animated.View>
+
+        <View style={styles.timelineHeader}>
+          <View style={styles.timelineTitleGroup}>
+            <HeadingLarge>Entries</HeadingLarge>
+            <Caption>
+              {showEmptyFeed
+                ? 'Nothing here yet.'
+                : activeFilterCount > 0
+                  ? `${filteredEntries.length} ${filteredEntries.length === 1 ? 'match' : 'matches'}`
+                  : formatCountLabel(entries.length, 'entry')}
+            </Caption>
+          </View>
+
+          {!showEmptyFeed ? (
             <Pressable
-              style={styles.clearFiltersButton}
-              onPress={() => {
-                setSearchQuery('');
-                setSelectedTag(null);
-                setSelectedMood(null);
-              }}
+              style={styles.filterToggle}
+              onPress={() => setShowFilters((current) => !current)}
+              accessibilityLabel={
+                showFilters ? 'Hide search and filters' : 'Show search and filters'
+              }
             >
-              <Caption color={COLORS.primaryDark}>Clear filters</Caption>
+              <Feather
+                name={showFilters ? 'chevron-up' : 'sliders'}
+                size={16}
+                color={COLORS.textSecondary}
+              />
+              <Caption color={COLORS.textSecondary}>
+                {activeFilterCount > 0
+                  ? `${activeFilterCount} active`
+                  : 'Search & filter'}
+              </Caption>
             </Pressable>
           ) : null}
         </View>
 
-        <View style={styles.filtersSection}>
-          <View style={styles.filterGroup}>
-            <Caption>Mood</Caption>
-            <HorizontalScrollView
+        {showFilters && !showEmptyFeed ? (
+          <Animated.View
+            entering={FadeInDown.duration(160)}
+            layout={LinearTransition.duration(180)}
+            style={styles.filtersCard}
+          >
+            <Input
+              placeholder="Search reflections or tags"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              containerStyle={styles.searchInput}
+            />
+
+            <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.filterRail}
             >
               <FilterChip
-                label="All"
+                label="All moods"
                 isSelected={selectedMood === null}
                 onPress={() => setSelectedMood(null)}
               />
@@ -155,116 +336,82 @@ export default function JournalScreen() {
                   key={mood.value}
                   label={`${mood.emoji} ${mood.label}`}
                   isSelected={selectedMood === mood.value}
-                  onPress={() => setSelectedMood((current) => (current === mood.value ? null : mood.value))}
+                  onPress={() =>
+                    setSelectedMood((current) =>
+                      current === mood.value ? null : mood.value
+                    )
+                  }
                   selectedColors={JOURNAL_MOOD_STYLES[mood.value]}
                 />
               ))}
-            </HorizontalScrollView>
-          </View>
+            </ScrollView>
 
-          {recentTags.length > 0 ? (
-            <View style={styles.filterGroup}>
-              <Caption>Tags</Caption>
-              <HorizontalScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.filterRail}
-              >
-                <FilterChip
-                  label="All"
-                  isSelected={selectedTag === null}
-                  onPress={() => setSelectedTag(null)}
-                />
-                {recentTags.map((tag) => (
-                  <FilterChip
-                    key={tag}
-                    label={`#${tag}`}
-                    isSelected={selectedTag === tag}
-                    onPress={() => setSelectedTag((current) => (current === tag ? null : tag))}
-                  />
-                ))}
-              </HorizontalScrollView>
-            </View>
-          ) : null}
-        </View>
-
-        {!showEmptyFeed ? (
-          <View style={styles.resultsHeader}>
-            <HeadingLarge>Latest reflections</HeadingLarge>
-            <Caption>
-              {activeFilterCount > 0 ? `${filteredEntries.length} matching` : `${filteredEntries.length} total`}
-            </Caption>
-          </View>
+            {activeFilterCount > 0 ? (
+              <View style={styles.filtersFooter}>
+                <Caption>{formatCountLabel(filteredEntries.length, 'result')}</Caption>
+                <Pressable onPress={clearFilters} accessibilityLabel="Clear filters">
+                  <Caption color={COLORS.primaryDark}>Clear</Caption>
+                </Pressable>
+              </View>
+            ) : null}
+          </Animated.View>
         ) : null}
 
-        {filteredEntries.length > 0 ? (
+        {groupedEntries.length > 0 ? (
           <View style={styles.entriesList}>
-            {filteredEntries.map((entry) => (
-              <JournalEntryCard
-                key={entry.id}
-                entry={entry}
-                onEdit={(selectedEntry) => openEditor(selectedEntry)}
-                onDelete={handleDeleteEntry}
-              />
+            {groupedEntries.map((section, sectionIndex) => (
+              <Animated.View
+                key={section.key}
+                entering={FadeInDown.delay(sectionIndex * 35).duration(180)}
+                layout={LinearTransition.duration(180)}
+                style={styles.sectionBlock}
+              >
+                <View style={styles.sectionHeader}>
+                  <HeadingLarge>{section.title}</HeadingLarge>
+                  <Caption>{formatCountLabel(section.entries.length, 'entry')}</Caption>
+                </View>
+
+                <View style={styles.sectionEntries}>
+                  {section.entries.map((entry) => (
+                    <JournalEntryCard
+                      key={entry.id}
+                      entry={entry}
+                      onEdit={(selectedEntry) =>
+                        openEditor({ entry: selectedEntry })
+                      }
+                      onDelete={handleDeleteEntry}
+                    />
+                  ))}
+                </View>
+              </Animated.View>
             ))}
           </View>
         ) : (
-              <Card variant="surface" style={styles.emptyCard}>
-                <View style={styles.emptyBadge}>
-                  <Caption color={COLORS.primaryDark}>
-                {showEmptyResults ? 'No match' : 'Empty'}
-              </Caption>
-            </View>
+          <Animated.View
+            entering={FadeInDown.duration(180)}
+            layout={LinearTransition.duration(180)}
+            style={styles.emptyCard}
+          >
             <HeadingLarge>
-              {showEmptyResults ? 'Nothing matches the current filters.' : 'No entries yet.'}
+              {showEmptyResults ? 'No matching entries.' : 'Your entries will show up here.'}
             </HeadingLarge>
-            <BodyMedium style={styles.emptyBody}>
-              {showEmptyResults
-                ? 'Try a different mood, tag, or search term.'
-                : 'Use text when you want precision and voice when the thought arrives faster than your thumbs.'}
-            </BodyMedium>
-            <View style={styles.emptyActions}>
-                <Button
-                title={showEmptyResults ? 'Clear filters' : 'Add entry'}
-                onPress={() => {
-                  if (showEmptyResults) {
-                    setSearchQuery('');
-                    setSelectedTag(null);
-                    setSelectedMood(null);
-                    return;
-                  }
 
-                  openEditor();
-                }}
-                size="sm"
-              />
-            </View>
-          </Card>
+            <BodyMedium color={COLORS.textSecondary}>
+              {showEmptyResults
+                ? 'Try a simpler search or clear the filters.'
+                : 'Start with one entry. The list grows from there.'}
+            </BodyMedium>
+          </Animated.View>
         )}
       </ScrollView>
-
-      <Pressable
-        style={[
-          styles.floatingAddButton,
-          {
-            bottom: TAB_BAR.height + insets.bottom + SPACING.lg,
-          },
-        ]}
-        onPress={() => openEditor()}
-        accessibilityLabel="Add journal entry"
-      >
-        <Feather name="plus" size={16} color={COLORS.white} />
-        <BodyMedium color={COLORS.white}>Add entry</BodyMedium>
-      </Pressable>
 
       <JournalEntryModal
         visible={showEditor}
         entry={editingEntry}
+        prompt={editorPrompt}
         recentTags={recentTags}
-        onClose={() => {
-          setShowEditor(false);
-          setEditingEntry(null);
-        }}
+        autoStartVoice={autoStartVoice}
+        onClose={closeEditor}
         onSave={handleSaveEntry}
       />
     </View>
@@ -300,11 +447,13 @@ function FilterChip({
       ]}
       onPress={onPress}
     >
-      <BodyMedium
-        color={isSelected ? selectedColors?.text ?? COLORS.primaryDark : COLORS.textSecondary}
+      <Caption
+        color={
+          isSelected ? selectedColors?.text ?? COLORS.primaryDark : COLORS.textSecondary
+        }
       >
         {label}
-      </BodyMedium>
+      </Caption>
     </Pressable>
   );
 }
@@ -312,39 +461,79 @@ function FilterChip({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.surface,
   },
   content: {
+    gap: SPACING.md,
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    gap: SPACING.md,
   },
-  searchPanel: {
+  launcherButton: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  launcherIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.primaryLight,
+  },
+  launcherCopy: {
+    flex: 1,
+  },
+  timelineHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: SPACING.md,
+    paddingHorizontal: 2,
+  },
+  timelineTitleGroup: {
+    gap: 2,
+  },
+  filterToggle: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  filtersCard: {
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: BORDER_RADIUS.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.background,
   },
   searchInput: {
     marginBottom: 0,
-  },
-  clearFiltersButton: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-  },
-  filtersSection: {
-    gap: SPACING.xs,
-  },
-  filterGroup: {
-    gap: SPACING.xs,
   },
   filterRail: {
     gap: SPACING.sm,
     paddingRight: SPACING.md,
   },
   filterChip: {
+    minHeight: 36,
+    justifyContent: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.white,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
@@ -352,47 +541,34 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.primaryLight,
     borderColor: COLORS.primary,
   },
-  resultsHeader: {
+  filtersFooter: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: SPACING.md,
   },
   entriesList: {
+    gap: SPACING.lg,
+  },
+  sectionBlock: {
+    gap: SPACING.sm,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     gap: SPACING.md,
+    paddingHorizontal: 2,
+  },
+  sectionEntries: {
+    gap: SPACING.sm,
   },
   emptyCard: {
-    alignItems: 'flex-start',
     gap: SPACING.sm,
-  },
-  emptyBadge: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-  },
-  emptyBody: {
-    maxWidth: 320,
-  },
-  emptyActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    marginTop: SPACING.xs,
-  },
-  floatingAddButton: {
-    position: 'absolute',
-    right: SPACING.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    minHeight: 48,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primary,
-    shadowColor: COLORS.black,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.16,
-    shadowRadius: 10,
-    elevation: 6,
+    padding: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: COLORS.background,
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
 });
