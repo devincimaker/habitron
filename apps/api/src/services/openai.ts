@@ -304,7 +304,6 @@ export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Pr
   const response = await client.audio.transcriptions.create({
     model: 'whisper-1',
     file: file,
-    language: 'en',
   });
 
   return response.text;

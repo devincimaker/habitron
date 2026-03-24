@@ -44,7 +44,6 @@ describe('transcribeAudio', () => {
     expect(mockTranscriptionsCreate).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'whisper-1',
-        language: 'en',
       })
     );
   });
