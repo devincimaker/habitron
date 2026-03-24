@@ -48,7 +48,7 @@ When pushing database migrations:
 
 ## Linear Integration
 
-- **Workspace**: fioris
+- **Workspace**: daio
 - **Team**: Habitron team
-- **Project URL**: https://linear.app/fioris/team/HAB/active
+- **Project URL**: https://linear.app/daio/team/HAB/all
 - **Issue Identifier**: HAB
