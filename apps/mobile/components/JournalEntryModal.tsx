@@ -303,7 +303,7 @@ export function JournalEntryModal({
                       style={styles.suggestedTagChip}
                       onPress={() => addSuggestedTag(tag)}
                     >
-                      <Caption color={COLORS.primaryDark}>#{tag}</Caption>
+                      <Caption color={COLORS.primaryDark}>{tag}</Caption>
                     </Pressable>
                   ))}
                 </View>

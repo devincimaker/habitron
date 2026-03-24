@@ -158,7 +158,7 @@ export function JournalEntryCard({
         <View style={styles.tagsRow}>
           {visibleTags.map((tag) => (
             <View key={`${entry.id}-${tag}`} style={styles.tagChip}>
-              <Caption color={COLORS.primaryDark}>#{tag}</Caption>
+              <Caption color={COLORS.primaryDark}>{tag}</Caption>
             </View>
           ))}
           {hiddenTagCount > 0 ? (

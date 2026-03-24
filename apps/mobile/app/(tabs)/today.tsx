@@ -91,7 +91,7 @@ export default function TodayScreen() {
     const parts = [
       selectedJournalEntry.mood ? `Mood ${selectedJournalEntry.mood}` : null,
       selectedJournalEntry.tags.length > 0
-        ? selectedJournalEntry.tags.slice(0, 2).map((tag) => `#${tag}`).join(' ')
+        ? selectedJournalEntry.tags.slice(0, 2).join(' ')
         : null,
     ].filter(Boolean);
 
