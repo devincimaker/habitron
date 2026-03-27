@@ -20,10 +20,12 @@ import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useSessionStore } from '../../stores/useSessionStore';
 import { useTodosStore } from '../../stores/useTodosStore';
-import { BORDER_RADIUS, COLORS, SPACING } from '../../constants/theme';
+import { BORDER_RADIUS, SPACING, type Colors } from '../../constants/theme';
 import { formatDateString, formatRelativeDateLabel } from '../../utils/dateUtils';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 export default function TodayScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const today = getTodayDate();
   const {
@@ -148,7 +150,7 @@ export default function TodayScreen() {
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={refreshAll}
-            tintColor={COLORS.primary}
+            tintColor={colors.primary}
           />
         }
       >
@@ -252,7 +254,7 @@ export default function TodayScreen() {
         <Card variant="surface">
           {selectedJournalEntry ? (
             <>
-              <BodyMedium color={COLORS.text}>{selectedJournalEntry.content}</BodyMedium>
+              <BodyMedium color={colors.text}>{selectedJournalEntry.content}</BodyMedium>
               {selectedJournalEntry.mood ? (
                 <Caption style={styles.diaryMood}>Mood: {selectedJournalEntry.mood}</Caption>
               ) : null}
@@ -279,6 +281,8 @@ export default function TodayScreen() {
 }
 
 function SummaryStat({ label, value }: { label: string; value: string }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.statCard}>
       <Label>{value}</Label>
@@ -298,6 +302,8 @@ function JumpCard({
   actionLabel: string;
   onPress: () => void;
 }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <Card variant="outlined" style={styles.jumpCard}>
       <HeadingLarge>{title}</HeadingLarge>
@@ -307,10 +313,10 @@ function JumpCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     paddingBottom: SPACING.xxl,
@@ -320,7 +326,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   heroEyebrow: {
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
     marginBottom: SPACING.xs,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
@@ -335,7 +341,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
@@ -355,7 +361,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   goalCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },

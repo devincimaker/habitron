@@ -4,13 +4,15 @@ import * as Haptics from 'expo-haptics';
 import { CustomTabBar } from '../../components/CustomTabBar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { useSessionStore } from '../../stores/useSessionStore';
-import { COLORS } from '../../constants/theme';
+import { type Colors } from '../../constants/theme';
+import { useThemedStyles } from '../../hooks/useColors';
 
 export const unstable_settings = {
   initialRouteName: 'today',
 };
 
 export default function TabLayout() {
+  const [styles] = useThemedStyles(createStyles);
   const { isActive, startSession } = useSessionStore();
 
   return (
@@ -92,12 +94,12 @@ export default function TabLayout() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   header: {
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   headerTitle: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '600',
   },
 });

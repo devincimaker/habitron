@@ -3,9 +3,11 @@ import { View, Text, TouchableOpacity, StyleSheet, KeyboardAvoidingView, Platfor
 import { Link, useRouter } from 'expo-router';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { Button, Input, DisplayLarge, BodyMedium } from '../../components/ui';
-import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
+import { useThemedStyles } from '../../hooks/useColors';
 
 export default function LoginScreen() {
+  const [styles] = useThemedStyles(createStyles);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -87,10 +89,10 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
@@ -108,7 +110,7 @@ const styles = StyleSheet.create({
   },
   error: {
     ...TYPOGRAPHY.bodySmall,
-    color: COLORS.error,
+    color: colors.error,
     marginBottom: SPACING.md,
   },
   buttonContainer: {
@@ -121,7 +123,7 @@ const styles = StyleSheet.create({
   },
   link: {
     ...TYPOGRAPHY.bodyLarge,
-    color: COLORS.primary,
+    color: colors.primary,
     fontWeight: '600',
   },
 });

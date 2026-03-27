@@ -8,15 +8,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  SHADOWS,
-  TYPOGRAPHY,
-  LIST_ITEM,
-  STATUS_INDICATOR,
-} from '../constants/theme';
+import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, STATUS_INDICATOR, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 const DEFAULT_HABIT_ICON = 'flash';
 
@@ -29,7 +22,9 @@ interface HabitItemProps {
 
 const SWIPE_THRESHOLD = 80;
 
-export function HabitItem({ habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
+export function HabitItem({
+  habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
@@ -95,24 +90,24 @@ export function HabitItem({ habit, onStatusChange, onLongPress, onPress }: Habit
   const getStatusColor = () => {
     switch (habit.todayStatus) {
       case 'completed':
-        return COLORS.success;
+        return colors.success;
       case 'skipped':
-        return COLORS.skipped;
+        return colors.skipped;
       default:
-        return COLORS.primary;
+        return colors.primary;
     }
   };
 
   const renderStatusContent = () => {
     switch (habit.todayStatus) {
       case 'completed':
-        return <Text style={[styles.statusIcon, { color: COLORS.success }]}>✓</Text>;
+        return <Text style={[styles.statusIcon, { color: colors.success }]}>✓</Text>;
       case 'skipped':
-        return <Text style={[styles.statusIcon, { color: COLORS.skipped }]}>✗</Text>;
+        return <Text style={[styles.statusIcon, { color: colors.skipped }]}>✗</Text>;
       default:
         // Show habit icon when pending
         const iconName = (habit.icon || DEFAULT_HABIT_ICON) as keyof typeof Ionicons.glyphMap;
-        return <Ionicons name={iconName} size={18} color={COLORS.primary} />;
+        return <Ionicons name={iconName} size={18} color={colors.primary} />;
     }
   };
 
@@ -151,7 +146,7 @@ export function HabitItem({ habit, onStatusChange, onLongPress, onPress }: Habit
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     position: 'relative',
     marginHorizontal: LIST_ITEM.marginHorizontal,
@@ -159,7 +154,7 @@ const styles = StyleSheet.create({
   },
   backgroundLeft: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.success,
+    backgroundColor: colors.success,
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'flex-start',
@@ -167,25 +162,25 @@ const styles = StyleSheet.create({
   },
   backgroundRight: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.skipped,
+    backgroundColor: colors.skipped,
     borderRadius: BORDER_RADIUS.md,
     justifyContent: 'center',
     alignItems: 'flex-end',
     paddingRight: SPACING.lg,
   },
   backgroundIcon: {
-    color: COLORS.white,
+    color: colors.white,
     ...TYPOGRAPHY.displayMedium,
     fontWeight: 'bold',
   },
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     ...SHADOWS.small,
   },
   statusIndicator: {
@@ -205,19 +200,19 @@ const styles = StyleSheet.create({
   },
   habitName: {
     ...TYPOGRAPHY.headingMedium,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '500',
   },
   completedText: {
     textDecorationLine: 'line-through',
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   skippedText: {
-    color: COLORS.textLight,
+    color: colors.textLight,
   },
   timeOfDay: {
     ...TYPOGRAPHY.bodyMedium,
-    color: COLORS.textLight,
+    color: colors.textLight,
     marginTop: 2,
     textTransform: 'capitalize',
   },

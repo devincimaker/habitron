@@ -2,8 +2,9 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Todo } from '@habits-coach/shared';
 import { BodyMedium, Caption } from './ui';
-import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { formatRelativeDateLabel, getNextDay } from '../utils/dateUtils';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface TaskRowProps {
   todo: Todo;
@@ -22,6 +23,7 @@ export function TaskRow({
   onCancel,
   onEdit,
 }: TaskRowProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const nextDay = getNextDay(selectedDate);
 
   return (
@@ -31,13 +33,13 @@ export function TaskRow({
           <Ionicons
             name={todo.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
             size={24}
-            color={todo.status === 'completed' ? COLORS.success : COLORS.textLight}
+            color={todo.status === 'completed' ? colors.success : colors.textLight}
           />
         </Pressable>
 
         <Pressable style={styles.taskCopy} onPress={() => onEdit(todo)}>
           <BodyMedium
-            color={COLORS.text}
+            color={colors.text}
             style={todo.status === 'completed' ? styles.completedText : undefined}
           >
             {todo.title}
@@ -61,15 +63,15 @@ export function TaskRow({
               style={styles.taskActionChip}
               onPress={() => void onMoveTomorrow(todo, nextDay)}
             >
-              <Caption color={COLORS.textSecondary}>Tomorrow</Caption>
+              <Caption color={colors.textSecondary}>Tomorrow</Caption>
             </Pressable>
             <Pressable style={styles.taskActionChip} onPress={() => void onCancel(todo)}>
-              <Caption color={COLORS.error}>Cancel</Caption>
+              <Caption color={colors.error}>Cancel</Caption>
             </Pressable>
           </>
         ) : (
           <Pressable style={styles.taskActionChip} onPress={() => onEdit(todo)}>
-            <Caption color={COLORS.textSecondary}>Edit</Caption>
+            <Caption color={colors.textSecondary}>Edit</Caption>
           </Pressable>
         )}
       </View>
@@ -77,11 +79,11 @@ export function TaskRow({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   taskRow: {
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   taskMain: {
     flexDirection: 'row',
@@ -96,7 +98,7 @@ const styles = StyleSheet.create({
   },
   completedText: {
     textDecorationLine: 'line-through',
-    color: COLORS.textLight,
+    color: colors.textLight,
   },
   taskMeta: {
     flexDirection: 'row',
@@ -114,6 +116,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 6,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
 });

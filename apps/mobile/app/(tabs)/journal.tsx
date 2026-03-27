@@ -30,15 +30,16 @@ import {
 import { useJournalStore } from '../../stores/useJournalStore';
 import {
   BORDER_RADIUS,
-  COLORS,
   SHADOWS,
   SPACING,
   TAB_BAR,
+  type Colors,
 } from '../../constants/theme';
 import {
   JOURNAL_MOODS,
   JOURNAL_MOOD_STYLES,
 } from '../../constants/journal';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 interface JournalSection {
   key: string;
@@ -104,6 +105,7 @@ function formatCountLabel(
 }
 
 export default function JournalScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const params = useLocalSearchParams<{
     compose?: string | string[];
@@ -284,7 +286,7 @@ export default function JournalScreen() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={() => loadEntries()}
-            tintColor={COLORS.primary}
+            tintColor={colors.primary}
           />
         }
       >
@@ -311,9 +313,9 @@ export default function JournalScreen() {
               <Feather
                 name={showFilters ? 'chevron-up' : 'sliders'}
                 size={16}
-                color={COLORS.textSecondary}
+                color={colors.textSecondary}
               />
-              <Caption color={COLORS.textSecondary}>
+              <Caption color={colors.textSecondary}>
                 {activeFilterCount > 0
                   ? `${activeFilterCount} active`
                   : 'Search & filter'}
@@ -364,7 +366,7 @@ export default function JournalScreen() {
               <View style={styles.filtersFooter}>
                 <Caption>{formatCountLabel(filteredEntries.length, 'result')}</Caption>
                 <Pressable onPress={clearFilters} accessibilityLabel="Clear filters">
-                  <Caption color={COLORS.primaryDark}>Clear</Caption>
+                  <Caption color={colors.primaryDark}>Clear</Caption>
                 </Pressable>
               </View>
             ) : null}
@@ -411,7 +413,7 @@ export default function JournalScreen() {
               {showEmptyResults ? 'No matching entries.' : 'Your entries will show up here.'}
             </HeadingLarge>
 
-            <BodyMedium color={COLORS.textSecondary}>
+            <BodyMedium color={colors.textSecondary}>
               {showEmptyResults
                 ? 'Try a simpler search or clear the filters.'
                 : 'Start with one entry. The list grows from there.'}
@@ -428,7 +430,7 @@ export default function JournalScreen() {
         onPress={() => openEditor()}
         accessibilityLabel="Create a new journal entry"
       >
-        <Feather name="plus" size={24} color={COLORS.white} />
+        <Feather name="plus" size={24} color={colors.white} />
       </Pressable>
 
       {pendingDelete ? (
@@ -440,13 +442,13 @@ export default function JournalScreen() {
           ]}
           accessibilityRole="alert"
         >
-          <BodyMedium color={COLORS.white}>Entry deleted</BodyMedium>
+          <BodyMedium color={colors.white}>Entry deleted</BodyMedium>
           <Pressable
             onPress={handleUndoDelete}
             accessibilityLabel="Undo delete"
             accessibilityRole="button"
           >
-            <BodyMedium color={COLORS.primaryDark} style={styles.undoText}>
+            <BodyMedium color={colors.primaryDark} style={styles.undoText}>
               Undo
             </BodyMedium>
           </Pressable>
@@ -481,6 +483,8 @@ function FilterChip({
     text: string;
   };
 }) {
+  const colors = useColors();
+  const [styles] = useThemedStyles(createStyles);
   return (
     <Pressable
       style={[
@@ -499,7 +503,7 @@ function FilterChip({
     >
       <Caption
         color={
-          isSelected ? selectedColors?.text ?? COLORS.primaryDark : COLORS.textSecondary
+          isSelected ? selectedColors?.text ?? colors.primaryDark : colors.textSecondary
         }
       >
         {label}
@@ -508,10 +512,10 @@ function FilterChip({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   content: {
     gap: SPACING.md,
@@ -524,7 +528,7 @@ const styles = StyleSheet.create({
     width: 56,
     height: 56,
     borderRadius: 28,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.medium,
@@ -546,17 +550,17 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.sm,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   filtersCard: {
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   searchInput: {
     marginBottom: 0,
@@ -571,13 +575,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   filterChipSelected: {
-    backgroundColor: COLORS.primaryLight,
-    borderColor: COLORS.primary,
+    backgroundColor: colors.primaryLight,
+    borderColor: colors.primary,
   },
   filtersFooter: {
     flexDirection: 'row',
@@ -605,9 +609,9 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderRadius: BORDER_RADIUS.xl,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   undoBanner: {
     position: 'absolute',
@@ -619,7 +623,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
-    backgroundColor: COLORS.text,
+    backgroundColor: colors.text,
   },
   undoText: {
     fontWeight: '600',

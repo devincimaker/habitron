@@ -7,16 +7,11 @@ import { useAuthStore } from '../../stores/useAuthStore';
 import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import { useProfileStore } from '../../stores/useProfileStore';
 import { Button, Input, Avatar, HeadingLarge, BodyMedium, Caption } from '../../components/ui';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  TYPOGRAPHY,
-  TAB_BAR,
-  TOUCH_TARGET,
-} from '../../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, TAB_BAR, TOUCH_TARGET, type Colors } from '../../constants/theme';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 export default function ProfileScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
@@ -105,36 +100,36 @@ export default function ProfileScreen() {
         <View style={styles.menuSection}>
           <TouchableOpacity style={styles.menuRow} onPress={handleOpenMemories}>
             <View style={styles.menuRowLeft}>
-              <Feather name="database" size={20} color={COLORS.text} style={styles.menuIcon} />
+              <Feather name="database" size={20} color={colors.text} style={styles.menuIcon} />
               <BodyMedium>Memories</BodyMedium>
             </View>
             <View style={styles.menuRowRight}>
               {memories.length > 0 && (
                 <Caption style={styles.menuCount}>{memories.length}</Caption>
               )}
-              <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
+              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
           <TouchableOpacity style={[styles.menuRow, { marginTop: SPACING.sm }]} onPress={handleOpenSessions}>
             <View style={styles.menuRowLeft}>
-              <Feather name="message-square" size={20} color={COLORS.text} style={styles.menuIcon} />
+              <Feather name="message-square" size={20} color={colors.text} style={styles.menuIcon} />
               <BodyMedium>Session history</BodyMedium>
             </View>
             <View style={styles.menuRowRight}>
-              <Feather name="chevron-right" size={20} color={COLORS.textSecondary} />
+              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>
 
           <View style={[styles.menuRow, { marginTop: SPACING.sm }]}>
             <View style={styles.menuRowLeft}>
-              <Feather name="bell" size={20} color={COLORS.text} style={styles.menuIcon} />
+              <Feather name="bell" size={20} color={colors.text} style={styles.menuIcon} />
               <BodyMedium>Daily reminder</BodyMedium>
             </View>
             <Switch
               value={dailyReminderEnabled}
               onValueChange={handleToggleReminder}
-              trackColor={{ false: COLORS.border, true: COLORS.primary }}
+              trackColor={{ false: colors.border, true: colors.primary }}
             />
           </View>
 
@@ -143,8 +138,8 @@ export default function ProfileScreen() {
             onPress={() => { throw new Error('Test Sentry error'); }}
           >
             <View style={styles.menuRowLeft}>
-              <Feather name="alert-triangle" size={20} color={COLORS.error} style={styles.menuIcon} />
-              <BodyMedium style={{ color: COLORS.error }}>Test Crash (Sentry)</BodyMedium>
+              <Feather name="alert-triangle" size={20} color={colors.error} style={styles.menuIcon} />
+              <BodyMedium style={{ color: colors.error }}>Test Crash (Sentry)</BodyMedium>
             </View>
           </TouchableOpacity>
         </View>
@@ -196,10 +191,10 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
@@ -218,13 +213,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   userEmail: {
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   editNameLink: {
     marginTop: SPACING.sm,
   },
   editNameText: {
-    color: COLORS.primary,
+    color: colors.primary,
     ...TYPOGRAPHY.label,
   },
   // Menu section
@@ -237,7 +232,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     minHeight: TOUCH_TARGET.comfortable,
   },
@@ -253,7 +248,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   menuCount: {
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginRight: SPACING.xs,
   },
   // Actions
@@ -265,7 +260,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   signOutText: {
-    color: COLORS.error,
+    color: colors.error,
     ...TYPOGRAPHY.label,
   },
   // Modal
@@ -277,7 +272,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   modalContent: {
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.white,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.lg,
     width: '100%',

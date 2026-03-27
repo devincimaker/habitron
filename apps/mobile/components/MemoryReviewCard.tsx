@@ -1,14 +1,7 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import type { MemoryCategory } from '@habits-coach/shared';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  SHADOWS,
-  TYPOGRAPHY,
-  CATEGORY_COLORS,
-  CATEGORY_LABELS,
-} from '../constants/theme';
+import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, CATEGORY_COLORS, CATEGORY_LABELS, type Colors } from '../constants/theme';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface MemoryReviewCardProps {
   content: string;
@@ -23,6 +16,7 @@ export function MemoryReviewCard({
   selected,
   onToggle,
 }: MemoryReviewCardProps) {
+  const [styles] = useThemedStyles(createStyles);
   return (
     <TouchableOpacity
       style={[styles.card, selected && styles.cardSelected]}
@@ -51,9 +45,9 @@ export function MemoryReviewCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   card: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
     marginBottom: SPACING.sm,
@@ -62,8 +56,8 @@ const styles = StyleSheet.create({
     ...SHADOWS.small,
   },
   cardSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: `${COLORS.primary}08`,
+    borderColor: colors.primary,
+    backgroundColor: `${colors.primary}08`,
   },
   header: {
     flexDirection: 'row',
@@ -85,21 +79,21 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: BORDER_RADIUS.sm,
     borderWidth: 2,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
     justifyContent: 'center',
     alignItems: 'center',
   },
   checkboxSelected: {
-    backgroundColor: COLORS.primary,
-    borderColor: COLORS.primary,
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   checkmark: {
-    color: COLORS.white,
+    color: colors.white,
     ...TYPOGRAPHY.label,
     fontWeight: 'bold',
   },
   content: {
     ...TYPOGRAPHY.bodyLarge,
-    color: COLORS.text,
+    color: colors.text,
   },
 });

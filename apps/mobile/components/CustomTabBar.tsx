@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +7,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { COLORS, TAB_BAR } from '../constants/theme';
+import { TAB_BAR, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
@@ -66,6 +68,7 @@ function TabButton({
   onPress: () => void;
   isActive: boolean;
 }) {
+  const [styles] = useThemedStyles(createStyles);
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -96,6 +99,7 @@ function TabButton({
 }
 
 export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
 
   const visibleRoutes = state.routes.filter(route => TAB_ICONS[route.name]);
@@ -110,7 +114,7 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
           const label = options.title ?? route.name;
           const actualIndex = state.routes.findIndex(r => r.key === route.key);
           const isFocused = state.index === actualIndex;
-          const color = isFocused ? COLORS.primary : COLORS.textSecondary;
+          const color = isFocused ? colors.primary : colors.textSecondary;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -136,7 +140,7 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     position: 'absolute',
     bottom: 0,
@@ -149,9 +153,9 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: TAB_BAR.height + 50, // Extra height to cover safe area
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: colors.border,
   },
   tabsContainer: {
     flexDirection: 'row',

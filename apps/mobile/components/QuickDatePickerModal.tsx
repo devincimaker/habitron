@@ -1,7 +1,8 @@
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BodyMedium, Button, Caption, HeadingLarge } from './ui';
-import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
 import { getUpcomingDays } from '../utils/dateUtils';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface QuickDatePickerModalProps {
   visible: boolean;
@@ -20,6 +21,7 @@ export function QuickDatePickerModal({
   onSelectDate,
   onClose,
 }: QuickDatePickerModalProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const upcomingDays = getUpcomingDays(14);
 
   return (
@@ -41,7 +43,7 @@ export function QuickDatePickerModal({
                   onClose();
                 }}
               >
-                <BodyMedium color={COLORS.text}>No date</BodyMedium>
+                <BodyMedium color={colors.text}>No date</BodyMedium>
               </Pressable>
             ) : null}
 
@@ -57,7 +59,7 @@ export function QuickDatePickerModal({
                     onClose();
                   }}
                 >
-                  <BodyMedium color={COLORS.text}>{option.label}</BodyMedium>
+                  <BodyMedium color={colors.text}>{option.label}</BodyMedium>
                   <Caption>{option.secondaryLabel}</Caption>
                 </Pressable>
               );
@@ -77,7 +79,7 @@ export function QuickDatePickerModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.35)',
@@ -86,7 +88,7 @@ const styles = StyleSheet.create({
   },
   sheet: {
     maxHeight: '75%',
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.lg,
   },
@@ -97,13 +99,13 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.md,
     borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     marginBottom: SPACING.sm,
   },
   rowSelected: {
     borderWidth: 1,
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   closeButton: {
     alignSelf: 'flex-end',

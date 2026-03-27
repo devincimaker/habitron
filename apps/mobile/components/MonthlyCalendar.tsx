@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -8,17 +9,13 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import { HabitStatus, getTodayDate } from '@habits-coach/shared';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  TYPOGRAPHY,
-} from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
 import {
   getMonthInfo,
   getMonthDisplayString,
   toDateString,
 } from '../utils/dateUtils';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface MonthlyCalendarProps {
   year: number;
@@ -33,11 +30,10 @@ interface MonthlyCalendarProps {
 }
 
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-const DAY_SIZE = 40;
+const DAY_SIZE = 44;
 const SWIPE_THRESHOLD = 50;
 
-export function MonthlyCalendar({
-  year,
+export function MonthlyCalendar({ year,
   month,
   logs,
   habitCreatedAt,
@@ -47,6 +43,7 @@ export function MonthlyCalendar({
   canGoBack,
   canGoForward,
 }: MonthlyCalendarProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const monthInfo = getMonthInfo(year, month);
   const displayString = getMonthDisplayString(year, month);
 
@@ -70,13 +67,13 @@ export function MonthlyCalendar({
       }
     });
 
-  // Generate calendar grid
-  const renderDays = () => {
-    const days: React.ReactNode[] = [];
+  // Generate calendar grid (memoized to avoid recreating 30+ DayCell nodes)
+  const days = useMemo(() => {
+    const result: React.ReactNode[] = [];
 
     // Empty cells for days before month starts
     for (let i = 0; i < monthInfo.firstDayOfWeek; i++) {
-      days.push(<View key={`empty-${i}`} style={styles.dayCell} />);
+      result.push(<View key={`empty-${i}`} style={styles.dayCell} />);
     }
 
     // Actual days
@@ -88,7 +85,7 @@ export function MonthlyCalendar({
       const isBeforeCreated = dateStr < createdDateStr;
       const isDisabled = isFuture || isBeforeCreated;
 
-      days.push(
+      result.push(
         <DayCell
           key={dateStr}
           day={day}
@@ -101,8 +98,8 @@ export function MonthlyCalendar({
       );
     }
 
-    return days;
-  };
+    return result;
+  }, [year, month, logs, todayStr, createdDateStr, monthInfo, onDayPress, styles]);
 
   return (
     <GestureDetector gesture={swipeGesture}>
@@ -118,7 +115,7 @@ export function MonthlyCalendar({
             <Ionicons
               name="chevron-back"
               size={24}
-              color={canGoBack ? COLORS.text : COLORS.textLight}
+              color={canGoBack ? colors.text : colors.textLight}
             />
           </Pressable>
 
@@ -133,7 +130,7 @@ export function MonthlyCalendar({
             <Ionicons
               name="chevron-forward"
               size={24}
-              color={canGoForward ? COLORS.text : COLORS.textLight}
+              color={canGoForward ? colors.text : colors.textLight}
             />
           </Pressable>
         </View>
@@ -148,7 +145,7 @@ export function MonthlyCalendar({
         </View>
 
         {/* Calendar grid */}
-        <View style={styles.daysGrid}>{renderDays()}</View>
+        <View style={styles.daysGrid}>{days}</View>
       </View>
     </GestureDetector>
   );
@@ -168,8 +165,9 @@ function DayCell({
   status: HabitStatus | undefined;
   isToday: boolean;
   isDisabled: boolean;
-  onPress: () => void;
-}) {
+  onPress: () => void; }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -188,22 +186,22 @@ function DayCell({
 
   const getBackgroundStyle = () => {
     if (status === 'completed') {
-      return { backgroundColor: COLORS.primary };
+      return { backgroundColor: colors.primary };
     }
     if (isToday) {
-      return { borderWidth: 2, borderColor: COLORS.primary };
+      return { borderWidth: 2, borderColor: colors.primary };
     }
     return {};
   };
 
   const getTextStyle = () => {
     if (status === 'completed') {
-      return { color: COLORS.white };
+      return { color: colors.white };
     }
     if (isDisabled) {
-      return { color: COLORS.textLight };
+      return { color: colors.textLight };
     }
-    return { color: COLORS.text };
+    return { color: colors.text };
   };
 
   return (
@@ -219,7 +217,7 @@ function DayCell({
         style={[styles.dayCircle, getBackgroundStyle(), animatedStyle]}
       >
         {status === 'skipped' ? (
-          <Text style={[styles.dayText, { color: COLORS.skipped }]}>X</Text>
+          <Text style={[styles.dayText, { color: colors.skipped }]}>X</Text>
         ) : (
           <Text style={[styles.dayText, getTextStyle()]}>{day}</Text>
         )}
@@ -228,9 +226,9 @@ function DayCell({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
@@ -251,7 +249,7 @@ const styles = StyleSheet.create({
   },
   monthTitle: {
     ...TYPOGRAPHY.headingLarge,
-    color: COLORS.text,
+    color: colors.text,
   },
   weekdayRow: {
     flexDirection: 'row',
@@ -263,7 +261,7 @@ const styles = StyleSheet.create({
     width: DAY_SIZE,
     textAlign: 'center',
     ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   daysGrid: {
     flexDirection: 'row',

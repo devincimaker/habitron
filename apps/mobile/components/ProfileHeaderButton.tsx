@@ -3,9 +3,11 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Avatar } from './ui';
 import { useAuthStore } from '../stores/useAuthStore';
-import { COLORS, HEADER, SPACING } from '../constants/theme';
+import { HEADER, SPACING, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 export function ProfileHeaderButton() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const { user } = useAuthStore();
 
@@ -24,14 +26,14 @@ export function ProfileHeaderButton() {
       <Avatar
         text={user?.email || '?'}
         size="sm"
-        backgroundColor={COLORS.primary}
-        textColor={COLORS.white}
+        backgroundColor={colors.primary}
+        textColor={colors.white}
       />
     </TouchableOpacity>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     height: HEADER.height,
     marginRight: SPACING.md,

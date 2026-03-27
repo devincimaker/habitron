@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
   Pressable,
@@ -8,7 +8,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { COLORS, SPACING, BORDER_RADIUS, FONT_SIZES } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, FONT_SIZES, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface VoiceInputButtonProps {
   // Idle state (just the mic button)
@@ -35,6 +36,7 @@ function formatDuration(ms: number): string {
 
 // Waveform visualization component
 function Waveform({ level, isWarning = false }: { level: number; isWarning?: boolean }) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const bars = 20;
   const animatedValues = useRef(
     Array.from({ length: bars }, () => new Animated.Value(0.15))
@@ -56,7 +58,7 @@ function Waveform({ level, isWarning = false }: { level: number; isWarning?: boo
     });
   }, [level, animatedValues]);
 
-  const barColor = isWarning ? COLORS.error : COLORS.primary;
+  const barColor = isWarning ? colors.error : colors.primary;
 
   return (
     <View style={waveformStyles.container}>
@@ -103,6 +105,8 @@ export function VoiceInputButton({
   error,
   onRetry,
 }: VoiceInputButtonProps) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   // Error state
   if (error) {
     return (
@@ -124,7 +128,7 @@ export function VoiceInputButton({
         accessibilityLabel="Start voice recording"
         accessibilityRole="button"
       >
-        <Feather name="mic" size={24} color={COLORS.text} />
+        <Feather name="mic" size={24} color={colors.text} />
       </Pressable>
     );
   }
@@ -133,7 +137,7 @@ export function VoiceInputButton({
   if (mode === 'transcribing') {
     return (
       <View style={styles.recordingContainer}>
-        <ActivityIndicator color={COLORS.primary} />
+        <ActivityIndicator color={colors.primary} />
         <Text style={styles.transcribingText}>Transcribing...</Text>
       </View>
     );
@@ -174,22 +178,22 @@ export function VoiceInputButton({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   micButton: {
     width: 48,
     height: 48,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.full,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   recordingContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.lg,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
@@ -200,13 +204,13 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.error,
+    backgroundColor: colors.error,
     borderRadius: BORDER_RADIUS.full,
   },
   stopIcon: {
     width: 14,
     height: 14,
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.white,
     borderRadius: 2,
   },
   waveformContainer: {
@@ -215,11 +219,11 @@ const styles = StyleSheet.create({
   },
   durationText: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   durationTextWarning: {
-    color: COLORS.error,
+    color: colors.error,
     fontWeight: '600',
   },
   sendButton: {
@@ -227,19 +231,19 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: BORDER_RADIUS.full,
   },
   sendIcon: {
     fontSize: 18,
-    color: COLORS.white,
+    color: colors.white,
     fontWeight: 'bold',
   },
   errorContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -248,22 +252,22 @@ const styles = StyleSheet.create({
   errorText: {
     flex: 1,
     fontSize: FONT_SIZES.sm,
-    color: COLORS.error,
+    color: colors.error,
   },
   retryButton: {
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: BORDER_RADIUS.md,
   },
   retryText: {
-    color: COLORS.white,
+    color: colors.white,
     fontSize: FONT_SIZES.sm,
     fontWeight: '500',
   },
   transcribingText: {
     fontSize: FONT_SIZES.sm,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginLeft: SPACING.sm,
   },
 });

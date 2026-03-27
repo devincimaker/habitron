@@ -1,6 +1,7 @@
 import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../../constants/theme';
+import { useColors } from '../../hooks/useColors';
 
 type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive';
 type ButtonSize = 'sm' | 'md' | 'lg';
@@ -32,6 +33,7 @@ export function Button({
   fullWidth = false,
   style,
 }: ButtonProps) {
+  const colors = useColors();
   const sizeStyle = SIZE_STYLES[size];
   const isDisabled = disabled || loading;
 
@@ -45,15 +47,15 @@ export function Button({
         style={[fullWidth && styles.fullWidth, style]}
       >
         <LinearGradient
-          colors={isDisabled ? [COLORS.border, COLORS.border] : [COLORS.primary, COLORS.primaryDark]}
+          colors={isDisabled ? [colors.border, colors.border] : [colors.primary, colors.primaryDark]}
           style={[styles.base, sizeStyle]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.white} size="small" />
+            <ActivityIndicator color={colors.white} size="small" />
           ) : (
-            <Text style={[styles.text, styles.primaryText]}>{title}</Text>
+            <Text style={[styles.text, { color: colors.white }]}>{title}</Text>
           )}
         </LinearGradient>
       </TouchableOpacity>
@@ -70,15 +72,15 @@ export function Button({
         style={[fullWidth && styles.fullWidth, style]}
       >
         <LinearGradient
-          colors={isDisabled ? [COLORS.border, COLORS.border] : [COLORS.error, '#D32F2F']}
+          colors={isDisabled ? [colors.border, colors.border] : [colors.error, '#D32F2F']}
           style={[styles.base, sizeStyle]}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 0 }}
         >
           {loading ? (
-            <ActivityIndicator color={COLORS.white} size="small" />
+            <ActivityIndicator color={colors.white} size="small" />
           ) : (
-            <Text style={[styles.text, styles.primaryText]}>{title}</Text>
+            <Text style={[styles.text, { color: colors.white }]}>{title}</Text>
           )}
         </LinearGradient>
       </TouchableOpacity>
@@ -86,7 +88,7 @@ export function Button({
   }
 
   // Other variants
-  const variantStyles = getVariantStyles(variant, isDisabled);
+  const variantStyles = getVariantStyles(colors, variant, isDisabled);
 
   return (
     <TouchableOpacity
@@ -111,40 +113,41 @@ export function Button({
 }
 
 function getVariantStyles(
+  colors: Colors,
   variant: ButtonVariant,
   disabled: boolean
 ): { container: ViewStyle; textColor: string } {
   if (disabled) {
     return {
-      container: { backgroundColor: COLORS.surface },
-      textColor: COLORS.textLight,
+      container: { backgroundColor: colors.surface },
+      textColor: colors.textLight,
     };
   }
 
   switch (variant) {
     case 'secondary':
       return {
-        container: { backgroundColor: COLORS.surface },
-        textColor: COLORS.text,
+        container: { backgroundColor: colors.surface },
+        textColor: colors.text,
       };
     case 'outline':
       return {
         container: {
           backgroundColor: 'transparent',
           borderWidth: 1,
-          borderColor: COLORS.border,
+          borderColor: colors.border,
         },
-        textColor: COLORS.text,
+        textColor: colors.text,
       };
     case 'ghost':
       return {
         container: { backgroundColor: 'transparent' },
-        textColor: COLORS.textSecondary,
+        textColor: colors.textSecondary,
       };
     default:
       return {
-        container: { backgroundColor: COLORS.primary },
-        textColor: COLORS.white,
+        container: { backgroundColor: colors.primary },
+        textColor: colors.white,
       };
   }
 }
@@ -160,8 +163,5 @@ const styles = StyleSheet.create({
   },
   text: {
     ...TYPOGRAPHY.headingMedium,
-  },
-  primaryText: {
-    color: COLORS.white,
   },
 });

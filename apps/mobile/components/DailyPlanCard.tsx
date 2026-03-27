@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import type { DailyPlan } from '@habits-coach/shared';
 import { BodyMedium, Button, Card, Caption, HeadingLarge, Label } from './ui';
-import { COLORS, SPACING } from '../constants/theme';
+import { SPACING, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface DailyPlanCardProps {
   plan: DailyPlan | null;
@@ -10,7 +11,9 @@ interface DailyPlanCardProps {
 
 const BLOCK_ORDER = ['morning', 'afternoon', 'evening'] as const;
 
-export function DailyPlanCard({ plan, onPlanWithCoach }: DailyPlanCardProps) {
+export function DailyPlanCard({
+  plan, onPlanWithCoach }: DailyPlanCardProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   if (!plan || plan.items.length === 0) {
     return (
       <Card style={styles.card}>
@@ -32,7 +35,7 @@ export function DailyPlanCard({ plan, onPlanWithCoach }: DailyPlanCardProps) {
     <Card style={styles.card}>
       <View style={styles.header}>
         <HeadingLarge>Today&apos;s Plan</HeadingLarge>
-        <Label color={COLORS.primary}>v{plan.version}</Label>
+        <Label color={colors.primary}>v{plan.version}</Label>
       </View>
 
       {plan.rationale ? (
@@ -50,7 +53,7 @@ export function DailyPlanCard({ plan, onPlanWithCoach }: DailyPlanCardProps) {
               <View key={item.id} style={styles.itemRow}>
                 <View style={styles.itemBullet} />
                 <View style={styles.itemContent}>
-                  <BodyMedium color={COLORS.text}>
+                  <BodyMedium color={colors.text}>
                     {item.titleSnapshot}
                     {item.isOptional ? ' (optional)' : ''}
                   </BodyMedium>
@@ -97,7 +100,7 @@ function formatOutcome(outcome: DailyPlan['items'][number]['outcome']): string {
   }
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   card: {
     marginBottom: SPACING.md,
   },
@@ -120,7 +123,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.sm,
   },
   blockLabel: {
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
     marginBottom: SPACING.xs,
   },
   itemRow: {
@@ -132,7 +135,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     marginTop: 7,
     marginRight: SPACING.sm,
   },

@@ -8,7 +8,8 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
-import { COLORS, FONT_SIZES } from '../constants/theme';
+import { FONT_SIZES, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 const SWIPE_THRESHOLD = 80;
 
@@ -18,7 +19,9 @@ interface SessionListItemProps {
   onDelete?: (session: CoachingSessionSummary) => void;
 }
 
-export function SessionListItem({ session, onPress, onDelete }: SessionListItemProps) {
+export function SessionListItem({
+  session, onPress, onDelete }: SessionListItemProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
 
   const date = new Date(session.startedAt);
@@ -67,13 +70,13 @@ export function SessionListItem({ session, onPress, onDelete }: SessionListItemP
   return (
     <View style={styles.wrapper}>
       <Animated.View style={[styles.deleteBackground, deleteBackgroundStyle]}>
-        <Ionicons name="trash-outline" size={24} color={COLORS.white} />
+        <Ionicons name="trash-outline" size={24} color={colors.white} />
       </Animated.View>
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.container, animatedStyle]}>
           <View style={styles.iconContainer}>
-            <Ionicons name="chatbubbles-outline" size={24} color={COLORS.primary} />
+            <Ionicons name="chatbubbles-outline" size={24} color={colors.primary} />
           </View>
           <View style={styles.content}>
             <Text style={styles.name} numberOfLines={1}>
@@ -84,21 +87,21 @@ export function SessionListItem({ session, onPress, onDelete }: SessionListItemP
               {session.memoryCount ? ` · ${session.memoryCount} memories` : ''}
             </Text>
           </View>
-          <Ionicons name="chevron-forward" size={20} color={COLORS.textSecondary} />
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </Animated.View>
       </GestureDetector>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   wrapper: {
     position: 'relative',
     marginBottom: 8,
   },
   deleteBackground: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: COLORS.error,
+    backgroundColor: colors.error,
     borderRadius: 12,
     justifyContent: 'center',
     alignItems: 'flex-end',
@@ -108,14 +111,14 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     padding: 16,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 12,
   },
   iconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: colors.primaryLight,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
@@ -126,11 +129,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: FONT_SIZES.body,
     fontWeight: '600',
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: 2,
   },
   meta: {
     fontSize: FONT_SIZES.footnote,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
 });

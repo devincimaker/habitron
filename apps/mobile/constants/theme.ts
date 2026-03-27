@@ -1,4 +1,4 @@
-export const COLORS = {
+export const COLORS_LIGHT = {
   primary: "#F5A623",
   primaryLight: "#FFD180",
   primaryDark: "#E09000",
@@ -13,13 +13,47 @@ export const COLORS = {
   success: "#4CAF50",
   error: "#F44336",
   skipped: "#9E9E9E",
+  streak: "#FF6B6B",
 
   white: "#FFFFFF",
   black: "#000000",
 
   border: "#E0E0E0",
   shadow: "rgba(0, 0, 0, 0.1)",
+  overlay: "rgba(255, 255, 255, 0.2)",
+  backdrop: "rgba(0, 0, 0, 0.5)",
 } as const;
+
+export const COLORS_DARK: Colors = {
+  primary: "#F5A623",
+  primaryLight: "#5C4010",
+  primaryDark: "#FFB84D",
+
+  background: "#1C1C1E",
+  surface: "#2C2C2E",
+
+  text: "#F5F5F5",
+  textSecondary: "#ADADAD",
+  textLight: "#8E8E93",
+
+  success: "#4CAF50",
+  error: "#F44336",
+  skipped: "#9E9E9E",
+  streak: "#FF6B6B",
+
+  white: "#FFFFFF",
+  black: "#000000",
+
+  border: "#38383A",
+  shadow: "rgba(0, 0, 0, 0.3)",
+  overlay: "rgba(255, 255, 255, 0.1)",
+  backdrop: "rgba(0, 0, 0, 0.7)",
+} as const;
+
+export type Colors = { [K in keyof typeof COLORS_LIGHT]: string };
+
+/** @deprecated Use useColors() hook for dark mode support */
+export const COLORS = COLORS_LIGHT;
 
 export const SPACING = {
   xs: 4,
@@ -51,14 +85,14 @@ export const BORDER_RADIUS = {
 
 export const SHADOWS = {
   small: {
-    shadowColor: COLORS.black,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.1,
     shadowRadius: 2,
     elevation: 2,
   },
   medium: {
-    shadowColor: COLORS.black,
+    shadowColor: "#000000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 4,

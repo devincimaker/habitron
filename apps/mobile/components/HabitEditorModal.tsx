@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import type { Goal, Habit, HabitDraft } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
-import { COLORS, SPACING } from '../constants/theme';
+import { SPACING, type Colors } from '../constants/theme';
 import { OptionChips } from './OptionChips';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface HabitEditorModalProps {
   visible: boolean;
@@ -32,6 +33,7 @@ export function HabitEditorModal({
   onClose,
   onSave,
 }: HabitEditorModalProps) {
+  const [styles] = useThemedStyles(createStyles);
   const [name, setName] = useState('');
   const [reason, setReason] = useState('');
   const [frequency, setFrequency] = useState<'daily' | 'weekly'>('daily');
@@ -146,10 +148,10 @@ export function HabitEditorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: SPACING.lg,
@@ -167,7 +169,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
 });

@@ -18,9 +18,11 @@ import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
-import { COLORS, SPACING } from '../../constants/theme';
+import { SPACING, type Colors } from '../../constants/theme';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 export default function TasksScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const today = getTodayDate();
   const { selectedDate, setSelectedDate } = useHabitsStore();
   const {
@@ -148,7 +150,7 @@ export default function TasksScreen() {
           <RefreshControl
             refreshing={isLoading}
             onRefresh={refreshAll}
-            tintColor={COLORS.primary}
+            tintColor={colors.primary}
           />
         }
       >
@@ -264,10 +266,10 @@ export default function TasksScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     paddingBottom: SPACING.xxl,
