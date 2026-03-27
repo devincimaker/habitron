@@ -253,11 +253,9 @@ export default function TodayScreen() {
           {selectedJournalEntry ? (
             <>
               <BodyMedium color={COLORS.text}>{selectedJournalEntry.content}</BodyMedium>
-              <View style={styles.diaryStatsRow}>
-                <Caption>Mood {selectedJournalEntry.mood ?? '-'}</Caption>
-                <Caption>Energy {selectedJournalEntry.energy ?? '-'}</Caption>
-                <Caption>Stress {selectedJournalEntry.stress ?? '-'}</Caption>
-              </View>
+              {selectedJournalEntry.mood ? (
+                <Caption style={styles.diaryMood}>Mood: {selectedJournalEntry.mood}</Caption>
+              ) : null}
             </>
           ) : (
             <BodyMedium>
@@ -369,9 +367,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.sm,
   },
-  diaryStatsRow: {
-    flexDirection: 'row',
-    gap: SPACING.md,
+  diaryMood: {
     marginTop: SPACING.sm,
   },
 });

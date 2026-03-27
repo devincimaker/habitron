@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -19,7 +20,7 @@ import { BodyMedium, Caption, HeadingLarge, Input, Label } from './ui';
 import { OptionChips } from './OptionChips';
 import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { JOURNAL_MOODS, JOURNAL_PALETTE } from '../constants/journal';
+import { JOURNAL_MOODS, JOURNAL_PALETTE, JOURNAL_PROMPTS } from '../constants/journal';
 import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
 
 interface JournalEntryModalProps {
@@ -31,14 +32,6 @@ interface JournalEntryModalProps {
   onClose: () => void;
   onSave: (draft: JournalEntryDraft) => Promise<void>;
 }
-
-const SCALE_OPTIONS = [
-  { label: '1', value: 1 as const },
-  { label: '2', value: 2 as const },
-  { label: '3', value: 3 as const },
-  { label: '4', value: 4 as const },
-  { label: '5', value: 5 as const },
-];
 
 const MOOD_OPTIONS = JOURNAL_MOODS.map((mood) => ({
   label: `${mood.emoji} ${mood.label}`,
@@ -90,10 +83,9 @@ export function JournalEntryModal({
   const insets = useSafeAreaInsets();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
-  const [energy, setEnergy] = useState<number | undefined>();
-  const [stress, setStress] = useState<number | undefined>();
   const [tagsText, setTagsText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [placeholderPrompt, setPlaceholderPrompt] = useState(JOURNAL_PROMPTS[0]);
   const allowTranscriptionRef = useRef(true);
   const hasAutoStartedVoiceRef = useRef(false);
 
@@ -104,9 +96,10 @@ export function JournalEntryModal({
     hasAutoStartedVoiceRef.current = false;
     setContent(entry?.content ?? '');
     setMood(entry?.mood);
-    setEnergy(entry?.energy);
-    setStress(entry?.stress);
     setTagsText(formatTags(entry?.tags ?? []));
+    setPlaceholderPrompt(
+      JOURNAL_PROMPTS[Math.floor(Math.random() * JOURNAL_PROMPTS.length)]
+    );
   }, [visible, entry]);
 
   const appendTranscription = useCallback((text: string) => {
@@ -147,6 +140,17 @@ export function JournalEntryModal({
       ? 'Voice capture'
       : 'New entry';
 
+  const isDirty = useMemo(() => {
+    const initialContent = entry?.content ?? '';
+    const initialMood = entry?.mood;
+    const initialTags = formatTags(entry?.tags ?? []);
+    return (
+      content.trim() !== initialContent.trim() ||
+      mood !== initialMood ||
+      tagsText !== initialTags
+    );
+  }, [content, mood, tagsText, entry]);
+
   const addSuggestedTag = useCallback(
     (tag: string) => {
       const exists = parsedTags.some(
@@ -159,11 +163,74 @@ export function JournalEntryModal({
     [parsedTags]
   );
 
-  const handleDismiss = useCallback(async () => {
+  const moodTagsSection = (
+    <>
+      <View style={styles.metaGroup}>
+        <Label>Mood</Label>
+        <OptionChips
+          options={MOOD_OPTIONS}
+          selectedValue={mood}
+          onChange={(value) => setMood(value)}
+          allowDeselect
+          onClear={() => setMood(undefined)}
+          size="sm"
+          wrap
+        />
+      </View>
+
+      <View style={styles.metaGroup}>
+        <Label>Tags</Label>
+        <Input
+          placeholder="e.g. work, fitness, personal"
+          value={tagsText}
+          onChangeText={setTagsText}
+          autoCapitalize="none"
+          containerStyle={styles.fieldNoMargin}
+        />
+
+        {recentTags.length > 0 ? (
+          <View style={styles.suggestedTags}>
+            {recentTags.slice(0, 8).map((tag) => (
+              <Pressable
+                key={tag}
+                style={styles.suggestedTagChip}
+                onPress={() => addSuggestedTag(tag)}
+                accessibilityLabel={`Add tag: ${tag}`}
+                accessibilityRole="button"
+              >
+                <Caption color={COLORS.primaryDark}>{tag}</Caption>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
+      </View>
+    </>
+  );
+
+  const forceClose = useCallback(async () => {
     allowTranscriptionRef.current = false;
     await handleCancelRecording();
     onClose();
   }, [handleCancelRecording, onClose]);
+
+  const handleDismiss = useCallback(async () => {
+    if (isDirty) {
+      Alert.alert(
+        'Discard changes?',
+        'You have unsaved changes that will be lost.',
+        [
+          { text: 'Keep editing', style: 'cancel' },
+          {
+            text: 'Discard',
+            style: 'destructive',
+            onPress: () => void forceClose(),
+          },
+        ]
+      );
+      return;
+    }
+    await forceClose();
+  }, [isDirty, forceClose]);
 
   const handleSave = async () => {
     if (!content.trim()) return;
@@ -173,12 +240,10 @@ export function JournalEntryModal({
       await onSave({
         content: content.trim(),
         mood,
-        energy,
-        stress,
         tags: parsedTags,
         source: 'manual',
       });
-      await handleDismiss();
+      await forceClose();
     } finally {
       setIsSaving(false);
     }
@@ -212,10 +277,7 @@ export function JournalEntryModal({
 
         <ScrollView
           contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: insets.bottom + SPACING.xl },
-          ]}
+          contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="interactive"
         >
@@ -233,12 +295,13 @@ export function JournalEntryModal({
             </View>
 
             <Input
-              placeholder="What shifted, what mattered, and what should future-you remember?"
+              placeholder={placeholderPrompt}
               value={content}
               onChangeText={setContent}
               multiline
               autoFocus={!autoStartVoice}
-              containerStyle={styles.fieldNoMargin}
+              containerStyle={[styles.fieldNoMargin, styles.expandingField]}
+              inputStyle={styles.expandingInput}
             />
 
             {isVoiceActive ? (
@@ -246,96 +309,46 @@ export function JournalEntryModal({
                 <VoiceInputButton {...voiceInputProps} />
               </View>
             ) : null}
+
+            {!entry ? moodTagsSection : null}
           </View>
 
-          <View style={styles.metaCard}>
-            <View style={styles.metaGroup}>
-              <Label>Mood</Label>
-              <OptionChips
-                options={MOOD_OPTIONS}
-                selectedValue={mood}
-                onChange={(value) => setMood(value)}
-                allowDeselect
-                onClear={() => setMood(undefined)}
-                size="sm"
-              />
+          {entry ? (
+            <View style={styles.metaCard}>
+              {moodTagsSection}
             </View>
-
-            <View style={styles.metaGroup}>
-              <Label>Energy</Label>
-              <OptionChips
-                options={SCALE_OPTIONS}
-                selectedValue={energy}
-                onChange={(value) => setEnergy(value)}
-                allowDeselect
-                onClear={() => setEnergy(undefined)}
-                size="sm"
-              />
-            </View>
-
-            <View style={styles.metaGroup}>
-              <Label>Stress</Label>
-              <OptionChips
-                options={SCALE_OPTIONS}
-                selectedValue={stress}
-                onChange={(value) => setStress(value)}
-                allowDeselect
-                onClear={() => setStress(undefined)}
-                size="sm"
-              />
-            </View>
-
-            <View style={styles.metaGroup}>
-              <Label>Tags</Label>
-              <Input
-                placeholder="Tags"
-                value={tagsText}
-                onChangeText={setTagsText}
-                autoCapitalize="none"
-                containerStyle={styles.fieldNoMargin}
-              />
-
-              {recentTags.length > 0 ? (
-                <View style={styles.suggestedTags}>
-                  {recentTags.slice(0, 8).map((tag) => (
-                    <Pressable
-                      key={tag}
-                      style={styles.suggestedTagChip}
-                      onPress={() => addSuggestedTag(tag)}
-                    >
-                      <Caption color={COLORS.primaryDark}>{tag}</Caption>
-                    </Pressable>
-                  ))}
-                </View>
-              ) : null}
-            </View>
-          </View>
-
-          <View style={styles.footer}>
-            <Pressable
-              style={[styles.footerButton, styles.footerSecondaryButton]}
-              onPress={() => void handleDismiss()}
-              accessibilityRole="button"
-            >
-              <BodyMedium color={COLORS.textSecondary}>Cancel</BodyMedium>
-            </Pressable>
-
-            <Pressable
-              style={[
-                styles.footerButton,
-                styles.footerPrimaryButton,
-                (!content.trim() || isSaving) && styles.footerPrimaryButtonDisabled,
-              ]}
-              onPress={() => void handleSave()}
-              disabled={!content.trim() || isSaving}
-              accessibilityRole="button"
-            >
-              <BodyMedium color={COLORS.white} style={styles.footerPrimaryButtonText}>
-                {isSaving ? 'Saving...' : entry ? 'Save changes' : 'Save entry'}
-              </BodyMedium>
-            </Pressable>
-          </View>
+          ) : null}
         </ScrollView>
+
+        <View
+          style={[
+            styles.footer,
+            { paddingBottom: insets.bottom + SPACING.md },
+          ]}
+        >
+          <Pressable
+            style={[styles.footerButton, styles.footerSecondaryButton]}
+            onPress={() => void handleDismiss()}
+            accessibilityRole="button"
+          >
+            <BodyMedium color={COLORS.textSecondary}>Cancel</BodyMedium>
+          </Pressable>
+
+          <Pressable
+            style={[
+              styles.footerButton,
+              styles.footerPrimaryButton,
+              (!content.trim() || isSaving) && styles.footerPrimaryButtonDisabled,
+            ]}
+            onPress={() => void handleSave()}
+            disabled={!content.trim() || isSaving}
+            accessibilityRole="button"
+          >
+            <BodyMedium color={COLORS.white} style={styles.footerPrimaryButtonText}>
+              {isSaving ? 'Saving...' : entry ? 'Save changes' : 'Save entry'}
+            </BodyMedium>
+          </Pressable>
+        </View>
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -360,20 +373,22 @@ const styles = StyleSheet.create({
   },
   topBarCopy: {
     flex: 1,
-    gap: 4,
+    gap: SPACING.xs,
   },
   dismissButton: {
-    width: 40,
-    height: 40,
+    width: 44,
+    height: 44,
     borderRadius: BORDER_RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.surface,
   },
   content: {
+    flexGrow: 1,
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    gap: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.md,
+    gap: SPACING.lg,
   },
   promptCard: {
     gap: SPACING.xs,
@@ -387,6 +402,7 @@ const styles = StyleSheet.create({
     color: JOURNAL_PALETTE.ink,
   },
   composerCard: {
+    flex: 1,
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
@@ -402,6 +418,12 @@ const styles = StyleSheet.create({
   },
   fieldNoMargin: {
     marginBottom: 0,
+  },
+  expandingField: {
+    flex: 1,
+  },
+  expandingInput: {
+    flex: 1,
   },
   recordingRow: {
     padding: SPACING.sm,
@@ -428,14 +450,18 @@ const styles = StyleSheet.create({
     minHeight: 32,
     justifyContent: 'center',
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.primaryLight,
   },
   footer: {
     flexDirection: 'row',
-    gap: SPACING.sm,
-    paddingTop: SPACING.xs,
+    gap: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   footerButton: {
     minHeight: 48,

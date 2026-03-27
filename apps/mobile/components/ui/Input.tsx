@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TextInput, StyleSheet, TextInputProps, ViewStyle } from 'react-native';
+import { View, Text, TextInput, StyleSheet, StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, INPUT_HEIGHTS } from '../../constants/theme';
 
 type InputSize = 'sm' | 'md' | 'lg';
@@ -8,7 +8,8 @@ interface InputProps extends Omit<TextInputProps, 'style'> {
   label?: string;
   error?: string;
   size?: InputSize;
-  containerStyle?: ViewStyle;
+  containerStyle?: StyleProp<ViewStyle>;
+  inputStyle?: StyleProp<TextStyle>;
 }
 
 export function Input({
@@ -17,6 +18,7 @@ export function Input({
   size = 'md',
   multiline,
   containerStyle,
+  inputStyle,
   ...textInputProps
 }: InputProps) {
   const [isFocused, setIsFocused] = useState(false);
@@ -37,6 +39,7 @@ export function Input({
           isFocused && styles.inputFocused,
           error && styles.inputError,
           multiline && styles.multiline,
+          inputStyle,
         ]}
         placeholderTextColor={COLORS.textLight}
         onFocus={(e) => {

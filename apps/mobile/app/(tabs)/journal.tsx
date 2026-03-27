@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Pressable,
   RefreshControl,
@@ -11,7 +11,6 @@ import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Animated, {
   FadeInDown,
-  FadeInUp,
   LinearTransition,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,8 +30,8 @@ import {
 import { useJournalStore } from '../../stores/useJournalStore';
 import {
   BORDER_RADIUS,
-  CENTER_TAB_BUTTON,
   COLORS,
+  SHADOWS,
   SPACING,
   TAB_BAR,
 } from '../../constants/theme';
@@ -129,10 +128,21 @@ export default function JournalScreen() {
   const [showEditor, setShowEditor] = useState(false);
   const [editorPrompt, setEditorPrompt] = useState<string | null>(null);
   const [autoStartVoice, setAutoStartVoice] = useState(false);
+  const [lastSavedEntryId, setLastSavedEntryId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<JournalEntry | null>(null);
+  const deleteTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const highlightTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     void loadEntries();
   }, [loadEntries]);
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearTimeout(deleteTimerRef.current);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    };
+  }, []);
 
   const recentTags = useMemo(() => getRecentTags(), [entries, getRecentTags]);
 
@@ -140,6 +150,8 @@ export default function JournalScreen() {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
     return entries.filter((entry) => {
+      if (pendingDelete?.id === entry.id) return false;
+
       const matchesQuery =
         !normalizedQuery ||
         entry.content.toLowerCase().includes(normalizedQuery) ||
@@ -149,7 +161,7 @@ export default function JournalScreen() {
 
       return matchesQuery && matchesMood;
     });
-  }, [entries, searchQuery, selectedMood]);
+  }, [entries, searchQuery, selectedMood, pendingDelete]);
 
   const groupedEntries = useMemo(
     () => groupEntriesByDate(filteredEntries),
@@ -158,21 +170,45 @@ export default function JournalScreen() {
 
   const handleSaveEntry = useCallback(
     async (draft: JournalEntryDraft) => {
+      let savedEntry: JournalEntry;
       if (editingEntry) {
-        await updateEntry(editingEntry.id, draft);
+        savedEntry = await updateEntry(editingEntry.id, draft);
       } else {
-        await addEntry(draft);
+        savedEntry = await addEntry(draft);
       }
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      setLastSavedEntryId(savedEntry.id);
+      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+      highlightTimerRef.current = setTimeout(() => {
+        setLastSavedEntryId(null);
+        highlightTimerRef.current = null;
+      }, 2000);
     },
     [addEntry, editingEntry, updateEntry]
   );
 
   const handleDeleteEntry = useCallback(
-    async (entry: JournalEntry) => {
-      await removeEntry(entry.id);
+    async (entryToDelete: JournalEntry) => {
+      if (deleteTimerRef.current) {
+        clearTimeout(deleteTimerRef.current);
+      }
+      setPendingDelete(entryToDelete);
+      deleteTimerRef.current = setTimeout(async () => {
+        await removeEntry(entryToDelete.id);
+        setPendingDelete(null);
+        deleteTimerRef.current = null;
+      }, 5000);
     },
     [removeEntry]
   );
+
+  const handleUndoDelete = useCallback(() => {
+    if (deleteTimerRef.current) {
+      clearTimeout(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setPendingDelete(null);
+  }, []);
 
   const clearFilters = useCallback(() => {
     setSearchQuery('');
@@ -239,8 +275,7 @@ export default function JournalScreen() {
         contentContainerStyle={[
           styles.content,
           {
-            paddingBottom:
-              TAB_BAR.height + CENTER_TAB_BUTTON.size + insets.bottom + SPACING.xxl,
+            paddingBottom: TAB_BAR.height + insets.bottom + SPACING.xxl,
           },
         ]}
         keyboardShouldPersistTaps="handled"
@@ -253,27 +288,6 @@ export default function JournalScreen() {
           />
         }
       >
-        <Animated.View
-          entering={FadeInUp.duration(180)}
-          layout={LinearTransition.duration(180)}
-        >
-          <Pressable
-            style={styles.launcherButton}
-            onPress={() => openEditor()}
-            accessibilityLabel="Create a new journal entry"
-          >
-            <View style={styles.launcherIcon}>
-              <Feather name="edit-3" size={18} color={COLORS.primaryDark} />
-            </View>
-
-            <View style={styles.launcherCopy}>
-              <HeadingLarge>New entry</HeadingLarge>
-            </View>
-
-            <Feather name="chevron-right" size={18} color={COLORS.textSecondary} />
-          </Pressable>
-        </Animated.View>
-
         <View style={styles.timelineHeader}>
           <View style={styles.timelineTitleGroup}>
             <HeadingLarge>Entries</HeadingLarge>
@@ -282,7 +296,7 @@ export default function JournalScreen() {
                 ? 'Nothing here yet.'
                 : activeFilterCount > 0
                   ? `${filteredEntries.length} ${filteredEntries.length === 1 ? 'match' : 'matches'}`
-                  : formatCountLabel(entries.length, 'entry')}
+                  : formatCountLabel(entries.length, 'entry', 'entries')}
             </Caption>
           </View>
 
@@ -368,7 +382,7 @@ export default function JournalScreen() {
               >
                 <View style={styles.sectionHeader}>
                   <HeadingLarge>{section.title}</HeadingLarge>
-                  <Caption>{formatCountLabel(section.entries.length, 'entry')}</Caption>
+                  <Caption>{formatCountLabel(section.entries.length, 'entry', 'entries')}</Caption>
                 </View>
 
                 <View style={styles.sectionEntries}>
@@ -376,6 +390,7 @@ export default function JournalScreen() {
                     <JournalEntryCard
                       key={entry.id}
                       entry={entry}
+                      isHighlighted={entry.id === lastSavedEntryId}
                       onEdit={(selectedEntry) =>
                         openEditor({ entry: selectedEntry })
                       }
@@ -404,6 +419,39 @@ export default function JournalScreen() {
           </Animated.View>
         )}
       </ScrollView>
+
+      <Pressable
+        style={[
+          styles.fab,
+          { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
+        ]}
+        onPress={() => openEditor()}
+        accessibilityLabel="Create a new journal entry"
+      >
+        <Feather name="plus" size={24} color={COLORS.white} />
+      </Pressable>
+
+      {pendingDelete ? (
+        <Animated.View
+          entering={FadeInDown.duration(180)}
+          style={[
+            styles.undoBanner,
+            { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
+          ]}
+          accessibilityRole="alert"
+        >
+          <BodyMedium color={COLORS.white}>Entry deleted</BodyMedium>
+          <Pressable
+            onPress={handleUndoDelete}
+            accessibilityLabel="Undo delete"
+            accessibilityRole="button"
+          >
+            <BodyMedium color={COLORS.primaryDark} style={styles.undoText}>
+              Undo
+            </BodyMedium>
+          </Pressable>
+        </Animated.View>
+      ) : null}
 
       <JournalEntryModal
         visible={showEditor}
@@ -446,6 +494,8 @@ function FilterChip({
           : null,
       ]}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityState={{ selected: isSelected }}
     >
       <Caption
         color={
@@ -468,41 +518,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
   },
-  launcherButton: {
-    minHeight: 64,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    borderRadius: BORDER_RADIUS.xl,
-    backgroundColor: COLORS.background,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  launcherIcon: {
-    width: 36,
-    height: 36,
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: COLORS.primary,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
-  },
-  launcherCopy: {
-    flex: 1,
+    ...SHADOWS.medium,
   },
   timelineHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingHorizontal: 2,
+    paddingHorizontal: SPACING.xs,
   },
   timelineTitleGroup: {
     gap: 2,
   },
   filterToggle: {
-    minHeight: 40,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
@@ -528,10 +566,10 @@ const styles = StyleSheet.create({
     paddingRight: SPACING.md,
   },
   filterChip: {
-    minHeight: 36,
+    minHeight: 44,
     justifyContent: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: 7,
+    paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.surface,
     borderWidth: 1,
@@ -558,7 +596,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: SPACING.md,
-    paddingHorizontal: 2,
+    paddingHorizontal: SPACING.xs,
   },
   sectionEntries: {
     gap: SPACING.sm,
@@ -570,5 +608,20 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  undoBanner: {
+    position: 'absolute',
+    left: SPACING.md,
+    right: SPACING.md,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: COLORS.text,
+  },
+  undoText: {
+    fontWeight: '600',
   },
 });
