@@ -186,12 +186,6 @@ export const STATUS_INDICATOR = {
   borderWidth: 2,
 } as const;
 
-// Center tab button (FAB-style in tab bar)
-export const CENTER_TAB_BUTTON = {
-  size: 48,
-  iconSize: 24,
-} as const;
-
 // Tab bar
 export const TAB_BAR = {
   height: 56,

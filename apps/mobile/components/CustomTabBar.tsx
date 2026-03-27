@@ -7,8 +7,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
-import { CenterTabButton } from './CenterTabButton';
-import { TAB_BAR, CENTER_TAB_BUTTON, type Colors } from '../constants/theme';
+import { TAB_BAR, type Colors } from '../constants/theme';
 import { useThemedStyles, useColors } from '../hooks/useColors';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
@@ -16,6 +15,7 @@ type IoniconsName = keyof typeof Ionicons.glyphMap;
 const TAB_ICONS: Record<string, { active: IoniconsName; inactive: IoniconsName }> = {
   today: { active: 'today', inactive: 'today-outline' },
   tasks: { active: 'checkbox', inactive: 'checkbox-outline' },
+  coach: { active: 'chatbubble-ellipses', inactive: 'chatbubble-ellipses-outline' },
   habits: { active: 'repeat', inactive: 'repeat-outline' },
   journal: { active: 'book', inactive: 'book-outline' },
 };
@@ -30,7 +30,6 @@ interface CustomTabBarProps {
     emit: (event: { type: string; target: string; canPreventDefault: boolean }) => { defaultPrevented: boolean };
     navigate: (name: string) => void;
   };
-  onNewSession: () => void;
 }
 
 // Animated icon component with scale bump and opacity transition
@@ -69,7 +68,7 @@ function TabButton({
   onPress: () => void;
   isActive: boolean;
 }) {
-  const [styles, colors] = useThemedStyles(createStyles);
+  const [styles] = useThemedStyles(createStyles);
   const scale = useSharedValue(1);
 
   const animatedStyle = useAnimatedStyle(() => ({
@@ -99,65 +98,43 @@ function TabButton({
   );
 }
 
-export function CustomTabBar({
-  state, descriptors, navigation, onNewSession }: CustomTabBarProps) {
-  const colors = useColors();
-  const styles = useMemo(() => createStyles(colors), [colors]);
+export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
 
-  // Filter to only show routes that belong in the bottom navigation
   const visibleRoutes = state.routes.filter(route => TAB_ICONS[route.name]);
-  const splitIndex = Math.ceil(visibleRoutes.length / 2);
-  const leftRoutes = visibleRoutes.slice(0, splitIndex);
-  const rightRoutes = visibleRoutes.slice(splitIndex);
-
-  // Helper to render a tab
-  const renderTab = (route: { key: string; name: string }) => {
-    const { options } = descriptors[route.key];
-    const label = options.title ?? route.name;
-    const actualIndex = state.routes.findIndex(r => r.key === route.key);
-    const isFocused = state.index === actualIndex;
-    const color = isFocused ? colors.primary : colors.textSecondary;
-
-    const onPress = () => {
-      const event = navigation.emit({
-        type: 'tabPress',
-        target: route.key,
-        canPreventDefault: true,
-      });
-
-      if (!isFocused && !event.defaultPrevented) {
-        navigation.navigate(route.name);
-      }
-    };
-
-    return (
-      <TabButton key={route.key} onPress={onPress} isActive={isFocused}>
-        <AnimatedTabIcon focused={isFocused} routeName={route.name} color={color} />
-        <Text style={[styles.tabLabel, { color }]}>{label}</Text>
-      </TabButton>
-    );
-  };
 
   return (
     <View style={[styles.container, { paddingBottom: insets.bottom }]}>
-      {/* Tab bar background */}
       <View style={styles.tabBarBackground} />
 
-      {/* Tab items container: Left Tab | Center Button | Right Tab */}
       <View style={styles.tabsContainer}>
-        <View style={styles.tabGroup}>
-          {leftRoutes.map(renderTab)}
-        </View>
+        {visibleRoutes.map((route) => {
+          const { options } = descriptors[route.key];
+          const label = options.title ?? route.name;
+          const actualIndex = state.routes.findIndex(r => r.key === route.key);
+          const isFocused = state.index === actualIndex;
+          const color = isFocused ? colors.primary : colors.textSecondary;
 
-        {/* Center button - floating half out */}
-        <View style={styles.centerButtonContainer}>
-          <CenterTabButton onPress={onNewSession} />
-        </View>
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
 
-        <View style={styles.tabGroup}>
-          {rightRoutes.map(renderTab)}
-        </View>
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <TabButton key={route.key} onPress={onPress} isActive={isFocused}>
+              <AnimatedTabIcon focused={isFocused} routeName={route.name} color={color} />
+              <Text style={[styles.tabLabel, { color }]}>{label}</Text>
+            </TabButton>
+          );
+        })}
       </View>
     </View>
   );
@@ -185,11 +162,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     height: TAB_BAR.height,
     alignItems: 'center',
   },
-  tabGroup: {
-    flex: 1,
-    flexDirection: 'row',
-    height: '100%',
-  },
   tabButton: {
     flex: 1,
     justifyContent: 'center',
@@ -201,10 +173,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: '500',
     marginTop: 2,
     textAlign: 'center',
-  },
-  centerButtonContainer: {
-    width: CENTER_TAB_BUTTON.size,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import {
   View,
-  TouchableOpacity,
+  Pressable,
   Text,
   StyleSheet,
   Animated,
@@ -39,22 +39,21 @@ function Waveform({ level, isWarning = false }: { level: number; isWarning?: boo
   const [styles, colors] = useThemedStyles(createStyles);
   const bars = 20;
   const animatedValues = useRef(
-    Array.from({ length: bars }, () => new Animated.Value(0.2))
+    Array.from({ length: bars }, () => new Animated.Value(0.15))
   ).current;
 
   useEffect(() => {
-    // Animate bars based on meter level with some randomness for natural look
     animatedValues.forEach((anim, index) => {
       const centerDistance = Math.abs(index - bars / 2) / (bars / 2);
-      const targetHeight = Math.max(
+      const targetScale = Math.max(
         0.15,
         level * (1 - centerDistance * 0.5) * (0.8 + Math.random() * 0.4)
       );
 
       Animated.timing(anim, {
-        toValue: targetHeight,
+        toValue: targetScale,
         duration: 100,
-        useNativeDriver: false,
+        useNativeDriver: true,
       }).start();
     });
   }, [level, animatedValues]);
@@ -70,10 +69,7 @@ function Waveform({ level, isWarning = false }: { level: number; isWarning?: boo
             waveformStyles.bar,
             {
               backgroundColor: barColor,
-              height: anim.interpolate({
-                inputRange: [0, 1],
-                outputRange: ['15%', '100%'],
-              }),
+              transform: [{ scaleY: anim }],
             },
           ]}
         />
@@ -92,6 +88,7 @@ const waveformStyles = StyleSheet.create({
   },
   bar: {
     width: 3,
+    height: 40,
     borderRadius: 1.5,
   },
 });
@@ -115,9 +112,9 @@ export function VoiceInputButton({
     return (
       <View style={styles.errorContainer}>
         <Text style={styles.errorText}>{error}</Text>
-        <TouchableOpacity style={styles.retryButton} onPress={onRetry}>
+        <Pressable style={styles.retryButton} onPress={onRetry} accessibilityRole="button">
           <Text style={styles.retryText}>Retry</Text>
-        </TouchableOpacity>
+        </Pressable>
       </View>
     );
   }
@@ -125,13 +122,14 @@ export function VoiceInputButton({
   // Idle state - just the mic button
   if (mode === 'idle') {
     return (
-      <TouchableOpacity
+      <Pressable
         style={styles.micButton}
         onPress={onMicPress}
-        activeOpacity={0.7}
+        accessibilityLabel="Start voice recording"
+        accessibilityRole="button"
       >
         <Feather name="mic" size={24} color={colors.text} />
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 
@@ -152,16 +150,15 @@ export function VoiceInputButton({
 
   return (
     <View style={styles.recordingContainer}>
-      {/* Stop button */}
-      <TouchableOpacity
+      <Pressable
         style={styles.stopButton}
         onPress={onStopPress}
-        activeOpacity={0.7}
+        accessibilityLabel="Stop recording"
+        accessibilityRole="button"
       >
         <View style={styles.stopIcon} />
-      </TouchableOpacity>
+      </Pressable>
 
-      {/* Waveform and duration */}
       <View style={styles.waveformContainer}>
         <Waveform level={meterLevel} isWarning={isNearingLimit} />
         <Text style={[styles.durationText, isNearingLimit && styles.durationTextWarning]}>
@@ -169,14 +166,14 @@ export function VoiceInputButton({
         </Text>
       </View>
 
-      {/* Send button */}
-      <TouchableOpacity
+      <Pressable
         style={styles.sendButton}
         onPress={onSendPress}
-        activeOpacity={0.7}
+        accessibilityLabel="Send recording"
+        accessibilityRole="button"
       >
         <Text style={styles.sendIcon}>↑</Text>
-      </TouchableOpacity>
+      </Pressable>
     </View>
   );
 }
@@ -203,8 +200,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     gap: SPACING.sm,
   },
   stopButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.error,
@@ -230,8 +227,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: '600',
   },
   sendButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.primary,

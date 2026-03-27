@@ -1,4 +1,4 @@
-import { ScrollView, Pressable, StyleSheet, Text } from 'react-native';
+import { ScrollView, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
@@ -14,6 +14,7 @@ interface OptionChipsProps<T extends string | number> {
   allowDeselect?: boolean;
   onClear?: () => void;
   size?: 'sm' | 'md';
+  wrap?: boolean;
 }
 
 export function OptionChips<T extends string | number>({
@@ -23,52 +24,65 @@ export function OptionChips<T extends string | number>({
   allowDeselect = false,
   onClear,
   size = 'md',
+  wrap = false,
 }: OptionChipsProps<T>) {
   const [styles] = useThemedStyles(createStyles);
+
+  const chips = options.map((option) => {
+    const isSelected = option.value === selectedValue;
+
+    return (
+      <Pressable
+        key={String(option.value)}
+        onPress={() => {
+          if (allowDeselect && isSelected) {
+            onClear?.();
+            return;
+          }
+
+          onChange(option.value);
+        }}
+        style={[
+          styles.chip,
+          size === 'sm' && styles.chipSm,
+          isSelected && styles.chipSelected,
+        ]}
+      >
+        <Text
+          style={[
+            styles.chipText,
+            size === 'sm' && styles.chipTextSm,
+            isSelected && styles.chipTextSelected,
+          ]}
+        >
+          {option.label}
+        </Text>
+      </Pressable>
+    );
+  });
+
+  if (wrap) {
+    return <View style={styles.wrapContainer}>{chips}</View>;
+  }
+
   return (
     <ScrollView
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.container}
     >
-      {options.map((option) => {
-        const isSelected = option.value === selectedValue;
-
-        return (
-          <Pressable
-            key={String(option.value)}
-            onPress={() => {
-              if (allowDeselect && isSelected) {
-                onClear?.();
-                return;
-              }
-
-              onChange(option.value);
-            }}
-            style={[
-              styles.chip,
-              size === 'sm' && styles.chipSm,
-              isSelected && styles.chipSelected,
-            ]}
-          >
-            <Text
-              style={[
-                styles.chipText,
-                size === 'sm' && styles.chipTextSm,
-                isSelected && styles.chipTextSelected,
-              ]}
-            >
-              {option.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {chips}
     </ScrollView>
   );
 }
 
 const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
+    gap: SPACING.sm,
+  },
+  wrapContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
   },
   chip: {

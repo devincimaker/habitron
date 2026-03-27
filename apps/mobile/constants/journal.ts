@@ -66,6 +66,8 @@ export const JOURNAL_MOOD_STYLES: Record<
 
 export const JOURNAL_PROMPTS = [
   'What shifted today?',
-  'What drained or restored your energy?',
-  'What should future-you remember about this moment?',
+  'What mattered most about this moment?',
+  'What should future-you remember?',
+  'What surprised you today?',
+  'What are you carrying into tomorrow?',
 ];

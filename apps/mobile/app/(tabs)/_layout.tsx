@@ -1,6 +1,4 @@
-import { useCallback } from 'react';
 import { Tabs } from 'expo-router';
-import { useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { CustomTabBar } from '../../components/CustomTabBar';
@@ -15,22 +13,11 @@ export const unstable_settings = {
 
 export default function TabLayout() {
   const [styles] = useThemedStyles(createStyles);
-  const router = useRouter();
   const { isActive, startSession } = useSessionStore();
-
-  const handleNewSession = useCallback(() => {
-    // Prevent duplicate session screens from rapid taps
-    // startSession() has its own guard, but we also need to guard navigation
-    if (isActive) return;
-
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    startSession();
-    router.push('/session');
-  }, [isActive, startSession, router]);
 
   return (
     <Tabs
-      tabBar={(props) => <CustomTabBar {...props as any} onNewSession={handleNewSession} />}
+      tabBar={(props) => <CustomTabBar {...props as any} />}
       screenOptions={{
         headerStyle: styles.header,
         headerTitleStyle: styles.headerTitle,
@@ -53,6 +40,21 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="coach"
+        options={{
+          title: 'Coach',
+          headerTitle: 'Coach',
+        }}
+        listeners={{
+          tabPress: () => {
+            if (!isActive) {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              startSession();
+            }
+          },
+        }}
+      />
+      <Tabs.Screen
         name="habits"
         options={{
           title: 'Habits',
@@ -66,17 +68,11 @@ export default function TabLayout() {
           headerTitle: 'Journal',
         }}
       />
-      {/* Hide old screens that are no longer tabs */}
+      {/* Hidden screens */}
       <Tabs.Screen
         name="diary"
         options={{
           href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="coach"
-        options={{
-          href: null, // Hide from tab bar
         }}
       />
       <Tabs.Screen
@@ -91,7 +87,7 @@ export default function TabLayout() {
         name="profile"
         options={{
           title: 'Profile',
-          href: null, // Hide from tab bar
+          href: null,
         }}
       />
     </Tabs>
