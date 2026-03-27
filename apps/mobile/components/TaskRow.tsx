@@ -12,6 +12,7 @@ interface TaskRowProps {
   onToggleStatus: (todo: Todo) => Promise<void>;
   onMoveTomorrow: (todo: Todo, nextDate: string) => Promise<void>;
   onCancel: (todo: Todo) => Promise<void>;
+  onDelete: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
 }
 
@@ -21,6 +22,7 @@ export function TaskRow({
   onToggleStatus,
   onMoveTomorrow,
   onCancel,
+  onDelete,
   onEdit,
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -74,6 +76,9 @@ export function TaskRow({
             <Caption color={colors.textSecondary}>Edit</Caption>
           </Pressable>
         )}
+        <Pressable style={styles.taskActionChip} onPress={() => onDelete(todo)}>
+          <Ionicons name="trash-outline" size={14} color={COLORS.textLight} />
+        </Pressable>
       </View>
     </View>
   );

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   RefreshControl,
@@ -13,6 +13,7 @@ import { MiniCalendar } from '../../components/MiniCalendar';
 import { SectionHeader } from '../../components/SectionHeader';
 import { TaskRow } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
+import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
@@ -33,6 +34,7 @@ export default function TasksScreen() {
     addTodo,
     updateTodo,
     setTodoStatus,
+    removeTodo,
     getTodosForDate,
     getOverdueTodos,
   } = useTodosStore();
@@ -41,6 +43,8 @@ export default function TasksScreen() {
 
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
+  const [deletedTodo, setDeletedTodo] = useState<Todo | null>(null);
+  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   const selectedPlan = plansByDate[selectedDate] ?? null;
   const scheduledTodos = useMemo(
@@ -137,6 +141,34 @@ export default function TasksScreen() {
     [selectedDate, selectedPlan, updateOutcomeForTodo, updateTodo]
   );
 
+  const handleDeleteTodo = useCallback(
+    (todo: Todo) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+      setDeletedTodo(todo);
+      void removeTodo(todo.id);
+    },
+    [removeTodo]
+  );
+
+  const handleUndoDelete = useCallback(() => {
+    if (!deletedTodo) return;
+    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
+    void addTodo({
+      title: deletedTodo.title,
+      notes: deletedTodo.notes,
+      priority: deletedTodo.priority,
+      dueDate: deletedTodo.dueDate,
+      scheduledDate: deletedTodo.scheduledDate,
+      scheduledBlock: deletedTodo.scheduledBlock,
+      estimateMinutes: deletedTodo.estimateMinutes,
+      goalId: deletedTodo.goalId,
+      tagIds: deletedTodo.tags.map((tag) => tag.id),
+      listId: deletedTodo.listId,
+    });
+    setDeletedTodo(null);
+  }, [addTodo, deletedTodo]);
+
   const openTaskEditor = useCallback((todo?: Todo | null) => {
     setEditingTodo(todo ?? null);
     setShowTodoEditor(true);
@@ -172,6 +204,7 @@ export default function TasksScreen() {
                 onToggleStatus={handleToggleTodoStatus}
                 onMoveTomorrow={handleMoveTodo}
                 onCancel={handleCancelTodo}
+                onDelete={handleDeleteTodo}
                 onEdit={openTaskEditor}
                 selectedDate={selectedDate}
               />
@@ -188,6 +221,7 @@ export default function TasksScreen() {
                 onToggleStatus={handleToggleTodoStatus}
                 onMoveTomorrow={handleMoveTodo}
                 onCancel={handleCancelTodo}
+                onDelete={handleDeleteTodo}
                 onEdit={openTaskEditor}
                 selectedDate={selectedDate}
               />
@@ -215,6 +249,7 @@ export default function TasksScreen() {
                   onToggleStatus={handleToggleTodoStatus}
                   onMoveTomorrow={handleMoveTodo}
                   onCancel={handleCancelTodo}
+                  onDelete={handleDeleteTodo}
                   onEdit={openTaskEditor}
                   selectedDate={selectedDate}
                 />
@@ -237,6 +272,7 @@ export default function TasksScreen() {
                 onToggleStatus={handleToggleTodoStatus}
                 onMoveTomorrow={handleMoveTodo}
                 onCancel={handleCancelTodo}
+                onDelete={handleDeleteTodo}
                 onEdit={openTaskEditor}
                 selectedDate={selectedDate}
               />
@@ -262,6 +298,14 @@ export default function TasksScreen() {
         }}
         onSave={handleSaveTodo}
       />
+
+      {deletedTodo ? (
+        <UndoSnackbar
+          message={`"${deletedTodo.title}" deleted`}
+          onUndo={handleUndoDelete}
+          onDismiss={() => setDeletedTodo(null)}
+        />
+      ) : null}
     </View>
   );
 }
