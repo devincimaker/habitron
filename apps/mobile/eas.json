@@ -14,12 +14,16 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://onnoazbtexmlflqpjnrg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_zU8Pl4foJFxg24Ul67YPwg_t4B3ssXX"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://onnoazbtexmlflqpjnrg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_zU8Pl4foJFxg24Ul67YPwg_t4B3ssXX"
       }
     }
   },
