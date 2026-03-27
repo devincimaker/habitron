@@ -13,8 +13,6 @@ interface DbJournalEntry {
   entry_date: string | null;
   content: string;
   mood: JournalMood | null;
-  energy: number | null;
-  stress: number | null;
   tags: string[] | null;
   source: JournalEntrySource;
   created_at: string;
@@ -27,8 +25,6 @@ function mapDbJournalEntryToJournalEntry(entry: DbJournalEntry): JournalEntry {
     entryDate: entry.entry_date ?? entry.created_at.slice(0, 10),
     content: entry.content,
     mood: entry.mood ?? undefined,
-    energy: entry.energy ?? undefined,
-    stress: entry.stress ?? undefined,
     tags: entry.tags ?? [],
     source: entry.source,
     createdAt: new Date(entry.created_at).getTime(),
@@ -93,8 +89,6 @@ export async function addJournalEntry(entry: JournalEntryDraft): Promise<Journal
       entry_date: entry.entryDate ?? getTodayDate(),
       content: entry.content,
       mood: entry.mood ?? null,
-      energy: entry.energy ?? null,
-      stress: entry.stress ?? null,
       tags: normalizeTags(entry.tags),
       source: entry.source ?? 'manual',
     })
@@ -118,8 +112,6 @@ export async function updateJournalEntry(
   if (changes.entryDate !== undefined) updateData.entry_date = changes.entryDate;
   if (changes.content !== undefined) updateData.content = changes.content;
   if (changes.mood !== undefined) updateData.mood = changes.mood ?? null;
-  if (changes.energy !== undefined) updateData.energy = changes.energy ?? null;
-  if (changes.stress !== undefined) updateData.stress = changes.stress ?? null;
   if (changes.tags !== undefined) updateData.tags = normalizeTags(changes.tags);
   if (changes.source !== undefined) updateData.source = changes.source;
 

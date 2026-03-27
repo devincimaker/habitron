@@ -1,5 +1,12 @@
-import { Alert, Pressable, StyleSheet, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
+import Animated, {
+  FadeInDown,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import type { JournalEntry } from '@habits-coach/shared';
 import { BodyLarge, BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
@@ -7,6 +14,7 @@ import { JOURNAL_MOOD_BY_VALUE, JOURNAL_MOOD_STYLES } from '../constants/journal
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
+  isHighlighted?: boolean;
   onEdit: (entry: JournalEntry) => void;
   onDelete: (entry: JournalEntry) => Promise<void>;
 }
@@ -46,12 +54,11 @@ function formatEntryTimestamp(timestamp: number): string {
   return formatter.format(entryDate);
 }
 
-function formatScale(label: string, value: number): string {
-  return `${label} ${value}/5`;
-}
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 export function JournalEntryCard({
   entry,
+  isHighlighted = false,
   onEdit,
   onDelete,
 }: JournalEntryCardProps) {
@@ -66,57 +73,69 @@ export function JournalEntryCard({
   const visibleTags = entry.tags.slice(0, 3);
   const hiddenTagCount = Math.max(0, entry.tags.length - visibleTags.length);
 
-  const detailPills = [
-    entry.energy ? formatScale('Energy', entry.energy) : null,
-    entry.stress ? formatScale('Stress', entry.stress) : null,
-  ].filter(Boolean) as string[];
+  const highlightProgress = useSharedValue(isHighlighted ? 1 : 0);
+
+  useEffect(() => {
+    if (isHighlighted) {
+      highlightProgress.value = 1;
+      highlightProgress.value = withTiming(0, { duration: 1500 });
+    }
+  }, [isHighlighted, highlightProgress]);
+
+  const animatedCardStyle = useAnimatedStyle(() => ({
+    backgroundColor:
+      highlightProgress.value > 0
+        ? `rgba(255, 209, 128, ${highlightProgress.value * 0.3})`
+        : COLORS.background,
+  }));
 
   const handleOpenActions = () => {
-    Alert.alert(
-      'Entry actions',
-      'Choose what to do with this reflection.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Edit', onPress: () => onEdit(entry) },
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
         {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => void onDelete(entry),
+          options: ['Cancel', 'Edit', 'Delete'],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 2,
+          title: 'Entry actions',
         },
-      ]
-    );
+        (buttonIndex) => {
+          if (buttonIndex === 1) onEdit(entry);
+          if (buttonIndex === 2) void onDelete(entry);
+        }
+      );
+    } else {
+      Alert.alert(
+        'Entry actions',
+        'Choose what to do with this reflection.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Edit', onPress: () => onEdit(entry) },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => void onDelete(entry),
+          },
+        ]
+      );
+    }
   };
 
+  const hasMetadata = mood || visibleTags.length > 0;
+
   return (
-    <Pressable
-      style={styles.card}
+    <AnimatedPressable
+      entering={FadeInDown.duration(200)}
+      style={[styles.card, animatedCardStyle]}
       onPress={() => onEdit(entry)}
       accessibilityLabel="Open journal entry"
+      accessibilityRole="button"
     >
       <View style={styles.header}>
-        <View style={styles.headerCopy}>
-          <View style={styles.timeRow}>
-            <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
-            {wasEdited ? (
-              <View style={styles.editedBadge}>
-                <Caption color={COLORS.textLight}>Edited</Caption>
-              </View>
-            ) : null}
-          </View>
-
-          {mood ? (
-            <View
-              style={[
-                styles.moodBadge,
-                {
-                  backgroundColor: moodStyle?.surface,
-                  borderColor: moodStyle?.border,
-                },
-              ]}
-            >
-              <Caption color={moodStyle?.text}>
-                {mood.emoji} {mood.label}
-              </Caption>
+        <View style={styles.timeRow}>
+          <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
+          {wasEdited ? (
+            <View style={styles.editedBadge}>
+              <Caption color={COLORS.textSecondary}>Edited</Caption>
             </View>
           ) : null}
         </View>
@@ -144,18 +163,23 @@ export function JournalEntryCard({
         </BodyMedium>
       ) : null}
 
-      {detailPills.length > 0 ? (
+      {hasMetadata ? (
         <View style={styles.metaRow}>
-          {detailPills.map((detail) => (
-            <View key={`${entry.id}-${detail}`} style={styles.metaPill}>
-              <Caption color={COLORS.text}>{detail}</Caption>
+          {mood ? (
+            <View
+              style={[
+                styles.moodBadge,
+                {
+                  backgroundColor: moodStyle?.surface,
+                  borderColor: moodStyle?.border,
+                },
+              ]}
+            >
+              <Caption color={moodStyle?.text}>
+                {mood.emoji} {mood.label}
+              </Caption>
             </View>
-          ))}
-        </View>
-      ) : null}
-
-      {visibleTags.length > 0 ? (
-        <View style={styles.tagsRow}>
+          ) : null}
           {visibleTags.map((tag) => (
             <View key={`${entry.id}-${tag}`} style={styles.tagChip}>
               <Caption color={COLORS.primaryDark}>{tag}</Caption>
@@ -168,7 +192,7 @@ export function JournalEntryCard({
           ) : null}
         </View>
       ) : null}
-    </Pressable>
+    </AnimatedPressable>
   );
 }
 
@@ -184,14 +208,11 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: SPACING.md,
   },
-  headerCopy: {
-    flex: 1,
-    gap: SPACING.xs,
-  },
   timeRow: {
+    flex: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
     alignItems: 'center',
@@ -203,20 +224,13 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.surface,
   },
-  moodBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 4,
-    borderRadius: BORDER_RADIUS.full,
-    borderWidth: 1,
-  },
   actionButton: {
     width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: '#FAFAFA',
+    backgroundColor: COLORS.surface,
   },
   entryLead: {
     color: COLORS.text,
@@ -225,28 +239,24 @@ const styles = StyleSheet.create({
   metaRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
+    alignItems: 'center',
     gap: SPACING.sm,
   },
-  metaPill: {
+  moodBadge: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 5,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
-  },
-  tagsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
+    borderWidth: 1,
   },
   tagChip: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 5,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.primaryLight,
   },
   moreTagChip: {
     paddingHorizontal: SPACING.sm,
-    paddingVertical: 5,
+    paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: COLORS.surface,
   },

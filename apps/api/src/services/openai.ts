@@ -170,8 +170,6 @@ function buildJournalContext(entries: NonNullable<ChatRequest['journalEntries']>
     .map((entry) => {
       const details = [
         entry.mood ? `mood ${entry.mood}` : null,
-        entry.energy ? `energy ${entry.energy}` : null,
-        entry.stress ? `stress ${entry.stress}` : null,
         entry.tags.length > 0 ? `tags ${entry.tags.join(', ')}` : null,
       ]
         .filter(Boolean)
