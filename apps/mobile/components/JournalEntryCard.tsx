@@ -2,8 +2,9 @@ import { Alert, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { JournalEntry } from '@habits-coach/shared';
 import { BodyLarge, BodyMedium, Caption } from './ui';
-import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { JOURNAL_MOOD_BY_VALUE, JOURNAL_MOOD_STYLES } from '../constants/journal';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
@@ -55,6 +56,7 @@ export function JournalEntryCard({
   onEdit,
   onDelete,
 }: JournalEntryCardProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const mood = entry.mood ? JOURNAL_MOOD_BY_VALUE[entry.mood] : null;
   const moodStyle = entry.mood ? JOURNAL_MOOD_STYLES[entry.mood] : null;
   const [leadText, ...remainingParagraphs] = entry.content
@@ -99,7 +101,7 @@ export function JournalEntryCard({
             <Caption>{formatEntryTimestamp(entry.createdAt)}</Caption>
             {wasEdited ? (
               <View style={styles.editedBadge}>
-                <Caption color={COLORS.textLight}>Edited</Caption>
+                <Caption color={colors.textLight}>Edited</Caption>
               </View>
             ) : null}
           </View>
@@ -130,7 +132,7 @@ export function JournalEntryCard({
           accessibilityLabel="Journal entry actions"
           hitSlop={10}
         >
-          <Feather name="more-horizontal" size={18} color={COLORS.textSecondary} />
+          <Feather name="more-horizontal" size={18} color={colors.textSecondary} />
         </Pressable>
       </View>
 
@@ -139,7 +141,7 @@ export function JournalEntryCard({
       </BodyLarge>
 
       {supportingText ? (
-        <BodyMedium numberOfLines={2} color={COLORS.textSecondary}>
+        <BodyMedium numberOfLines={2} color={colors.textSecondary}>
           {supportingText}
         </BodyMedium>
       ) : null}
@@ -148,7 +150,7 @@ export function JournalEntryCard({
         <View style={styles.metaRow}>
           {detailPills.map((detail) => (
             <View key={`${entry.id}-${detail}`} style={styles.metaPill}>
-              <Caption color={COLORS.text}>{detail}</Caption>
+              <Caption color={colors.text}>{detail}</Caption>
             </View>
           ))}
         </View>
@@ -158,12 +160,12 @@ export function JournalEntryCard({
         <View style={styles.tagsRow}>
           {visibleTags.map((tag) => (
             <View key={`${entry.id}-${tag}`} style={styles.tagChip}>
-              <Caption color={COLORS.primaryDark}>{tag}</Caption>
+              <Caption color={colors.primaryDark}>{tag}</Caption>
             </View>
           ))}
           {hiddenTagCount > 0 ? (
             <View style={styles.moreTagChip}>
-              <Caption color={COLORS.textSecondary}>+{hiddenTagCount} more</Caption>
+              <Caption color={colors.textSecondary}>+{hiddenTagCount} more</Caption>
             </View>
           ) : null}
         </View>
@@ -172,14 +174,14 @@ export function JournalEntryCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   card: {
     gap: SPACING.sm,
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: colors.border,
   },
   header: {
     flexDirection: 'row',
@@ -201,7 +203,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xs + 2,
     paddingVertical: 2,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   moodBadge: {
     alignSelf: 'flex-start',
@@ -219,7 +221,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FAFAFA',
   },
   entryLead: {
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '600',
   },
   metaRow: {
@@ -231,7 +233,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 5,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   tagsRow: {
     flexDirection: 'row',
@@ -242,12 +244,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 5,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: colors.primaryLight,
   },
   moreTagChip: {
     paddingHorizontal: SPACING.sm,
     paddingVertical: 5,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
 });

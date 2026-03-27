@@ -1,13 +1,16 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { ChatMessage as ChatMessageType } from '@habits-coach/shared';
 import { Avatar } from './ui';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface ChatMessageProps {
   message: ChatMessageType;
 }
 
-export function ChatMessage({ message }: ChatMessageProps) {
+export function ChatMessage({
+  message }: ChatMessageProps) {
+  const [styles] = useThemedStyles(createStyles);
   const isUser = message.role === 'user';
 
   return (
@@ -29,7 +32,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     marginVertical: SPACING.xs,
@@ -47,18 +50,18 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
   },
   assistantBubble: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderTopLeftRadius: BORDER_RADIUS.sm,
   },
   userBubble: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderTopRightRadius: BORDER_RADIUS.sm,
   },
   text: {
     ...TYPOGRAPHY.bodyLarge,
-    color: COLORS.text,
+    color: colors.text,
   },
   userText: {
-    color: COLORS.white,
+    color: colors.white,
   },
 });

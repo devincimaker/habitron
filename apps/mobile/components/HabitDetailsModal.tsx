@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Habit, HabitStatus } from '@habits-coach/shared';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  TYPOGRAPHY,
-} from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { HeadingLarge, HeadingMedium, Caption, DisplayMedium, BodyMedium } from './ui';
 import { MonthlyCalendar } from './MonthlyCalendar';
 import { getLogsForHabitInRange, setHabitStatus } from '../services/habits';
 import {
@@ -32,6 +28,7 @@ import {
   calculateStreak,
   HabitStats,
 } from '../utils/habitStats';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 function getMonthKey(year: number, month: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}`;
@@ -43,12 +40,13 @@ interface HabitDetailsModalProps {
   onClose: () => void;
 }
 
-export function HabitDetailsModal({
-  visible,
+export function HabitDetailsModal({ visible,
   habit,
   onClose,
 }: HabitDetailsModalProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
+  const habitId = habit?.id;
 
   // Current displayed month
   const [displayYear, setDisplayYear] = useState(() => new Date().getFullYear());
@@ -82,11 +80,11 @@ export function HabitDetailsModal({
       setMonthLogs(new Map());
       setAllLogs(new Map());
     }
-  }, [visible, habit?.id]);
+  }, [visible, habitId]);
 
   // Fetch logs for current displayed month
   useEffect(() => {
-    if (!visible || !habit) return;
+    if (!visible || !habitId) return;
 
     const monthKey = getMonthKey(displayYear, displayMonth);
 
@@ -101,7 +99,7 @@ export function HabitDetailsModal({
       try {
         const monthInfo = getMonthInfo(displayYear, displayMonth);
         const logs = await getLogsForHabitInRange(
-          habit.id,
+          habitId,
           monthInfo.startDate,
           monthInfo.endDate
         );
@@ -130,7 +128,7 @@ export function HabitDetailsModal({
     };
 
     fetchLogs();
-  }, [visible, habit?.id, displayYear, displayMonth]);
+  }, [visible, habitId, displayYear, displayMonth]);
 
   const updateStats = useCallback(
     (currentMonthLogs: Map<string, HabitStatus>) => {
@@ -288,7 +286,7 @@ export function HabitDetailsModal({
             style={styles.backButton}
             testID="back-button"
           >
-            <Ionicons name="chevron-back" size={28} color={COLORS.white} />
+            <Ionicons name="chevron-back" size={28} color={colors.white} />
           </Pressable>
           <Text style={styles.headerTitle} numberOfLines={1}>
             {habit.name}
@@ -303,7 +301,7 @@ export function HabitDetailsModal({
           {/* Calendar */}
           {isLoading ? (
             <View style={styles.loadingContainer} testID="loading-indicator">
-              <ActivityIndicator size="large" color={COLORS.primary} />
+              <ActivityIndicator size="large" color={colors.primary} />
             </View>
           ) : (
             <MonthlyCalendar
@@ -321,35 +319,35 @@ export function HabitDetailsModal({
 
           {/* Stats Section */}
           <View style={styles.statsSection}>
-            <Text style={styles.statsTitle}>Check-ins Statistics</Text>
+            <HeadingMedium style={styles.statsTitle}>Check-ins Statistics</HeadingMedium>
             <View style={styles.statsGrid}>
               <StatCard
                 icon="checkmark-circle"
-                iconColor={COLORS.success}
+                iconColor={colors.success}
                 label="Monthly Check-ins"
                 value={stats.monthlyCheckIns}
-                unit="Day"
+                unit={stats.monthlyCheckIns === 1 ? 'Day' : 'Days'}
               />
               <StatCard
                 icon="checkmark-done-circle"
-                iconColor={COLORS.success}
+                iconColor={colors.success}
                 label="Total Check-ins"
                 value={stats.totalCheckIns}
-                unit="Day"
+                unit={stats.totalCheckIns === 1 ? 'Day' : 'Days'}
               />
               <StatCard
                 icon="pie-chart"
-                iconColor={COLORS.primary}
+                iconColor={colors.primary}
                 label="Monthly Check-in Rate"
                 value={stats.monthlyRate}
                 unit="%"
               />
               <StatCard
                 icon="flame"
-                iconColor="#FF6B6B"
+                iconColor={colors.streak}
                 label="Streak"
                 value={stats.currentStreak}
-                unit="Day"
+                unit={stats.currentStreak === 1 ? 'Day' : 'Days'}
               />
             </View>
           </View>
@@ -370,26 +368,27 @@ function StatCard({
   iconColor: string;
   label: string;
   value: number;
-  unit: string;
-}) {
+  unit: string; }) {
+  const colors = useColors();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   return (
     <View style={styles.statCard}>
       <View style={styles.statHeader}>
         <Ionicons name={icon} size={18} color={iconColor} />
-        <Text style={styles.statLabel}>{label}</Text>
+        <Caption style={styles.statLabel}>{label}</Caption>
       </View>
       <View style={styles.statValueRow}>
-        <Text style={styles.statValue}>{value}</Text>
-        <Text style={styles.statUnit}>{unit}</Text>
+        <DisplayMedium>{value}</DisplayMedium>
+        <BodyMedium color={colors.textSecondary}>{unit}</BodyMedium>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   header: {
     flexDirection: 'row',
@@ -401,14 +400,14 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    backgroundColor: colors.overlay,
     justifyContent: 'center',
     alignItems: 'center',
   },
   headerTitle: {
     flex: 1,
     ...TYPOGRAPHY.headingLarge,
-    color: COLORS.white,
+    color: colors.white,
     textAlign: 'center',
     marginHorizontal: SPACING.sm,
   },
@@ -417,19 +416,19 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   loadingContainer: {
     height: 300,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
   },
   statsSection: {
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.lg,
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
@@ -437,8 +436,6 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   statsTitle: {
-    ...TYPOGRAPHY.headingMedium,
-    color: COLORS.text,
     marginBottom: SPACING.md,
   },
   statsGrid: {
@@ -448,7 +445,7 @@ const styles = StyleSheet.create({
   },
   statCard: {
     width: '48%',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
   },
@@ -459,21 +456,12 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   statLabel: {
-    ...TYPOGRAPHY.caption,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     flex: 1,
   },
   statValueRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
     gap: SPACING.xs,
-  },
-  statValue: {
-    ...TYPOGRAPHY.displayMedium,
-    color: COLORS.text,
-  },
-  statUnit: {
-    ...TYPOGRAPHY.bodyMedium,
-    color: COLORS.textSecondary,
   },
 });

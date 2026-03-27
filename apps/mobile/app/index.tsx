@@ -4,9 +4,11 @@ import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useProfileStore } from '../stores/useProfileStore';
-import { COLORS, FONT_SIZES, SPACING } from '../constants/theme';
+import { FONT_SIZES, SPACING, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 export default function SplashScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const { session, isInitialized: authInitialized } = useAuthStore();
   const { name, isInitialized: profileInitialized } = useProfileStore();
@@ -33,14 +35,14 @@ export default function SplashScreen() {
   return (
     <View style={styles.container}>
       <LinearGradient
-        colors={[COLORS.primary, COLORS.primaryDark]}
+        colors={[colors.primary, colors.primaryDark]}
         style={styles.gradient}
       >
         <View style={styles.content}>
           <Text style={styles.title}>Habits Coach</Text>
           <Text style={styles.subtitle}>Build better habits with Habitron</Text>
           <ActivityIndicator
-            color={COLORS.white}
+            color={colors.white}
             style={styles.loader}
             size="small"
           />
@@ -50,7 +52,7 @@ export default function SplashScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
   },
@@ -65,12 +67,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: FONT_SIZES.xxl,
     fontWeight: 'bold',
-    color: COLORS.white,
+    color: colors.white,
     marginBottom: SPACING.sm,
   },
   subtitle: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.white,
+    color: colors.white,
     opacity: 0.9,
   },
   loader: {

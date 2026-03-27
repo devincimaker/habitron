@@ -1,8 +1,9 @@
 import { View, StyleSheet } from 'react-native';
 import type { CoachProposal } from '@habits-coach/shared';
 import { Button, Card, BodyMedium, Caption, HeadingLarge, Label } from './ui';
-import { COLORS, SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, type Colors } from '../constants/theme';
 import { describeCoachAction, getProposalSummary } from '../utils/coachProposal';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface CoachProposalCardProps {
   proposal: CoachProposal;
@@ -15,11 +16,12 @@ export function CoachProposalCard({
   onConfirm,
   onDismiss,
 }: CoachProposalCardProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const planDraft = proposal.dailyPlanDraft;
 
   return (
     <View style={styles.container}>
-      <Label color={COLORS.primary} style={styles.eyebrow}>
+      <Label color={colors.primary} style={styles.eyebrow}>
         Coach Proposal
       </Label>
       <HeadingLarge>{getProposalSummary(proposal)}</HeadingLarge>
@@ -29,7 +31,7 @@ export function CoachProposalCard({
           {proposal.actions.map((action, index) => (
             <View key={`${action.entity}-${action.operation}-${index}`} style={styles.actionRow}>
               <View style={styles.actionBullet} />
-              <BodyMedium color={COLORS.text}>{describeCoachAction(action)}</BodyMedium>
+              <BodyMedium color={colors.text}>{describeCoachAction(action)}</BodyMedium>
             </View>
           ))}
         </View>
@@ -46,7 +48,7 @@ export function CoachProposalCard({
               <Caption style={styles.planBlock}>
                 {item.scheduledBlock.toUpperCase()}
               </Caption>
-              <BodyMedium color={COLORS.text}>
+              <BodyMedium color={colors.text}>
                 {item.title}
                 {item.isOptional ? ' (optional)' : ''}
               </BodyMedium>
@@ -72,15 +74,15 @@ export function CoachProposalCard({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     marginHorizontal: LIST_ITEM.marginHorizontal,
     marginVertical: SPACING.sm,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.md,
     padding: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: colors.primary,
     ...SHADOWS.medium,
   },
   eyebrow: {
@@ -101,7 +103,7 @@ const styles = StyleSheet.create({
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     marginTop: 7,
   },
   planCard: {
@@ -121,7 +123,7 @@ const styles = StyleSheet.create({
   },
   planBlock: {
     width: 82,
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
     ...TYPOGRAPHY.caption,
   },
   actions: {

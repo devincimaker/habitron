@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
 import type { Goal, TimeBlock, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
-import { COLORS, SPACING, BORDER_RADIUS } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
 import { OptionChips } from './OptionChips';
 import { QuickDatePickerModal } from './QuickDatePickerModal';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface TodoEditorModalProps {
   visible: boolean;
@@ -38,6 +39,7 @@ export function TodoEditorModal({
   onClose,
   onSave,
 }: TodoEditorModalProps) {
+  const [styles] = useThemedStyles(createStyles);
   const initialListName = useMemo(() => {
     const list = lists.find((candidate) => candidate.id === todo?.listId);
     return list?.name ?? lists.find((candidate) => candidate.isInbox)?.name ?? 'Inbox';
@@ -243,10 +245,10 @@ export function TodoEditorModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     padding: SPACING.lg,
@@ -272,7 +274,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     padding: SPACING.lg,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderTopColor: colors.border,
+    backgroundColor: colors.background,
   },
 });

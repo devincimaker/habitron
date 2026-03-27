@@ -1,13 +1,16 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { COLORS, SPACING, FONT_SIZES } from '../constants/theme';
+import { SPACING, FONT_SIZES, type Colors } from '../constants/theme';
 import { getLast7Days } from '../utils/dateUtils';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface MiniCalendarProps {
   selectedDate: string; // YYYY-MM-DD
   onSelectDate: (date: string) => void;
 }
 
-export function MiniCalendar({ selectedDate, onSelectDate }: MiniCalendarProps) {
+export function MiniCalendar({
+  selectedDate, onSelectDate }: MiniCalendarProps) {
+  const [styles] = useThemedStyles(createStyles);
   const days = getLast7Days();
 
   return (
@@ -44,9 +47,9 @@ export function MiniCalendar({ selectedDate, onSelectDate }: MiniCalendarProps) 
   );
 }
 
-const DAY_SIZE = 36;
+const DAY_SIZE = 44;
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -59,7 +62,7 @@ const styles = StyleSheet.create({
   },
   weekdayLetter: {
     fontSize: FONT_SIZES.xs,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginBottom: SPACING.xs,
     fontWeight: '500',
   },
@@ -71,15 +74,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   selectedContainer: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
   dayNumber: {
     fontSize: FONT_SIZES.md,
-    color: COLORS.text,
+    color: colors.text,
     fontWeight: '500',
   },
   selectedText: {
-    color: COLORS.white,
+    color: colors.white,
     fontWeight: '600',
   },
 });

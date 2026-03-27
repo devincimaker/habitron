@@ -12,7 +12,8 @@ import { Feather } from '@expo/vector-icons';
 import { useSessionsStore } from '../../stores/useSessionsStore';
 import { SessionListItem } from '../../components/SessionListItem';
 import { SessionDetailModal } from '../../components/SessionDetailModal';
-import { COLORS, SPACING, FONT_SIZES } from '../../constants/theme';
+import { SPACING, FONT_SIZES, type Colors } from '../../constants/theme';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 function buildMemoryWarning(memoryCount: number | undefined): string {
   if (!memoryCount) return '';
@@ -21,6 +22,7 @@ function buildMemoryWarning(memoryCount: number | undefined): string {
 }
 
 export default function SessionsScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const {
     sessions,
     isLoading,
@@ -83,7 +85,7 @@ export default function SessionsScreen() {
       <View style={styles.container}>
         <View style={styles.emptyState}>
           <View style={styles.emptyIconContainer}>
-            <Feather name="message-circle" size={48} color={COLORS.textLight} />
+            <Feather name="message-circle" size={48} color={colors.textLight} />
           </View>
           <Text style={styles.emptyTitle}>No Sessions Yet</Text>
           <Text style={styles.emptySubtitle}>
@@ -103,7 +105,7 @@ export default function SessionsScreen() {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            tintColor={COLORS.primary}
+            tintColor={colors.primary}
           />
         }
       >
@@ -127,10 +129,10 @@ export default function SessionsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   scrollView: {
     flex: 1,
@@ -150,7 +152,7 @@ const styles = StyleSheet.create({
     width: 80,
     height: 80,
     borderRadius: 40,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: SPACING.lg,
@@ -158,12 +160,12 @@ const styles = StyleSheet.create({
   emptyTitle: {
     fontSize: FONT_SIZES.lg + 2,
     fontWeight: '600',
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: SPACING.sm,
   },
   emptySubtitle: {
     fontSize: FONT_SIZES.sm + 1,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     lineHeight: 22,
     maxWidth: 280,

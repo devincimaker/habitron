@@ -7,17 +7,11 @@ import { useAuthStore } from '../stores/useAuthStore';
 import { useMemoriesStore } from '../stores/useMemoriesStore';
 import type { Memory } from '@habits-coach/shared';
 import { Button, Input, Avatar, Card, HeadingLarge, BodyMedium, BodySmall } from '../components/ui';
-import {
-  COLORS,
-  SPACING,
-  BORDER_RADIUS,
-  TYPOGRAPHY,
-  CATEGORY_COLORS,
-  CATEGORY_LABELS,
-  TOUCH_TARGET,
-} from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, CATEGORY_COLORS, CATEGORY_LABELS, TOUCH_TARGET, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 export default function ProfileScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
@@ -122,7 +116,7 @@ export default function ProfileScreen() {
             </TouchableOpacity>
           </View>
         </View>
-        <BodyMedium color={COLORS.text}>{item.content}</BodyMedium>
+        <BodyMedium color={colors.text}>{item.content}</BodyMedium>
       </Card>
     ),
     [handleEditMemory, handleDeleteMemory]
@@ -139,7 +133,7 @@ export default function ProfileScreen() {
           style={styles.closeButton}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
         >
-          <Feather name="x" size={24} color={COLORS.text} />
+          <Feather name="x" size={24} color={colors.text} />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Profile</Text>
         <View style={styles.headerSpacer} />
@@ -235,10 +229,10 @@ export default function ProfileScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   // Header
   header: {
@@ -248,7 +242,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
     marginBottom: SPACING.lg,
   },
   closeButton: {
@@ -260,7 +254,7 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 17,
     fontWeight: '600',
-    color: COLORS.text,
+    color: colors.text,
   },
   headerSpacer: {
     width: TOUCH_TARGET.min,
@@ -304,11 +298,11 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   editText: {
-    color: COLORS.primary,
+    color: colors.primary,
     ...TYPOGRAPHY.label,
   },
   deleteText: {
-    color: COLORS.error,
+    color: colors.error,
     ...TYPOGRAPHY.label,
   },
   // Empty state
@@ -337,7 +331,7 @@ const styles = StyleSheet.create({
     padding: SPACING.xl,
   },
   modalContent: {
-    backgroundColor: COLORS.white,
+    backgroundColor: colors.white,
     borderRadius: BORDER_RADIUS.lg,
     padding: SPACING.lg,
     width: '100%',

@@ -1,6 +1,7 @@
 import { View, Text, StyleSheet, Modal, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
@@ -43,7 +44,9 @@ interface IconPickerProps {
   onClose: () => void;
 }
 
-export function IconPicker({ visible, selectedIcon, onSelectIcon, onClose }: IconPickerProps) {
+export function IconPicker({
+  visible, selectedIcon, onSelectIcon, onClose }: IconPickerProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   return (
     <Modal
       visible={visible}
@@ -57,7 +60,7 @@ export function IconPicker({ visible, selectedIcon, onSelectIcon, onClose }: Ico
           <View style={styles.header}>
             <Text style={styles.title}>Choose an Icon</Text>
             <Pressable onPress={onClose} style={styles.closeButton}>
-              <Ionicons name="close" size={24} color={COLORS.text} />
+              <Ionicons name="close" size={24} color={colors.text} />
             </Pressable>
           </View>
 
@@ -78,7 +81,7 @@ export function IconPicker({ visible, selectedIcon, onSelectIcon, onClose }: Ico
                       <Ionicons
                         name={icon}
                         size={28}
-                        color={selectedIcon === icon ? COLORS.white : COLORS.text}
+                        color={selectedIcon === icon ? colors.white : colors.text}
                       />
                     </Pressable>
                   ))}
@@ -92,17 +95,17 @@ export function IconPicker({ visible, selectedIcon, onSelectIcon, onClose }: Ico
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   overlay: {
     flex: 1,
     justifyContent: 'flex-end',
   },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colors.backdrop,
   },
   container: {
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderTopLeftRadius: BORDER_RADIUS.xl,
     borderTopRightRadius: BORDER_RADIUS.xl,
     maxHeight: '70%',
@@ -114,14 +117,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   title: {
     ...TYPOGRAPHY.headingLarge,
-    color: COLORS.text,
+    color: colors.text,
   },
   closeButton: {
-    padding: SPACING.xs,
+    width: 44,
+    height: 44,
+    justifyContent: 'center' as const,
+    alignItems: 'center' as const,
   },
   content: {
     paddingHorizontal: SPACING.lg,
@@ -132,7 +138,7 @@ const styles = StyleSheet.create({
   },
   categoryName: {
     ...TYPOGRAPHY.label,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginBottom: SPACING.sm,
   },
   iconGrid: {
@@ -144,11 +150,11 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: BORDER_RADIUS.md,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
   },
   iconButtonSelected: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
   },
 });

@@ -20,7 +20,8 @@ import { OptionChips } from './OptionChips';
 import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { JOURNAL_MOODS, JOURNAL_PALETTE } from '../constants/journal';
-import { BORDER_RADIUS, COLORS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface JournalEntryModalProps {
   visible: boolean;
@@ -87,6 +88,7 @@ export function JournalEntryModal({
   onClose,
   onSave,
 }: JournalEntryModalProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
@@ -206,7 +208,7 @@ export function JournalEntryModal({
             onPress={() => void handleDismiss()}
             accessibilityLabel="Close journal editor"
           >
-            <Feather name="x" size={18} color={COLORS.text} />
+            <Feather name="x" size={18} color={colors.text} />
           </Pressable>
         </View>
 
@@ -303,7 +305,7 @@ export function JournalEntryModal({
                       style={styles.suggestedTagChip}
                       onPress={() => addSuggestedTag(tag)}
                     >
-                      <Caption color={COLORS.primaryDark}>{tag}</Caption>
+                      <Caption color={colors.primaryDark}>{tag}</Caption>
                     </Pressable>
                   ))}
                 </View>
@@ -317,7 +319,7 @@ export function JournalEntryModal({
               onPress={() => void handleDismiss()}
               accessibilityRole="button"
             >
-              <BodyMedium color={COLORS.textSecondary}>Cancel</BodyMedium>
+              <BodyMedium color={colors.textSecondary}>Cancel</BodyMedium>
             </Pressable>
 
             <Pressable
@@ -330,7 +332,7 @@ export function JournalEntryModal({
               disabled={!content.trim() || isSaving}
               accessibilityRole="button"
             >
-              <BodyMedium color={COLORS.white} style={styles.footerPrimaryButtonText}>
+              <BodyMedium color={colors.white} style={styles.footerPrimaryButtonText}>
                 {isSaving ? 'Saving...' : entry ? 'Save changes' : 'Save entry'}
               </BodyMedium>
             </Pressable>
@@ -341,10 +343,10 @@ export function JournalEntryModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   topBar: {
     flexDirection: 'row',
@@ -354,9 +356,9 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
     paddingBottom: SPACING.md,
     gap: SPACING.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   topBarCopy: {
     flex: 1,
@@ -368,7 +370,7 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.full,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   content: {
     paddingHorizontal: SPACING.lg,
@@ -391,8 +393,8 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   editorHeader: {
     flexDirection: 'row',
@@ -406,15 +408,15 @@ const styles = StyleSheet.create({
   recordingRow: {
     padding: SPACING.sm,
     borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
   },
   metaCard: {
     gap: SPACING.md,
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   metaGroup: {
     gap: SPACING.sm,
@@ -430,7 +432,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: BORDER_RADIUS.full,
-    backgroundColor: COLORS.primaryLight,
+    backgroundColor: colors.primaryLight,
   },
   footer: {
     flexDirection: 'row',
@@ -450,10 +452,10 @@ const styles = StyleSheet.create({
   },
   footerPrimaryButton: {
     flex: 1.4,
-    backgroundColor: COLORS.primaryDark,
+    backgroundColor: colors.primaryDark,
   },
   footerPrimaryButtonDisabled: {
-    backgroundColor: COLORS.border,
+    backgroundColor: colors.border,
   },
   footerPrimaryButtonText: {
     fontWeight: '600',

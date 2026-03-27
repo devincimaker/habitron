@@ -1,5 +1,6 @@
 import { ScrollView, Pressable, StyleSheet, Text } from 'react-native';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface OptionChip<T extends string | number> {
   label: string;
@@ -23,6 +24,7 @@ export function OptionChips<T extends string | number>({
   onClear,
   size = 'md',
 }: OptionChipsProps<T>) {
+  const [styles] = useThemedStyles(createStyles);
   return (
     <ScrollView
       horizontal
@@ -65,7 +67,7 @@ export function OptionChips<T extends string | number>({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     gap: SPACING.sm,
   },
@@ -76,27 +78,27 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderRadius: BORDER_RADIUS.full,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    backgroundColor: COLORS.background,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   chipSm: {
-    minHeight: 34,
+    minHeight: 40,
     paddingHorizontal: SPACING.sm + 4,
-    paddingVertical: 6,
+    paddingVertical: SPACING.sm,
   },
   chipSelected: {
-    borderColor: COLORS.primary,
-    backgroundColor: COLORS.primaryLight,
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryLight,
   },
   chipText: {
     ...TYPOGRAPHY.bodyMedium,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   chipTextSm: {
     ...TYPOGRAPHY.bodySmall,
   },
   chipTextSelected: {
-    color: COLORS.primaryDark,
+    color: colors.primaryDark,
     fontWeight: '600',
   },
 });

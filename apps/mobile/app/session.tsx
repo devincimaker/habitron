@@ -35,9 +35,10 @@ import { useVoiceInput } from '../hooks/useVoiceInput';
 import { sendMessage } from '../services/api';
 import { getCoachRequestErrorMessage } from '../services/apiUrl';
 import type { ChatMessage as ChatMessageType, ChatRequest, CoachProposal } from '@habits-coach/shared';
-import { COLORS, SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET } from '../constants/theme';
+import { SPACING, BORDER_RADIUS, TYPOGRAPHY, TOUCH_TARGET, type Colors } from '../constants/theme';
 import { applyCoachProposal } from '../utils/applyCoachProposal';
 import { getProposalAppliedMessage } from '../utils/coachProposal';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 type ReviewState =
   | { phase: 'none' }
@@ -45,6 +46,7 @@ type ReviewState =
   | { phase: 'reviewing'; memories: ExtractedMemory[]; selected: Set<number> };
 
 export default function SessionScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { autoPrompt } = useLocalSearchParams<{
@@ -405,7 +407,7 @@ export default function SessionScreen() {
               Extracting what I learned about you...
             </BodyMedium>
           </View>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={colors.primary} />
         </View>
       </View>
     );
@@ -480,7 +482,7 @@ export default function SessionScreen() {
           onPress={handleEndSession}
           activeOpacity={0.7}
         >
-          <Ionicons name="close" size={32} color={COLORS.textLight} />
+          <Ionicons name="close" size={32} color={colors.textLight} />
         </TouchableOpacity>
       </View>
 
@@ -497,7 +499,7 @@ export default function SessionScreen() {
           <>
             {isLoading && (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator color={COLORS.primary} />
+                <ActivityIndicator color={colors.primary} />
                 <Text style={styles.loadingText}>Habitron is thinking...</Text>
               </View>
             )}
@@ -526,7 +528,7 @@ export default function SessionScreen() {
               value={inputText}
               onChangeText={setInputText}
               placeholder="Type your message..."
-              placeholderTextColor={COLORS.textLight}
+              placeholderTextColor={colors.textLight}
               multiline
               maxLength={500}
               editable={!isLoading}
@@ -558,10 +560,10 @@ export default function SessionScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   // Session header
   sessionHeader: {
@@ -570,7 +572,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   closeButton: {
     width: TOUCH_TARGET.min,
@@ -591,7 +593,7 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     marginLeft: SPACING.sm,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     ...TYPOGRAPHY.bodyMedium,
   },
   // Input
@@ -600,36 +602,36 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: colors.border,
   },
   input: {
     flex: 1,
     minHeight: TOUCH_TARGET.min,
     maxHeight: 100,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     ...TYPOGRAPHY.bodyLarge,
-    color: COLORS.text,
+    color: colors.text,
     marginRight: SPACING.sm,
   },
   sendButton: {
     width: TOUCH_TARGET.min,
     height: TOUCH_TARGET.min,
-    backgroundColor: COLORS.primary,
+    backgroundColor: colors.primary,
     borderRadius: BORDER_RADIUS.full,
     justifyContent: 'center',
     alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: COLORS.border,
+    backgroundColor: colors.border,
   },
   sendIcon: {
     fontSize: 18,
-    color: COLORS.white,
+    color: colors.white,
     fontWeight: 'bold',
   },
   // Review screen
@@ -671,9 +673,9 @@ const styles = StyleSheet.create({
     right: 0,
     flexDirection: 'row',
     padding: SPACING.md,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: colors.border,
     gap: SPACING.sm,
   },
   skipButton: {

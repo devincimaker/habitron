@@ -13,7 +13,7 @@ import { useTodosStore } from '../stores/useTodosStore';
 import { useJournalStore } from '../stores/useJournalStore';
 import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useAppStateHandler } from '../hooks/useAppState';
-import { COLORS } from '../constants/theme';
+import { ColorsProvider, useColorsValue } from '../hooks/useColors';
 import {
   registerForPushNotifications,
   savePushToken,
@@ -41,6 +41,7 @@ Sentry.init({
 });
 
 export default Sentry.wrap(function RootLayout() {
+  const colors = useColorsValue();
   const { session, isInitialized, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
   const clearHabits = useHabitsStore((state) => state.clearHabits);
@@ -128,36 +129,38 @@ export default Sentry.wrap(function RootLayout() {
   }, [router, navigationState?.key]);
 
   return (
-    <GestureHandlerRootView style={styles.container}>
-      <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShown: false,
-          contentStyle: { backgroundColor: COLORS.background },
-        }}
-      >
-        <Stack.Screen name="index" />
-        <Stack.Screen name="(auth)" />
-        <Stack.Screen name="(onboarding)" />
-        <Stack.Screen name="(tabs)" />
-        <Stack.Screen
-          name="profile"
-          options={{
-            title: 'Profile',
-            presentation: 'modal',
+    <ColorsProvider value={colors}>
+      <GestureHandlerRootView style={styles.container}>
+        <StatusBar style={colors.background === '#FFFFFF' ? 'dark' : 'light'} />
+        <Stack
+          screenOptions={{
             headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
           }}
-        />
-        <Stack.Screen
-          name="session"
-          options={{
-            presentation: 'fullScreenModal',
-            headerShown: false,
-            gestureEnabled: false, // Prevent accidental swipe dismiss
-          }}
-        />
-      </Stack>
-    </GestureHandlerRootView>
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="(auth)" />
+          <Stack.Screen name="(onboarding)" />
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen
+            name="profile"
+            options={{
+              title: 'Profile',
+              presentation: 'modal',
+              headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="session"
+            options={{
+              presentation: 'fullScreenModal',
+              headerShown: false,
+              gestureEnabled: false, // Prevent accidental swipe dismiss
+            }}
+          />
+        </Stack>
+      </GestureHandlerRootView>
+    </ColorsProvider>
   );
 });
 

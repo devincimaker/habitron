@@ -3,9 +3,11 @@ import { View, Text, StyleSheet, KeyboardAvoidingView, Platform } from 'react-na
 import { useRouter } from 'expo-router';
 import { useProfileStore } from '../../stores/useProfileStore';
 import { Button, Input, DisplayLarge, BodyMedium } from '../../components/ui';
-import { COLORS, SPACING, TYPOGRAPHY } from '../../constants/theme';
+import { SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
+import { useThemedStyles } from '../../hooks/useColors';
 
 export default function NameOnboardingScreen() {
+  const [styles] = useThemedStyles(createStyles);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const { updateName, isLoading } = useProfileStore();
@@ -72,10 +74,10 @@ export default function NameOnboardingScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   content: {
     flex: 1,
@@ -96,14 +98,14 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     textAlign: 'center',
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
   },
   form: {
     marginBottom: SPACING.xl,
   },
   error: {
     ...TYPOGRAPHY.bodySmall,
-    color: COLORS.error,
+    color: colors.error,
     marginBottom: SPACING.md,
   },
   buttonContainer: {

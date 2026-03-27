@@ -30,7 +30,7 @@ import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
-import { COLORS, SPACING } from '../../constants/theme';
+import { SPACING, type Colors } from '../../constants/theme';
 import {
   canGoToNextDay,
   canGoToPreviousDay,
@@ -38,12 +38,14 @@ import {
   getNextDay,
   getPreviousDay,
 } from '../../utils/dateUtils';
+import { useThemedStyles, useColors } from '../../hooks/useColors';
 
 const SWIPE_THRESHOLD = 25;
 
 type TransitionDirection = 'forward' | 'backward';
 
 export default function HabitsScreen() {
+  const [styles, colors] = useThemedStyles(createStyles);
   const today = getTodayDate();
   const {
     habits,
@@ -213,7 +215,7 @@ export default function HabitsScreen() {
         </BodyMedium>
       </Card>
     ),
-    []
+    [styles]
   );
 
   const selectedHabit = iconPickerHabitId
@@ -249,7 +251,7 @@ export default function HabitsScreen() {
                 <RefreshControl
                   refreshing={isRefreshing}
                   onRefresh={() => void handleRefresh()}
-                  tintColor={COLORS.primary}
+                  tintColor={colors.primary}
                 />
               }
               ListFooterComponent={<View style={styles.footer} />}
@@ -280,10 +282,10 @@ export default function HabitsScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   listContainer: {
     flex: 1,

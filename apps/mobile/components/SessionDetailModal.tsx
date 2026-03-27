@@ -11,8 +11,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { COLORS, CATEGORY_COLORS } from '../constants/theme';
+import { CATEGORY_COLORS, type Colors } from '../constants/theme';
 import type { CoachingSessionDetail } from '@habits-coach/shared';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 
 interface SessionDetailModalProps {
   visible: boolean;
@@ -27,6 +28,7 @@ export function SessionDetailModal({
   onClose,
   onDelete,
 }: SessionDetailModalProps) {
+  const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -84,7 +86,7 @@ export function SessionDetailModal({
         {/* Header */}
         <View style={styles.header}>
           <Pressable onPress={onClose} style={styles.backButton}>
-            <Ionicons name="chevron-back" size={28} color={COLORS.text} />
+            <Ionicons name="chevron-back" size={28} color={colors.text} />
           </Pressable>
           <View style={styles.headerContent}>
             <Text style={styles.headerTitle} numberOfLines={1}>
@@ -96,9 +98,9 @@ export function SessionDetailModal({
           </View>
           <Pressable onPress={handleDelete} style={styles.deleteButton} disabled={isDeleting}>
             {isDeleting ? (
-              <ActivityIndicator size="small" color={COLORS.error} />
+              <ActivityIndicator size="small" color={colors.error} />
             ) : (
-              <Ionicons name="trash-outline" size={24} color={COLORS.error} />
+              <Ionicons name="trash-outline" size={24} color={colors.error} />
             )}
           </Pressable>
         </View>
@@ -107,12 +109,12 @@ export function SessionDetailModal({
           {/* Session Info */}
           <View style={styles.infoCard}>
             <View style={styles.infoRow}>
-              <Ionicons name="chatbubbles-outline" size={20} color={COLORS.textSecondary} />
+              <Ionicons name="chatbubbles-outline" size={20} color={colors.textSecondary} />
               <Text style={styles.infoText}>{session.messageCount} messages</Text>
             </View>
             {session.endedAt && (
               <View style={styles.infoRow}>
-                <Ionicons name="time-outline" size={20} color={COLORS.textSecondary} />
+                <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
                 <Text style={styles.infoText}>
                   {Math.round((session.endedAt - session.startedAt) / 60000)} min duration
                 </Text>
@@ -130,11 +132,11 @@ export function SessionDetailModal({
                 <View key={memory.id} style={styles.memoryCard}>
                   <View style={[
                     styles.memoryCategoryBadge,
-                    { backgroundColor: `${CATEGORY_COLORS[memory.category] || COLORS.primaryLight}20` }
+                    { backgroundColor: `${CATEGORY_COLORS[memory.category] || colors.primaryLight}20` }
                   ]}>
                     <Text style={[
                       styles.memoryCategoryText,
-                      { color: CATEGORY_COLORS[memory.category] || COLORS.primary }
+                      { color: CATEGORY_COLORS[memory.category] || colors.primary }
                     ]}>
                       {memory.category}
                     </Text>
@@ -144,7 +146,7 @@ export function SessionDetailModal({
               ))
             ) : (
               <View style={styles.emptyState}>
-                <Ionicons name="bulb-outline" size={32} color={COLORS.textSecondary} />
+                <Ionicons name="bulb-outline" size={32} color={colors.textSecondary} />
                 <Text style={styles.emptyStateText}>
                   No insights were captured from this session
                 </Text>
@@ -157,19 +159,19 @@ export function SessionDetailModal({
   );
 }
 
-const styles = StyleSheet.create({
+const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: colors.background,
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 8,
     paddingVertical: 12,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: colors.border,
   },
   backButton: {
     padding: 8,
@@ -181,11 +183,11 @@ const styles = StyleSheet.create({
   headerTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: COLORS.text,
+    color: colors.text,
   },
   headerSubtitle: {
     fontSize: 13,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginTop: 2,
   },
   deleteButton: {
@@ -199,7 +201,7 @@ const styles = StyleSheet.create({
     paddingBottom: 32,
   },
   infoCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
@@ -211,7 +213,7 @@ const styles = StyleSheet.create({
   },
   infoText: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     marginLeft: 8,
   },
   section: {
@@ -220,11 +222,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: COLORS.text,
+    color: colors.text,
     marginBottom: 12,
   },
   memoryCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
@@ -243,18 +245,18 @@ const styles = StyleSheet.create({
   },
   memoryContent: {
     fontSize: 14,
-    color: COLORS.text,
+    color: colors.text,
     lineHeight: 20,
   },
   emptyState: {
     alignItems: 'center',
     padding: 32,
-    backgroundColor: COLORS.surface,
+    backgroundColor: colors.surface,
     borderRadius: 12,
   },
   emptyStateText: {
     fontSize: 14,
-    color: COLORS.textSecondary,
+    color: colors.textSecondary,
     textAlign: 'center',
     marginTop: 12,
   },

@@ -1,5 +1,6 @@
 import { View, Text, StyleSheet, ViewStyle } from 'react-native';
-import { COLORS, AVATAR_SIZES } from '../../constants/theme';
+import { AVATAR_SIZES } from '../../constants/theme';
+import { useColors } from '../../hooks/useColors';
 
 type AvatarSize = 'sm' | 'md' | 'lg';
 
@@ -14,10 +15,11 @@ interface AvatarProps {
 export function Avatar({
   text,
   size = 'md',
-  backgroundColor = COLORS.primary,
-  textColor = COLORS.white,
+  backgroundColor,
+  textColor,
   style,
 }: AvatarProps) {
+  const colors = useColors();
   const sizeConfig = AVATAR_SIZES[size];
 
   return (
@@ -28,7 +30,7 @@ export function Avatar({
           width: sizeConfig.size,
           height: sizeConfig.size,
           borderRadius: sizeConfig.borderRadius,
-          backgroundColor,
+          backgroundColor: backgroundColor ?? colors.primary,
         },
         style,
       ]}
@@ -38,7 +40,7 @@ export function Avatar({
           styles.text,
           {
             fontSize: sizeConfig.fontSize,
-            color: textColor,
+            color: textColor ?? colors.white,
           },
         ]}
       >

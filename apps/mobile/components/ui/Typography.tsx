@@ -1,5 +1,6 @@
 import { Text, StyleSheet, TextStyle, TextProps } from 'react-native';
-import { COLORS, TYPOGRAPHY } from '../../constants/theme';
+import { TYPOGRAPHY } from '../../constants/theme';
+import { useColors } from '../../hooks/useColors';
 
 interface TypographyProps extends TextProps {
   children: React.ReactNode;
@@ -7,73 +8,82 @@ interface TypographyProps extends TextProps {
   style?: TextStyle;
 }
 
-export function DisplayLarge({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function DisplayLarge({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.displayLarge, { color }, style]} {...props}>
+    <Text style={[styles.displayLarge, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function DisplayMedium({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function DisplayMedium({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.displayMedium, { color }, style]} {...props}>
+    <Text style={[styles.displayMedium, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function HeadingLarge({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function HeadingLarge({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.headingLarge, { color }, style]} {...props}>
+    <Text style={[styles.headingLarge, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function HeadingMedium({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function HeadingMedium({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.headingMedium, { color }, style]} {...props}>
+    <Text style={[styles.headingMedium, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function BodyLarge({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function BodyLarge({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.bodyLarge, { color }, style]} {...props}>
+    <Text style={[styles.bodyLarge, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function BodyMedium({ children, color = COLORS.textSecondary, style, ...props }: TypographyProps) {
+export function BodyMedium({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.bodyMedium, { color }, style]} {...props}>
+    <Text style={[styles.bodyMedium, { color: color ?? colors.textSecondary }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function BodySmall({ children, color = COLORS.textSecondary, style, ...props }: TypographyProps) {
+export function BodySmall({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.bodySmall, { color }, style]} {...props}>
+    <Text style={[styles.bodySmall, { color: color ?? colors.textSecondary }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function Label({ children, color = COLORS.text, style, ...props }: TypographyProps) {
+export function Label({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.label, { color }, style]} {...props}>
+    <Text style={[styles.label, { color: color ?? colors.text }, style]} {...props}>
       {children}
     </Text>
   );
 }
 
-export function Caption({ children, color = COLORS.textLight, style, ...props }: TypographyProps) {
+export function Caption({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
   return (
-    <Text style={[styles.caption, { color }, style]} {...props}>
+    <Text style={[styles.caption, { color: color ?? colors.textLight }, style]} {...props}>
       {children}
     </Text>
   );
