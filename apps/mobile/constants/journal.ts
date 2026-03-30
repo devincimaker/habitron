@@ -16,19 +16,6 @@ export const JOURNAL_MOOD_BY_VALUE = Object.fromEntries(
   JOURNAL_MOODS.map((mood) => [mood.value, mood])
 ) as Record<JournalMood, (typeof JOURNAL_MOODS)[number]>;
 
-export const JOURNAL_PALETTE = {
-  paper: '#FFF9F1',
-  paperAlt: '#F7EBDD',
-  ink: '#2F241B',
-  mutedInk: '#756453',
-  line: '#E8D8C2',
-  accent: '#B86A36',
-  accentSoft: '#F6D7B6',
-  chip: '#FFF2E0',
-  chipBorder: '#E7C79F',
-  shadow: 'rgba(117, 84, 46, 0.12)',
-} as const;
-
 export const JOURNAL_MOOD_STYLES: Record<
   JournalMood,
   {

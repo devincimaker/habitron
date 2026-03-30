@@ -20,7 +20,7 @@ import { BodyMedium, Caption, HeadingLarge, Input, Label } from './ui';
 import { OptionChips } from './OptionChips';
 import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { JOURNAL_MOODS, JOURNAL_PALETTE, JOURNAL_PROMPTS } from '../constants/journal';
+import { JOURNAL_MOODS, JOURNAL_PROMPTS } from '../constants/journal';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { useThemedStyles, useColors } from '../hooks/useColors';
 
@@ -264,7 +264,7 @@ export function JournalEntryModal({
       >
         <View style={styles.topBar}>
           <View style={styles.topBarCopy}>
-            <Caption color={JOURNAL_PALETTE.accent}>{formatSheetDate(entry)}</Caption>
+            <Caption color={colors.primaryDark}>{formatSheetDate(entry)}</Caption>
             <HeadingLarge>{sheetTitle}</HeadingLarge>
           </View>
 
@@ -285,7 +285,7 @@ export function JournalEntryModal({
         >
           {prompt ? (
             <View style={styles.promptCard}>
-              <Caption color={JOURNAL_PALETTE.accent}>Prompt</Caption>
+              <Caption color={colors.primaryDark}>Prompt</Caption>
               <HeadingLarge style={styles.promptText}>{prompt}</HeadingLarge>
             </View>
           ) : null}
@@ -397,11 +397,11 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     padding: SPACING.md,
     borderRadius: BORDER_RADIUS.xl,
     borderWidth: 1,
-    borderColor: JOURNAL_PALETTE.line,
-    backgroundColor: JOURNAL_PALETTE.paper,
+    borderColor: colors.border,
+    backgroundColor: colors.background,
   },
   promptText: {
-    color: JOURNAL_PALETTE.ink,
+    color: colors.text,
   },
   composerCard: {
     flex: 1,
