@@ -77,7 +77,7 @@ export function TaskRow({
           </Pressable>
         )}
         <Pressable style={styles.taskActionChip} onPress={() => onDelete(todo)}>
-          <Ionicons name="trash-outline" size={14} color={COLORS.textLight} />
+          <Ionicons name="trash-outline" size={14} color={colors.textLight} />
         </Pressable>
       </View>
     </View>
