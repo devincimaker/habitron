@@ -9,7 +9,7 @@ import {
 import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
-import { MiniCalendar } from '../../components/MiniCalendar';
+import { TaskCalendar } from '../../components/TaskCalendar';
 import { SectionHeader } from '../../components/SectionHeader';
 import { TaskRow } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
@@ -61,6 +61,16 @@ export default function TasksScreen() {
   );
   const openScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'open');
   const completedScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'completed');
+
+  const taskDatesWithDots = useMemo(() => {
+    const dates = new Set<string>();
+    for (const todo of todos) {
+      if (todo.scheduledDate && todo.status === 'open') {
+        dates.add(todo.scheduledDate);
+      }
+    }
+    return dates;
+  }, [todos]);
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadTodos(), loadGoals(), loadPlan(selectedDate)]);
@@ -176,6 +186,11 @@ export default function TasksScreen() {
 
   return (
     <View style={styles.container}>
+      <TaskCalendar
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+        taskDatesWithDots={taskDatesWithDots}
+      />
       <ScrollView
         contentContainerStyle={styles.content}
         refreshControl={
@@ -186,7 +201,6 @@ export default function TasksScreen() {
           />
         }
       >
-        <MiniCalendar selectedDate={selectedDate} onSelectDate={setSelectedDate} />
 
         <SectionHeader
           title="Scheduled"

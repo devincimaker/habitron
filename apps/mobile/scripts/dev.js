@@ -33,7 +33,21 @@ console.log(`Starting Expo on port ${port} with simulator: ${simulator}`);
 // Set simulator via environment variable (Expo's supported method)
 env.IOS_SIMULATOR_DEVICE = simulator;
 
-const args = ['start', '--ios', '--port', port];
+const { execSync } = require('child_process');
+
+// Check if simulator is already booted
+let simBooted = false;
+try {
+  const simList = execSync('xcrun simctl list devices booted', { encoding: 'utf-8' });
+  simBooted = simList.includes(simulator);
+} catch (_) {}
+
+const args = ['start', '--port', port];
+if (!simBooted) {
+  args.push('--ios');
+} else {
+  console.log(`Simulator "${simulator}" already booted, skipping --ios flag`);
+}
 
 const child = spawn('expo', args, {
   stdio: 'inherit',
