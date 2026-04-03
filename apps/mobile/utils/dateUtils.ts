@@ -119,6 +119,33 @@ export function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+// Task calendar utilities
+
+export function get7DaysCenteredOn(dateStr: string): DayInfo[] {
+  const center = new Date(dateStr + 'T00:00:00');
+  const days: DayInfo[] = [];
+  const todayStr = getTodayDate();
+
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(center);
+    d.setDate(d.getDate() + i);
+    const ds = toDateString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    days.push({
+      date: ds,
+      dayNumber: d.getDate(),
+      weekdayLetter: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()],
+      isToday: ds === todayStr,
+    });
+  }
+
+  return days;
+}
+
+export function getWeekRowIndex(year: number, month: number, day: number): number {
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  return Math.floor((firstDayOfWeek + day - 1) / 7);
+}
+
 // Month calendar utilities
 
 export interface MonthInfo {
