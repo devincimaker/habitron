@@ -1,10 +1,15 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
+  Alert,
   FlatList,
   RefreshControl,
   StyleSheet,
+  Pressable,
   View,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   Easing,
@@ -20,25 +25,24 @@ import type {
   HabitDraft,
   HabitStatus,
 } from '@habits-coach/shared';
-import { getTodayDate } from '@habits-coach/shared';
 import { IconPicker } from '../../components/IconPicker';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
+import { HabitManagerModal } from '../../components/HabitManagerModal';
 import { HabitItem } from '../../components/HabitItem';
 import { MiniCalendar } from '../../components/MiniCalendar';
-import { SectionHeader } from '../../components/SectionHeader';
+import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
-import { SPACING, type Colors } from '../../constants/theme';
+import { BORDER_RADIUS, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import {
   canGoToNextDay,
   canGoToPreviousDay,
-  formatShortDate,
   getNextDay,
   getPreviousDay,
 } from '../../utils/dateUtils';
-import { useThemedStyles, useColors } from '../../hooks/useColors';
+import { useThemedStyles } from '../../hooks/useColors';
 
 const SWIPE_THRESHOLD = 25;
 
@@ -46,13 +50,17 @@ type TransitionDirection = 'forward' | 'backward';
 
 export default function HabitsScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
-  const today = getTodayDate();
+  const insets = useSafeAreaInsets();
+  const navigation = useNavigation<any>();
   const {
     habits,
     isLoading,
     loadHabits,
     addHabit,
     updateHabit,
+    archiveHabit,
+    restoreHabit,
+    removeHabit,
     setHabitStatus,
     getHabitsWithStatus,
     selectedDate,
@@ -64,31 +72,34 @@ export default function HabitsScreen() {
   const [iconPickerHabitId, setIconPickerHabitId] = useState<string | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitEditor, setShowHabitEditor] = useState(false);
+  const [showHabitManager, setShowHabitManager] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transitionDirection, setTransitionDirection] =
     useState<TransitionDirection>('backward');
 
   const habitsWithStatus = getHabitsWithStatus();
-  const completedCount = useMemo(
-    () => habitsWithStatus.filter((habit) => habit.todayStatus === 'completed').length,
-    [habitsWithStatus]
-  );
-  const habitsSubtitle = useMemo(() => {
-    if (habitsWithStatus.length === 0) {
-      return selectedDate === today
-        ? 'No habits yet'
-        : `No habits for ${formatShortDate(selectedDate)}`;
-    }
-
-    const progressLabel = `${completedCount}/${habitsWithStatus.length} completed`;
-    return selectedDate === today
-      ? progressLabel
-      : `${progressLabel} · ${formatShortDate(selectedDate)}`;
-  }, [completedCount, habitsWithStatus.length, selectedDate, today]);
 
   useEffect(() => {
     void Promise.all([loadHabits(), loadGoals()]);
   }, [loadGoals, loadHabits]);
+
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <View style={styles.headerActions}>
+          <Pressable
+            style={styles.headerManagerButton}
+            onPress={() => setShowHabitManager(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Open habit manager"
+          >
+            <Ionicons name="book-outline" size={20} color={colors.text} />
+          </Pressable>
+          <ProfileHeaderButton />
+        </View>
+      ),
+    });
+  }, [colors.text, navigation, styles]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -139,6 +150,11 @@ export default function HabitsScreen() {
     [addHabit, editingHabit, updateHabit]
   );
 
+  const closeHabitEditor = useCallback(() => {
+    setShowHabitEditor(false);
+    setEditingHabit(null);
+  }, []);
+
   const openHabitEditor = useCallback((habit?: Habit | null) => {
     setEditingHabit(habit ?? null);
     setShowHabitEditor(true);
@@ -172,7 +188,7 @@ export default function HabitsScreen() {
       Gesture.Pan()
         .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
         .failOffsetY([-12, 12])
-        .enabled(!showHabitEditor && iconPickerHabitId === null)
+        .enabled(!showHabitEditor && !showHabitManager && iconPickerHabitId === null)
         .onEnd((event) => {
           if (event.translationX > SWIPE_THRESHOLD) {
             runOnJS(navigateToPreviousDay)();
@@ -180,7 +196,7 @@ export default function HabitsScreen() {
             runOnJS(navigateToNextDay)();
           }
         }),
-    [iconPickerHabitId, navigateToNextDay, navigateToPreviousDay, showHabitEditor]
+    [iconPickerHabitId, navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
   );
   const renderHabitRow = useCallback(
     ({ item }: { item: typeof habitsWithStatus[number] }) => (
@@ -197,6 +213,69 @@ export default function HabitsScreen() {
       />
     ),
     [habits, handleStatusChange, openHabitEditor]
+  );
+  const handleEditFromManager = useCallback(
+    (habit: Habit) => {
+      setShowHabitManager(false);
+      openHabitEditor(habit);
+    },
+    [openHabitEditor]
+  );
+  const handleArchiveFromManager = useCallback(
+    (habit: Habit) => {
+      Alert.alert(
+        'Archive Habit',
+        `Archive "${habit.name}"? You can restore it later from archived habits.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Archive',
+            style: 'destructive',
+            onPress: async () => {
+              await archiveHabit(habit.id);
+            },
+          },
+        ]
+      );
+    },
+    [archiveHabit]
+  );
+  const handleRestoreFromManager = useCallback(
+    (habit: Habit) => {
+      Alert.alert(
+        'Restore Habit',
+        `Bring "${habit.name}" back into your daily list?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Restore',
+            onPress: async () => {
+              await restoreHabit(habit.id);
+            },
+          },
+        ]
+      );
+    },
+    [restoreHabit]
+  );
+  const handleDeleteFromManager = useCallback(
+    (habit: Habit) => {
+      Alert.alert(
+        'Delete Habit',
+        `Permanently delete "${habit.name}"? This cannot be undone.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: async () => {
+              await removeHabit(habit.id);
+            },
+          },
+        ]
+      );
+    },
+    [removeHabit]
   );
   const listEntering =
     transitionDirection === 'forward'
@@ -226,12 +305,6 @@ export default function HabitsScreen() {
     <GestureDetector gesture={daySwipeGesture}>
       <View style={styles.container}>
         <MiniCalendar selectedDate={selectedDate} onSelectDate={handleSelectDate} />
-        <SectionHeader
-          title="Habits"
-          subtitle={habitsSubtitle}
-          actionLabel="Add"
-          onPressAction={() => openHabitEditor()}
-        />
 
         <View style={styles.listContainer}>
           <Animated.View
@@ -260,6 +333,18 @@ export default function HabitsScreen() {
           </Animated.View>
         </View>
 
+        <Pressable
+          style={[
+            styles.fab,
+            { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
+          ]}
+          onPress={() => openHabitEditor()}
+          accessibilityRole="button"
+          accessibilityLabel="Add a new habit"
+        >
+          <Ionicons name="add" size={28} color={colors.white} />
+        </Pressable>
+
         <IconPicker
           visible={iconPickerHabitId !== null}
           selectedIcon={selectedHabit?.icon}
@@ -267,14 +352,22 @@ export default function HabitsScreen() {
           onClose={() => setIconPickerHabitId(null)}
         />
 
+        <HabitManagerModal
+          visible={showHabitManager}
+          habits={habits}
+          isLoading={isLoading}
+          onClose={() => setShowHabitManager(false)}
+          onEdit={handleEditFromManager}
+          onArchive={handleArchiveFromManager}
+          onRestore={handleRestoreFromManager}
+          onDelete={handleDeleteFromManager}
+        />
+
         <HabitEditorModal
           visible={showHabitEditor}
           habit={editingHabit}
           goals={goals as Goal[]}
-          onClose={() => {
-            setShowHabitEditor(false);
-            setEditingHabit(null);
-          }}
+          onClose={closeHabitEditor}
           onSave={handleSaveHabit}
         />
       </View>
@@ -299,8 +392,35 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   emptyCard: {
     marginHorizontal: SPACING.md,
+    marginTop: SPACING.md,
   },
   footer: {
-    height: SPACING.xxl,
+    height: TAB_BAR.height + SPACING.xxl,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerManagerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    marginRight: SPACING.sm,
+  },
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.medium,
   },
 });

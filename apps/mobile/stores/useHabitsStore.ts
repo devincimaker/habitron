@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Habit, HabitWithStatus, HabitStatus, getTodayDate } from '@habits-coach/shared';
+import { Habit, HabitDraft, HabitWithStatus, HabitStatus, getTodayDate } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
@@ -14,9 +14,11 @@ interface HabitsState {
   // Actions
   loadHabits: () => Promise<void>;
   setSelectedDate: (date: string) => Promise<void>;
-  addHabit: (habit: Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>) => Promise<Habit>;
+  addHabit: (habit: HabitDraft) => Promise<Habit>;
   removeHabit: (habitId: string) => Promise<void>;
-  updateHabit: (habitId: string, updates: Partial<Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<Habit>;
+  updateHabit: (habitId: string, updates: Partial<HabitDraft>) => Promise<Habit>;
+  archiveHabit: (habitId: string) => Promise<Habit>;
+  restoreHabit: (habitId: string) => Promise<Habit>;
   setHabitStatus: (habitId: string, status: HabitStatus) => Promise<void>;
   getHabitsWithStatus: () => HabitWithStatus[];
   clearHabits: () => void;
@@ -123,6 +125,36 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     }
   },
 
+  archiveHabit: async (habitId) => {
+    try {
+      const archivedHabit = await habitsService.archiveHabit(habitId);
+      set((state) => ({
+        habits: state.habits.map((habit) =>
+          habit.id === habitId ? archivedHabit : habit
+        ),
+      }));
+      return archivedHabit;
+    } catch (error) {
+      console.error('Failed to archive habit:', error);
+      throw error;
+    }
+  },
+
+  restoreHabit: async (habitId) => {
+    try {
+      const restoredHabit = await habitsService.restoreHabit(habitId);
+      set((state) => ({
+        habits: state.habits.map((habit) =>
+          habit.id === habitId ? restoredHabit : habit
+        ),
+      }));
+      return restoredHabit;
+    } catch (error) {
+      console.error('Failed to restore habit:', error);
+      throw error;
+    }
+  },
+
   setHabitStatus: async (habitId, status) => {
     try {
       const { selectedDate } = get();
@@ -151,10 +183,12 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   getHabitsWithStatus: () => {
     const { habits, selectedDate, dateLogs } = get();
     const currentLogs = dateLogs.get(selectedDate) || new Map();
-    return habits.map((habit) => ({
+    return habits
+      .filter((habit) => habit.active)
+      .map((habit) => ({
       ...habit,
       todayStatus: currentLogs.get(habit.id) || 'pending',
-    }));
+      }));
   },
 
   clearHabits: () => {

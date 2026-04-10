@@ -33,7 +33,8 @@ serve(async (req: Request) => {
         id,
         user_id,
         name
-      `);
+      `)
+      .eq('active', true);
 
     if (habitsError) {
       console.error('Error fetching habits:', habitsError);

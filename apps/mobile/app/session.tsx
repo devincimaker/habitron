@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -89,6 +89,10 @@ export default function SessionScreen() {
   const hasSentAutoPrompt = useRef(false);
   const today = getTodayDate();
   const todayPlan = plansByDate[today] ?? null;
+  const activeHabits = useMemo(
+    () => habits.filter((habit) => habit.active),
+    [habits]
+  );
 
   // Load memories on mount
   useEffect(() => {
@@ -139,7 +143,7 @@ export default function SessionScreen() {
           role: message.role,
           content: message.content,
         })),
-        habits,
+        habits: activeHabits,
         goals,
         todos,
         journalEntries: journalEntries.slice(0, 10),
@@ -176,7 +180,7 @@ export default function SessionScreen() {
     addMessage,
     journalEntries,
     goals,
-    habits,
+    activeHabits,
     memories,
     messages,
     setLoading,

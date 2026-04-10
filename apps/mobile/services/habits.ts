@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Habit, HabitStatus, getTodayDate } from '@habits-coach/shared';
+import { Habit, HabitDraft, HabitStatus, getTodayDate } from '@habits-coach/shared';
 
 // Database row types (snake_case from Supabase)
 interface DbHabit {
@@ -11,6 +11,7 @@ interface DbHabit {
   reason: string | null;
   icon: string | null;
   goal_id: string | null;
+  active: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -33,6 +34,7 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
     reason: dbHabit.reason ?? undefined,
     icon: dbHabit.icon ?? undefined,
     goalId: dbHabit.goal_id ?? undefined,
+    active: dbHabit.active,
     createdAt: new Date(dbHabit.created_at).getTime(),
     updatedAt: new Date(dbHabit.updated_at).getTime(),
   };
@@ -43,6 +45,7 @@ export async function getHabits(): Promise<Habit[]> {
   const { data, error } = await supabase
     .from('habits')
     .select('*')
+    .order('active', { ascending: false })
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -53,9 +56,7 @@ export async function getHabits(): Promise<Habit[]> {
   return (data as DbHabit[]).map(mapDbHabitToHabit);
 }
 
-export async function addHabit(
-  habit: Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>
-): Promise<Habit> {
+export async function addHabit(habit: HabitDraft): Promise<Habit> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -74,6 +75,7 @@ export async function addHabit(
       reason: habit.reason ?? null,
       icon: habit.icon ?? null,
       goal_id: habit.goalId ?? null,
+      active: true,
     })
     .select()
     .single();
@@ -97,7 +99,7 @@ export async function removeHabit(habitId: string): Promise<void> {
 
 export async function updateHabit(
   habitId: string,
-  updates: Partial<Omit<Habit, 'id' | 'createdAt' | 'updatedAt'>>
+  updates: Partial<HabitDraft>
 ): Promise<void> {
   const updateData: Partial<DbHabit> = {};
 
@@ -118,6 +120,30 @@ export async function updateHabit(
     console.error('Error updating habit:', error);
     throw error;
   }
+}
+
+async function setHabitActiveState(habitId: string, active: boolean): Promise<Habit> {
+  const { data, error } = await supabase
+    .from('habits')
+    .update({ active })
+    .eq('id', habitId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error(`Error ${active ? 'restoring' : 'archiving'} habit:`, error);
+    throw error;
+  }
+
+  return mapDbHabitToHabit(data as DbHabit);
+}
+
+export async function archiveHabit(habitId: string): Promise<Habit> {
+  return setHabitActiveState(habitId, false);
+}
+
+export async function restoreHabit(habitId: string): Promise<Habit> {
+  return setHabitActiveState(habitId, true);
 }
 
 // Habit Logs

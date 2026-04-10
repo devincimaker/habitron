@@ -43,6 +43,7 @@ export interface Habit {
   reason?: string;
   icon?: string;
   goalId?: string;
+  active: boolean;
   createdAt: number;
   updatedAt?: number;
 }

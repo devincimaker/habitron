@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Caption, HeadingLarge } from './ui';
 import { SPACING } from '../constants/theme';
@@ -7,6 +8,7 @@ interface SectionHeaderProps {
   subtitle: string;
   actionLabel?: string;
   onPressAction?: () => void;
+  rightAccessory?: ReactNode;
 }
 
 export function SectionHeader({
@@ -14,6 +16,7 @@ export function SectionHeader({
   subtitle,
   actionLabel,
   onPressAction,
+  rightAccessory,
 }: SectionHeaderProps) {
   return (
     <View style={styles.sectionHeader}>
@@ -21,7 +24,8 @@ export function SectionHeader({
         <HeadingLarge>{title}</HeadingLarge>
         <Caption>{subtitle}</Caption>
       </View>
-      {actionLabel && onPressAction ? (
+      {rightAccessory ? rightAccessory : null}
+      {!rightAccessory && actionLabel && onPressAction ? (
         <Button title={actionLabel} onPress={onPressAction} size="sm" />
       ) : null}
     </View>
