@@ -119,6 +119,71 @@ export function toDateString(year: number, month: number, day: number): string {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+// Task calendar utilities
+
+export function getWeekDaysStartingSunday(dateStr: string): DayInfo[] {
+  const selectedDate = new Date(dateStr + 'T00:00:00');
+  const weekStart = new Date(selectedDate);
+  const days: DayInfo[] = [];
+  const todayStr = getTodayDate();
+
+  weekStart.setDate(selectedDate.getDate() - selectedDate.getDay());
+
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(weekStart.getDate() + i);
+    const ds = toDateString(d.getFullYear(), d.getMonth() + 1, d.getDate());
+    days.push({
+      date: ds,
+      dayNumber: d.getDate(),
+      weekdayLetter: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()],
+      isToday: ds === todayStr,
+    });
+  }
+
+  return days;
+}
+
+export function getWeekRowIndex(year: number, month: number, day: number): number {
+  const firstDayOfWeek = new Date(year, month, 1).getDay();
+  return Math.floor((firstDayOfWeek + day - 1) / 7);
+}
+
+export function getMonthGridDates(
+  year: number,
+  month: number,
+  numberOfWeeks = 6
+): string[][] {
+  const firstDay = new Date(year, month, 1);
+  const gridStart = new Date(firstDay);
+  gridStart.setDate(firstDay.getDate() - firstDay.getDay());
+
+  return Array.from({ length: numberOfWeeks }, (_, weekIndex) =>
+    Array.from({ length: 7 }, (_, dayIndex) => {
+      const date = new Date(gridStart);
+      date.setDate(gridStart.getDate() + weekIndex * 7 + dayIndex);
+      return toDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
+    })
+  );
+}
+
+export function getFirstDateOfMonth(year: number, month: number): string {
+  return toDateString(year, month + 1, 1);
+}
+
+export function getMonthSelectionTarget(
+  year: number,
+  month: number,
+  todayDate: string
+): string {
+  const today = new Date(todayDate + 'T00:00:00');
+  if (today.getFullYear() === year && today.getMonth() === month) {
+    return todayDate;
+  }
+
+  return getFirstDateOfMonth(year, month);
+}
+
 // Month calendar utilities
 
 export interface MonthInfo {
