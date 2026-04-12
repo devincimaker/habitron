@@ -12,6 +12,7 @@ jest.mock('../services/api', () => ({
 }));
 
 const today = '2026-04-09';
+const createdAt = new Date('2026-04-01T09:00:00Z').getTime();
 
 const activeHabit: Habit = {
   id: 'habit-active',
@@ -19,7 +20,7 @@ const activeHabit: Habit = {
   frequency: 'daily',
   timeOfDay: 'evening',
   active: true,
-  createdAt: Date.now(),
+  createdAt,
 };
 
 const archivedHabit: Habit = {
@@ -28,14 +29,47 @@ const archivedHabit: Habit = {
   frequency: 'daily',
   timeOfDay: 'morning',
   active: false,
-  createdAt: Date.now(),
+  createdAt,
+};
+
+const dueDailyHabit: Habit = {
+  id: 'habit-due-daily',
+  name: 'Walk',
+  frequency: 'daily',
+  weeklyDays: ['Thu'],
+  active: true,
+  createdAt,
+};
+
+const offDayDailyHabit: Habit = {
+  id: 'habit-off-day',
+  name: 'Review budget',
+  frequency: 'daily',
+  weeklyDays: ['Mon'],
+  active: true,
+  createdAt,
+};
+
+const weeklyHabit: Habit = {
+  id: 'habit-weekly',
+  name: 'Strength',
+  frequency: 'weekly',
+  weeklyCount: 3,
+  active: true,
+  createdAt,
 };
 
 describe('useHabitsStore archive behavior', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     useHabitsStore.setState({
-      habits: [activeHabit, archivedHabit],
+      habits: [
+        activeHabit,
+        archivedHabit,
+        dueDailyHabit,
+        offDayDailyHabit,
+        weeklyHabit,
+      ],
       selectedDate: today,
       dateLogs: new Map([
         [
@@ -43,6 +77,8 @@ describe('useHabitsStore archive behavior', () => {
           new Map([
             [activeHabit.id, 'completed'],
             [archivedHabit.id, 'completed'],
+            [dueDailyHabit.id, 'pending'],
+            [weeklyHabit.id, 'completed'],
           ]),
         ],
       ]),
@@ -56,6 +92,14 @@ describe('useHabitsStore archive behavior', () => {
     expect(habitsWithStatus).toEqual([
       {
         ...activeHabit,
+        todayStatus: 'completed',
+      },
+      {
+        ...dueDailyHabit,
+        todayStatus: 'pending',
+      },
+      {
+        ...weeklyHabit,
         todayStatus: 'completed',
       },
     ]);
@@ -74,6 +118,9 @@ describe('useHabitsStore archive behavior', () => {
     expect(useHabitsStore.getState().habits).toEqual([
       archivedResult,
       archivedHabit,
+      dueDailyHabit,
+      offDayDailyHabit,
+      weeklyHabit,
     ]);
   });
 
@@ -90,6 +137,9 @@ describe('useHabitsStore archive behavior', () => {
     expect(useHabitsStore.getState().habits).toEqual([
       activeHabit,
       restoredResult,
+      dueDailyHabit,
+      offDayDailyHabit,
+      weeklyHabit,
     ]);
   });
 });

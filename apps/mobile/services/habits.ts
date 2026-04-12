@@ -1,5 +1,11 @@
 import { supabase } from './supabase';
-import { Habit, HabitDraft, HabitStatus, getTodayDate } from '@habits-coach/shared';
+import {
+  Habit,
+  HabitDraft,
+  HabitStatus,
+  HabitWeekday,
+  getTodayDate,
+} from '@habits-coach/shared';
 
 // Database row types (snake_case from Supabase)
 interface DbHabit {
@@ -7,10 +13,11 @@ interface DbHabit {
   user_id: string;
   name: string;
   frequency: 'daily' | 'weekly';
+  weekly_days: HabitWeekday[] | null;
+  weekly_count: number | null;
   time_of_day: 'morning' | 'afternoon' | 'evening' | 'anytime' | null;
   reason: string | null;
   icon: string | null;
-  goal_id: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
@@ -30,10 +37,12 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
     id: dbHabit.id,
     name: dbHabit.name,
     frequency: dbHabit.frequency,
+    weeklyDays: dbHabit.weekly_days ?? undefined,
+    weeklyCount:
+      dbHabit.weekly_count ?? (dbHabit.frequency === 'weekly' ? 1 : undefined),
     timeOfDay: dbHabit.time_of_day ?? undefined,
     reason: dbHabit.reason ?? undefined,
     icon: dbHabit.icon ?? undefined,
-    goalId: dbHabit.goal_id ?? undefined,
     active: dbHabit.active,
     createdAt: new Date(dbHabit.created_at).getTime(),
     updatedAt: new Date(dbHabit.updated_at).getTime(),
@@ -71,10 +80,12 @@ export async function addHabit(habit: HabitDraft): Promise<Habit> {
       user_id: user.id,
       name: habit.name,
       frequency: habit.frequency,
+      weekly_days: habit.frequency === 'daily' ? habit.weeklyDays ?? null : null,
+      weekly_count:
+        habit.frequency === 'weekly' ? habit.weeklyCount ?? 1 : null,
       time_of_day: habit.timeOfDay ?? null,
       reason: habit.reason ?? null,
       icon: habit.icon ?? null,
-      goal_id: habit.goalId ?? null,
       active: true,
     })
     .select()
@@ -100,26 +111,43 @@ export async function removeHabit(habitId: string): Promise<void> {
 export async function updateHabit(
   habitId: string,
   updates: Partial<HabitDraft>
-): Promise<void> {
+): Promise<Habit> {
   const updateData: Partial<DbHabit> = {};
 
   if (updates.name !== undefined) updateData.name = updates.name;
   if (updates.frequency !== undefined) updateData.frequency = updates.frequency;
+  if (updates.frequency === 'daily') {
+    updateData.weekly_days = updates.weeklyDays ?? null;
+    updateData.weekly_count = null;
+  } else if (updates.frequency === 'weekly') {
+    updateData.weekly_days = null;
+    updateData.weekly_count = updates.weeklyCount ?? 1;
+  } else {
+    if (updates.weeklyDays !== undefined) {
+      updateData.weekly_days = updates.weeklyDays ?? null;
+    }
+    if (updates.weeklyCount !== undefined) {
+      updateData.weekly_count = updates.weeklyCount ?? null;
+    }
+  }
   if (updates.timeOfDay !== undefined)
     updateData.time_of_day = updates.timeOfDay;
   if (updates.reason !== undefined) updateData.reason = updates.reason;
   if (updates.icon !== undefined) updateData.icon = updates.icon;
-  if (updates.goalId !== undefined) updateData.goal_id = updates.goalId ?? null;
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('habits')
     .update(updateData)
-    .eq('id', habitId);
+    .eq('id', habitId)
+    .select()
+    .single();
 
   if (error) {
     console.error('Error updating habit:', error);
     throw error;
   }
+
+  return mapDbHabitToHabit(data as DbHabit);
 }
 
 async function setHabitActiveState(habitId: string, active: boolean): Promise<Habit> {

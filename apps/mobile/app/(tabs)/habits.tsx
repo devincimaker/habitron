@@ -20,7 +20,6 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import type {
-  Goal,
   Habit,
   HabitDraft,
   HabitStatus,
@@ -33,7 +32,6 @@ import { MiniCalendar } from '../../components/MiniCalendar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
-import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { BORDER_RADIUS, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import {
@@ -66,7 +64,6 @@ export default function HabitsScreen() {
     selectedDate,
     setSelectedDate,
   } = useHabitsStore();
-  const { goals, loadGoals } = useGoalsStore();
   const { plansByDate, loadPlan, updateOutcomeForHabit } = useDailyPlansStore();
 
   const [iconPickerHabitId, setIconPickerHabitId] = useState<string | null>(null);
@@ -78,10 +75,14 @@ export default function HabitsScreen() {
     useState<TransitionDirection>('backward');
 
   const habitsWithStatus = getHabitsWithStatus();
+  const activeHabitCount = useMemo(
+    () => habits.filter((habit) => habit.active).length,
+    [habits]
+  );
 
   useEffect(() => {
-    void Promise.all([loadHabits(), loadGoals()]);
-  }, [loadGoals, loadHabits]);
+    void loadHabits();
+  }, [loadHabits]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
@@ -104,11 +105,11 @@ export default function HabitsScreen() {
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
     try {
-      await Promise.all([loadHabits(), loadGoals()]);
+      await loadHabits();
     } finally {
       setIsRefreshing(false);
     }
-  }, [loadGoals, loadHabits]);
+  }, [loadHabits]);
 
   const handleStatusChange = useCallback(
     async (habitId: string, status: HabitStatus) => {
@@ -289,12 +290,13 @@ export default function HabitsScreen() {
     () => (
       <Card variant="surface" style={styles.emptyCard}>
         <BodyMedium>
-          You do not have any habits yet. Add one here or let Habitron suggest one in a
-          session.
+          {activeHabitCount === 0
+            ? 'You do not have any habits yet. Add one here or let Habitron suggest one in a session.'
+            : 'No habits are scheduled for this day.'}
         </BodyMedium>
       </Card>
     ),
-    [styles]
+    [activeHabitCount, styles]
   );
 
   const selectedHabit = iconPickerHabitId
@@ -366,7 +368,6 @@ export default function HabitsScreen() {
         <HabitEditorModal
           visible={showHabitEditor}
           habit={editingHabit}
-          goals={goals as Goal[]}
           onClose={closeHabitEditor}
           onSave={handleSaveHabit}
         />

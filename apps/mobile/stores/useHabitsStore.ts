@@ -4,6 +4,7 @@ import * as Sentry from '@sentry/react-native';
 import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
 import { getLast7Days } from '../utils/dateUtils';
+import { isHabitDueOnDate } from '../utils/habitSchedule';
 
 interface HabitsState {
   habits: Habit[];
@@ -111,8 +112,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
 
   updateHabit: async (habitId, updates) => {
     try {
-      await habitsService.updateHabit(habitId, updates);
-      const updatedHabit = { ...get().habits.find((habit) => habit.id === habitId)!, ...updates };
+      const updatedHabit = await habitsService.updateHabit(habitId, updates);
       set((state) => ({
         habits: state.habits.map((h) =>
           h.id === habitId ? updatedHabit : h
@@ -184,10 +184,10 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     const { habits, selectedDate, dateLogs } = get();
     const currentLogs = dateLogs.get(selectedDate) || new Map();
     return habits
-      .filter((habit) => habit.active)
+      .filter((habit) => isHabitDueOnDate(habit, selectedDate))
       .map((habit) => ({
-      ...habit,
-      todayStatus: currentLogs.get(habit.id) || 'pending',
+        ...habit,
+        todayStatus: currentLogs.get(habit.id) || 'pending',
       }));
   },
 

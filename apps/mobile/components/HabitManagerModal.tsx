@@ -15,6 +15,7 @@ import type { Habit } from '@habits-coach/shared';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
+import { formatHabitSchedule } from '../utils/habitSchedule';
 
 type HabitManagerTab = 'active' | 'archived';
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -246,6 +247,8 @@ function HabitManagerRow({
 
 function formatHabitMeta(habit: Habit): string {
   const parts = [habit.frequency === 'daily' ? 'Daily' : 'Weekly'];
+
+  parts.push(formatHabitSchedule(habit));
 
   if (habit.timeOfDay && habit.timeOfDay !== 'anytime') {
     parts.push(habit.timeOfDay.charAt(0).toUpperCase() + habit.timeOfDay.slice(1));

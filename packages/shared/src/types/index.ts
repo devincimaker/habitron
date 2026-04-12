@@ -11,6 +11,16 @@ export type HabitFrequency = 'daily' | 'weekly';
 export type HabitTimeOfDay = 'morning' | 'afternoon' | 'evening' | 'anytime';
 export type TimeBlock = 'morning' | 'afternoon' | 'evening';
 export type Priority = 1 | 2 | 3 | 4;
+export const HABIT_WEEKDAYS = [
+  'Sun',
+  'Mon',
+  'Tue',
+  'Wed',
+  'Thu',
+  'Fri',
+  'Sat',
+] as const;
+export type HabitWeekday = (typeof HABIT_WEEKDAYS)[number];
 
 // Goal types
 export type GoalStatus = 'active' | 'paused' | 'completed' | 'archived';
@@ -39,10 +49,11 @@ export interface Habit {
   id: string;
   name: string;
   frequency: HabitFrequency;
+  weeklyDays?: HabitWeekday[];
+  weeklyCount?: number;
   timeOfDay?: HabitTimeOfDay;
   reason?: string;
   icon?: string;
-  goalId?: string;
   active: boolean;
   createdAt: number;
   updatedAt?: number;
@@ -51,10 +62,11 @@ export interface Habit {
 export interface HabitDraft {
   name: string;
   frequency: HabitFrequency;
+  weeklyDays?: HabitWeekday[];
+  weeklyCount?: number;
   timeOfDay?: HabitTimeOfDay;
   reason?: string;
   icon?: string;
-  goalId?: string;
 }
 
 export type HabitStatus = 'pending' | 'completed' | 'skipped';

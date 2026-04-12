@@ -1,6 +1,15 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+type HabitRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  frequency: 'daily' | 'weekly';
+  weekly_days: string[] | null;
+  created_at: string;
+};
+
 /**
  * This Edge Function runs daily (e.g., at 11 PM UTC) to check for users
  * who have habits that are still "pending" at the end of the day.
@@ -32,7 +41,10 @@ serve(async (req: Request) => {
       .select(`
         id,
         user_id,
-        name
+        name,
+        frequency,
+        weekly_days,
+        created_at
       `)
       .eq('active', true);
 
@@ -61,7 +73,10 @@ serve(async (req: Request) => {
     const loggedHabitIds = new Set((todayLogs || []).map((l) => l.habit_id));
 
     // Filter to habits without logs (pending habits)
-    const pendingHabits = habitsWithoutLogs.filter((h) => !loggedHabitIds.has(h.id));
+    const pendingHabits = (habitsWithoutLogs as HabitRow[]).filter(
+      (habit) =>
+        !loggedHabitIds.has(habit.id) && isHabitDueOnDate(habit, today)
+    );
 
     if (pendingHabits.length === 0) {
       return new Response(JSON.stringify({ processed: 0, message: 'No pending habits' }), {
@@ -229,4 +244,30 @@ function getNext9AM(timezone: string): Date {
   utcDate.setHours(utcDate.getHours() - offsetHours);
 
   return utcDate;
+}
+
+function isHabitDueOnDate(habit: HabitRow, date: string): boolean {
+  const createdAtDate = new Date(habit.created_at);
+  createdAtDate.setHours(0, 0, 0, 0);
+
+  const targetDate = new Date(date + 'T00:00:00');
+  targetDate.setHours(0, 0, 0, 0);
+
+  if (createdAtDate > targetDate) {
+    return false;
+  }
+
+  if (habit.frequency === 'daily') {
+    if (!habit.weekly_days || habit.weekly_days.length === 0) {
+      return true;
+    }
+
+    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
+      targetDate.getDay()
+    ];
+
+    return habit.weekly_days.includes(weekday);
+  }
+
+  return true;
 }
