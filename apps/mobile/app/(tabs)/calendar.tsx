@@ -3,12 +3,15 @@ import { Tabs } from 'expo-router';
 import {
   Alert,
   LayoutChangeEvent,
+  Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
@@ -21,8 +24,15 @@ import {
 } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
-import { BodyMedium, Card } from '../../components/ui';
-import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
+import { Card } from '../../components/ui';
+import {
+  BORDER_RADIUS,
+  SHADOWS,
+  SPACING,
+  TAB_BAR,
+  TYPOGRAPHY,
+  type Colors,
+} from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
@@ -43,6 +53,7 @@ interface DragState {
 
 export default function CalendarScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
+  const insets = useSafeAreaInsets();
   const today = getTodayDate();
   const containerRef = useRef<View>(null);
   const taskCalendarRef = useRef<TaskCalendarRef>(null);
@@ -311,7 +322,12 @@ export default function CalendarScreen() {
         <ScrollView
           style={styles.scroll}
           scrollEnabled={!dragState}
-          contentContainerStyle={styles.content}
+          contentContainerStyle={[
+            styles.content,
+            {
+              paddingBottom: TAB_BAR.height + insets.bottom + 72 + SPACING.xl,
+            },
+          ]}
           refreshControl={
             <RefreshControl
               refreshing={isLoading}
@@ -345,6 +361,15 @@ export default function CalendarScreen() {
             </>
           ) : null}
 
+          <SectionHeader
+            title="Tasks"
+            subtitle={
+              selectedDate === today
+                ? 'Scheduled for today'
+                : `Scheduled for ${formatRelativeDateLabel(selectedDate)}`
+            }
+          />
+
           {openScheduledTodos.length > 0 ? (
             <Card variant="outlined">
               {openScheduledTodos.map((todo) => (
@@ -362,14 +387,7 @@ export default function CalendarScreen() {
                 />
               ))}
             </Card>
-          ) : (
-            <Card variant="surface">
-              <BodyMedium>
-                No open tasks scheduled here yet. Use Tasks to create one and place it on the
-                calendar when it matters.
-              </BodyMedium>
-            </Card>
-          )}
+          ) : null}
 
           {completedScheduledTodos.length > 0 ? (
             <>
@@ -397,9 +415,22 @@ export default function CalendarScreen() {
           ) : null}
         </ScrollView>
 
+        <Pressable
+          style={[
+            styles.fab,
+            { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
+          ]}
+          onPress={() => openTaskEditor()}
+          accessibilityRole="button"
+          accessibilityLabel="Add a new task for this day"
+        >
+          <Ionicons name="add" size={28} color={colors.white} />
+        </Pressable>
+
         <TodoEditorModal
           visible={showTodoEditor}
           todo={editingTodo}
+          defaultScheduledDate={editingTodo ? undefined : selectedDate}
           lists={lists}
           goals={goals as Goal[]}
           onClose={() => {
@@ -464,8 +495,18 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     flex: 1,
   },
   content: {
-    paddingBottom: SPACING.xxl,
     paddingTop: SPACING.sm,
+  },
+  fab: {
+    position: 'absolute',
+    right: SPACING.lg,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...SHADOWS.medium,
   },
   dragLayer: {
     ...StyleSheet.absoluteFillObject,

@@ -11,6 +11,7 @@ import { useThemedStyles } from '../hooks/useColors';
 interface TodoEditorModalProps {
   visible: boolean;
   todo?: Todo | null;
+  defaultScheduledDate?: string;
   lists: TodoList[];
   goals: Goal[];
   onClose: () => void;
@@ -34,6 +35,7 @@ const BLOCK_OPTIONS = [
 export function TodoEditorModal({
   visible,
   todo,
+  defaultScheduledDate,
   lists,
   goals,
   onClose,
@@ -69,10 +71,10 @@ export function TodoEditorModal({
     setGoalId(todo?.goalId);
     setPriority(todo?.priority);
     setDueDate(todo?.dueDate);
-    setScheduledDate(todo?.scheduledDate);
+    setScheduledDate(todo?.scheduledDate ?? defaultScheduledDate);
     setScheduledBlock(todo?.scheduledBlock);
     setEstimateMinutes(todo?.estimateMinutes ? String(todo.estimateMinutes) : '');
-  }, [visible, todo, lists]);
+  }, [visible, todo, lists, defaultScheduledDate]);
 
   const handleSave = async () => {
     if (!title.trim()) return;
@@ -205,7 +207,7 @@ export function TodoEditorModal({
             />
 
             <Caption>
-              Save once and you can keep rescheduling this task from the Today screen.
+              Save once and you can keep rescheduling this task from the calendar.
             </Caption>
           </ScrollView>
 
