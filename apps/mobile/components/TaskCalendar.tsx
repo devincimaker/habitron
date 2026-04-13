@@ -6,6 +6,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react';
 import {
   LayoutChangeEvent,
@@ -13,10 +14,13 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
   useWindowDimensions,
 } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
+  cancelAnimation,
   Easing,
   interpolate,
   runOnJS,
@@ -30,6 +34,7 @@ import { FONT_SIZES, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme
 import {
   getWeekDaysStartingSunday,
   toDateString,
+  type DayInfo,
 } from '../utils/dateUtils';
 import {
   buildTaskCalendarMonthWeeks,
@@ -59,13 +64,15 @@ const WEEKDAY_ROW_HEIGHT = 20;
 const CALENDAR_TOP_PADDING = SPACING.sm;
 const CALENDAR_BOTTOM_PADDING = 4;
 const HORIZONTAL_SWIPE_ACTIVATION_DISTANCE = 8;
-const SWIPE_THRESHOLD = 50;
-const EXPAND_THRESHOLD = 40;
+const VERTICAL_DRAG_ACTIVATION_DISTANCE = 6;
+const HORIZONTAL_SWIPE_THRESHOLD_RATIO = 0.22;
+const HORIZONTAL_SWIPE_THRESHOLD_MIN = 72;
+const EXPAND_DRAG_DISTANCE_MIN = 160;
+const EXPAND_COMMIT_PROGRESS = 0.5;
+const EXPAND_VELOCITY_THRESHOLD = 420;
 const DOT_SIZE = 5;
 const DOT_BOTTOM_OFFSET = 4;
-const MONTH_SWIPE_MIDPOINT_MIN_OPACITY = 0.42;
-const MONTH_SWIPE_THRESHOLD_RATIO = 0.22;
-const MONTH_SWIPE_THRESHOLD_MIN = 72;
+const CALENDAR_SWIPE_MIDPOINT_MIN_OPACITY = 0.42;
 const ANIMATION_DURATION = 160;
 const WEEKDAY_LABELS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const TIMING_CONFIG = {
@@ -82,12 +89,74 @@ function getDateParts(dateStr: string): { year: number; month: number; day: numb
   };
 }
 
+function shiftDateString(dateStr: string, dayOffset: number): string {
+  const date = new Date(dateStr + 'T00:00:00');
+  date.setDate(date.getDate() + dayOffset);
+  return toDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
+function clamp(value: number, min: number, max: number): number {
+  'worklet';
+  return Math.max(min, Math.min(value, max));
+}
+
+function getExpandProgress(
+  startProgress: number,
+  translationY: number,
+  dragDistance: number
+): number {
+  'worklet';
+  return clamp(startProgress + translationY / dragDistance, 0, 1);
+}
+
+function getSwipeDirection(
+  translationX: number,
+  threshold: number
+): 'previous' | 'next' | null {
+  'worklet';
+  if (translationX > threshold) return 'previous';
+  if (translationX < -threshold) return 'next';
+  return null;
+}
+
 const calendarMetrics: TaskCalendarMetrics = {
   topPadding: CALENDAR_TOP_PADDING,
   bottomPadding: CALENDAR_BOTTOM_PADDING,
   weekdayRowHeight: WEEKDAY_ROW_HEIGHT,
   rowHeight: ROW_HEIGHT,
 };
+
+function CalendarPageStrip({
+  containerStyle,
+  pageStyle,
+  previous,
+  current,
+  next,
+  previousAnimatedStyle,
+  currentAnimatedStyle,
+  nextAnimatedStyle,
+}: {
+  containerStyle: StyleProp<ViewStyle>;
+  pageStyle: StyleProp<ViewStyle>;
+  previous: ReactNode;
+  current: ReactNode;
+  next: ReactNode;
+  previousAnimatedStyle: StyleProp<ViewStyle>;
+  currentAnimatedStyle: StyleProp<ViewStyle>;
+  nextAnimatedStyle: StyleProp<ViewStyle>;
+}) {
+  return (
+    <View style={containerStyle}>
+      <Animated.View pointerEvents="none" style={[pageStyle, previousAnimatedStyle]}>
+        {previous}
+      </Animated.View>
+      <Animated.View style={[pageStyle, currentAnimatedStyle]}>{current}</Animated.View>
+      <Animated.View pointerEvents="none" style={[pageStyle, nextAnimatedStyle]}>
+        {next}
+      </Animated.View>
+    </View>
+  );
+}
 
 export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
   function TaskCalendar(
@@ -98,18 +167,15 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
     const containerRef = useRef<View>(null);
     const { width: windowWidth } = useWindowDimensions();
     const todayStr = getTodayDate();
-    const selectedDateObj = useMemo(
-      () => new Date(selectedDate + 'T00:00:00'),
-      [selectedDate]
-    );
 
     const [isExpanded, setIsExpanded] = useState(false);
     const [renderExpandedBody, setRenderExpandedBody] = useState(false);
-    const [displayYear, setDisplayYear] = useState(selectedDateObj.getFullYear());
-    const [displayMonth, setDisplayMonth] = useState(selectedDateObj.getMonth());
+    const [displayYear, setDisplayYear] = useState(() => getDateParts(selectedDate).year);
+    const [displayMonth, setDisplayMonth] = useState(() => getDateParts(selectedDate).month);
     const [frame, setFrame] = useState<TaskCalendarFrame | null>(null);
     const expandProgress = useSharedValue(0);
-    const monthTranslateX = useSharedValue(0);
+    const expandGestureStartProgress = useSharedValue(0);
+    const pageTranslateX = useSharedValue(0);
 
     const weekDays = useMemo(() => getWeekDaysStartingSunday(selectedDate), [selectedDate]);
     const weekDates = useMemo(() => weekDays.map((day) => day.date), [weekDays]);
@@ -121,11 +187,20 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
       () => getTaskCalendarHeights(expandedWeeks.length, calendarMetrics),
       [expandedWeeks.length]
     );
-    const monthPageWidth = frame?.width ?? windowWidth;
-    const monthSwipeThreshold = Math.max(
-      windowWidth * MONTH_SWIPE_THRESHOLD_RATIO,
-      MONTH_SWIPE_THRESHOLD_MIN
+    const pageWidth = frame?.width ?? windowWidth;
+    const horizontalSwipeThreshold = Math.max(
+      windowWidth * HORIZONTAL_SWIPE_THRESHOLD_RATIO,
+      HORIZONTAL_SWIPE_THRESHOLD_MIN
     );
+    const expandDragDistance = Math.max(
+      expandedHeight - collapsedHeight,
+      EXPAND_DRAG_DISTANCE_MIN
+    );
+    const syncDisplayedMonth = useCallback((dateStr: string) => {
+      const parts = getDateParts(dateStr);
+      setDisplayYear(parts.year);
+      setDisplayMonth(parts.month);
+    }, []);
 
     const measureFrame = useCallback(() => {
       if (!containerRef.current) return;
@@ -137,9 +212,8 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
 
     useEffect(() => {
       if (isExpanded) return;
-      setDisplayYear(selectedDateObj.getFullYear());
-      setDisplayMonth(selectedDateObj.getMonth());
-    }, [isExpanded, selectedDateObj]);
+      syncDisplayedMonth(selectedDate);
+    }, [isExpanded, selectedDate, syncDisplayedMonth]);
 
     useEffect(() => {
       const handle = requestAnimationFrame(measureFrame);
@@ -153,24 +227,27 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
       [measureFrame]
     );
 
-    const handleExpand = useCallback(() => {
-      setDisplayYear(selectedDateObj.getFullYear());
-      setDisplayMonth(selectedDateObj.getMonth());
+    const prepareExpandedBody = useCallback(() => {
+      syncDisplayedMonth(selectedDate);
       setRenderExpandedBody(true);
+    }, [selectedDate, syncDisplayedMonth]);
+
+    const handleExpand = useCallback(() => {
+      prepareExpandedBody();
       setIsExpanded(true);
-      monthTranslateX.value = 0;
+      pageTranslateX.value = 0;
       expandProgress.value = withTiming(1, TIMING_CONFIG);
-    }, [expandProgress, monthTranslateX, selectedDateObj]);
+    }, [expandProgress, pageTranslateX, prepareExpandedBody]);
 
     const handleCollapse = useCallback(() => {
       setIsExpanded(false);
-      monthTranslateX.value = 0;
+      pageTranslateX.value = 0;
       expandProgress.value = withTiming(0, TIMING_CONFIG, (finished) => {
         if (finished) {
           runOnJS(setRenderExpandedBody)(false);
         }
       });
-    }, [expandProgress, monthTranslateX]);
+    }, [expandProgress, pageTranslateX]);
 
     const handleWeekShift = useCallback(
       (direction: 1 | -1) => {
@@ -219,14 +296,32 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
       };
     }, [displayMonth, displayYear, todayStr]);
 
+    const adjacentWeekDays = useMemo(
+      () => ({
+        previous: getWeekDaysStartingSunday(shiftDateString(selectedDate, -7)),
+        next: getWeekDaysStartingSunday(shiftDateString(selectedDate, 7)),
+      }),
+      [selectedDate]
+    );
+
     const finishMonthNavigation = useCallback(
       (direction: 'previous' | 'next') => {
         handleMonthNavigation(direction);
         requestAnimationFrame(() => {
-          monthTranslateX.value = 0;
+          pageTranslateX.value = 0;
         });
       },
-      [handleMonthNavigation, monthTranslateX]
+      [handleMonthNavigation, pageTranslateX]
+    );
+
+    const finishWeekNavigation = useCallback(
+      (direction: 1 | -1) => {
+        handleWeekShift(direction);
+        requestAnimationFrame(() => {
+          pageTranslateX.value = 0;
+        });
+      },
+      [handleWeekShift, pageTranslateX]
     );
 
     const handleSelectDate = useCallback(
@@ -237,11 +332,10 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
 
         const parts = getDateParts(dateStr);
         if (parts.year !== displayYear || parts.month !== displayMonth) {
-          setDisplayYear(parts.year);
-          setDisplayMonth(parts.month);
+          syncDisplayedMonth(dateStr);
         }
       },
-      [displayMonth, displayYear, onSelectDate, renderExpandedBody]
+      [displayMonth, displayYear, onSelectDate, renderExpandedBody, syncDisplayedMonth]
     );
 
     const horizontalPan = Gesture.Pan()
@@ -249,50 +343,76 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
         -HORIZONTAL_SWIPE_ACTIVATION_DISTANCE,
         HORIZONTAL_SWIPE_ACTIVATION_DISTANCE,
       ])
-      .failOffsetY([-15, 15])
+      .failOffsetY([-18, 18])
+      .onStart(() => {
+        cancelAnimation(pageTranslateX);
+      })
       .onUpdate((event) => {
-        if (!isExpanded) return;
-
-        monthTranslateX.value = Math.max(
-          -monthPageWidth,
-          Math.min(event.translationX, monthPageWidth)
-        );
+        pageTranslateX.value = clamp(event.translationX, -pageWidth, pageWidth);
       })
       .onEnd((event) => {
-        const navigationThreshold = isExpanded ? monthSwipeThreshold : SWIPE_THRESHOLD;
+        const swipeDirection = getSwipeDirection(
+          event.translationX,
+          horizontalSwipeThreshold
+        );
 
-        if (event.translationX > navigationThreshold) {
-          if (isExpanded) {
-            monthTranslateX.value = withTiming(monthPageWidth, TIMING_CONFIG, (finished) => {
-              if (finished) {
-                runOnJS(finishMonthNavigation)('previous');
-              }
-            });
-          } else {
-            runOnJS(handleWeekShift)(-1);
-          }
-        } else if (event.translationX < -navigationThreshold) {
-          if (isExpanded) {
-            monthTranslateX.value = withTiming(-monthPageWidth, TIMING_CONFIG, (finished) => {
-              if (finished) {
-                runOnJS(finishMonthNavigation)('next');
-              }
-            });
-          } else {
-            runOnJS(handleWeekShift)(1);
-          }
-        } else if (isExpanded) {
-          monthTranslateX.value = withTiming(0, TIMING_CONFIG);
+        if (!swipeDirection) {
+          pageTranslateX.value = withTiming(0, TIMING_CONFIG);
+          return;
         }
+
+        const targetX = swipeDirection === 'previous' ? pageWidth : -pageWidth;
+        pageTranslateX.value = withTiming(targetX, TIMING_CONFIG, (finished) => {
+          if (!finished) return;
+
+          if (isExpanded) {
+            runOnJS(finishMonthNavigation)(swipeDirection);
+          } else {
+            runOnJS(finishWeekNavigation)(swipeDirection === 'previous' ? -1 : 1);
+          }
+        });
       });
 
     const verticalPan = Gesture.Pan()
-      .activeOffsetY([-EXPAND_THRESHOLD, EXPAND_THRESHOLD])
-      .failOffsetX([-15, 15])
+      .activeOffsetY([
+        -VERTICAL_DRAG_ACTIVATION_DISTANCE,
+        VERTICAL_DRAG_ACTIVATION_DISTANCE,
+      ])
+      .failOffsetX([-18, 18])
+      .onStart(() => {
+        cancelAnimation(expandProgress);
+        expandGestureStartProgress.value = expandProgress.value;
+
+        if (!renderExpandedBody) {
+          runOnJS(prepareExpandedBody)();
+        }
+      })
+      .onUpdate((event) => {
+        expandProgress.value = getExpandProgress(
+          expandGestureStartProgress.value,
+          event.translationY,
+          expandDragDistance
+        );
+      })
       .onEnd((event) => {
-        if (!isExpanded && event.translationY > EXPAND_THRESHOLD) {
+        const nextProgress = getExpandProgress(
+          expandGestureStartProgress.value,
+          event.translationY,
+          expandDragDistance
+        );
+        const startedExpanded = expandGestureStartProgress.value >= EXPAND_COMMIT_PROGRESS;
+
+        const shouldEndExpanded = startedExpanded
+          ? !(
+              nextProgress < EXPAND_COMMIT_PROGRESS ||
+              event.velocityY < -EXPAND_VELOCITY_THRESHOLD
+            )
+          : nextProgress > EXPAND_COMMIT_PROGRESS ||
+            event.velocityY > EXPAND_VELOCITY_THRESHOLD;
+
+        if (shouldEndExpanded) {
           runOnJS(handleExpand)();
-        } else if (isExpanded && event.translationY < -EXPAND_THRESHOLD) {
+        } else {
           runOnJS(handleCollapse)();
         }
       });
@@ -303,30 +423,48 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
       height: interpolate(expandProgress.value, [0, 1], [collapsedHeight, expandedHeight]),
     }));
 
-    const monthPageOpacity = useDerivedValue(() => {
-      const progress = Math.min(Math.abs(monthTranslateX.value) / monthPageWidth, 1);
+    const pageOpacity = useDerivedValue(() => {
+      const progress = clamp(Math.abs(pageTranslateX.value) / pageWidth, 0, 1);
       return interpolate(
         progress,
         [0, 0.5, 1],
-        [1, MONTH_SWIPE_MIDPOINT_MIN_OPACITY, 1]
+        [1, CALENDAR_SWIPE_MIDPOINT_MIN_OPACITY, 1]
       );
-    }, [monthPageWidth]);
+    }, [pageWidth]);
 
     const currentMonthAnimatedStyle = useAnimatedStyle(() => {
       return {
-        opacity: monthPageOpacity.value,
-        transform: [{ translateX: monthTranslateX.value }],
+        opacity: pageOpacity.value,
+        transform: [{ translateX: pageTranslateX.value }],
       };
     });
 
     const previousMonthAnimatedStyle = useAnimatedStyle(() => ({
-      opacity: monthPageOpacity.value,
-      transform: [{ translateX: monthTranslateX.value - monthPageWidth }],
+      opacity: pageOpacity.value,
+      transform: [{ translateX: pageTranslateX.value - pageWidth }],
     }));
 
     const nextMonthAnimatedStyle = useAnimatedStyle(() => ({
-      opacity: monthPageOpacity.value,
-      transform: [{ translateX: monthTranslateX.value + monthPageWidth }],
+      opacity: pageOpacity.value,
+      transform: [{ translateX: pageTranslateX.value + pageWidth }],
+    }));
+
+    const collapsedBodyAnimatedStyle = useAnimatedStyle(() => ({
+      opacity: interpolate(expandProgress.value, [0, 0.28, 1], [1, 0.12, 0]),
+      transform: [
+        {
+          translateY: interpolate(expandProgress.value, [0, 1], [0, -8]),
+        },
+      ],
+    }));
+
+    const expandedBodyAnimatedStyle = useAnimatedStyle(() => ({
+      opacity: interpolate(expandProgress.value, [0, 0.2, 1], [0, 0.12, 1]),
+      transform: [
+        {
+          translateY: interpolate(expandProgress.value, [0, 1], [14, 0]),
+        },
+      ],
     }));
 
     useImperativeHandle(
@@ -375,6 +513,26 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
         todayStr,
       ]
     );
+    const renderWeekRow = useCallback(
+      (days: DayInfo[], highlightedDate: string | null) => (
+        <View style={styles.weekRow}>
+          {days.map((day) => (
+            <DayCell
+              key={day.date}
+              dateStr={day.date}
+              day={day.dayNumber}
+              isSelected={highlightedDate === day.date}
+              isToday={day.isToday}
+              isOutsideMonth={false}
+              hasDot={taskDatesWithDots?.has(day.date) ?? false}
+              isDropTarget={dragHoverDate === day.date}
+              onPress={handleSelectDate}
+            />
+          ))}
+        </View>
+      ),
+      [dragHoverDate, handleSelectDate, styles.weekRow, taskDatesWithDots]
+    );
     const renderedExpandedWeeks = useMemo(
       () => renderMonthWeeks(expandedWeeks),
       [expandedWeeks, renderMonthWeeks]
@@ -387,23 +545,17 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
       () => renderMonthWeeks(adjacentExpandedWeeks.next),
       [adjacentExpandedWeeks.next, renderMonthWeeks]
     );
-
-    const collapsedWeekCells = useMemo(
-      () =>
-        weekDays.map((day) => (
-          <DayCell
-            key={day.date}
-            dateStr={day.date}
-            day={day.dayNumber}
-            isSelected={day.date === selectedDate}
-            isToday={day.isToday}
-            isOutsideMonth={false}
-            hasDot={taskDatesWithDots?.has(day.date) ?? false}
-            isDropTarget={dragHoverDate === day.date}
-            onPress={handleSelectDate}
-          />
-        )),
-      [dragHoverDate, handleSelectDate, selectedDate, taskDatesWithDots, weekDays]
+    const renderedCurrentWeek = useMemo(
+      () => renderWeekRow(weekDays, selectedDate),
+      [renderWeekRow, selectedDate, weekDays]
+    );
+    const renderedPreviousWeek = useMemo(
+      () => renderWeekRow(adjacentWeekDays.previous, null),
+      [adjacentWeekDays.previous, renderWeekRow]
+    );
+    const renderedNextWeek = useMemo(
+      () => renderWeekRow(adjacentWeekDays.next, null),
+      [adjacentWeekDays.next, renderWeekRow]
     );
 
     return (
@@ -423,26 +575,37 @@ export const TaskCalendar = forwardRef<TaskCalendarRef, TaskCalendarProps>(
 
           <View style={styles.bodyClip}>
             {renderExpandedBody ? (
-              <View style={styles.monthPages}>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.monthPage, previousMonthAnimatedStyle]}
-                >
-                  <View>{renderedPreviousExpandedWeeks}</View>
-                </Animated.View>
-                <Animated.View style={[styles.monthPage, currentMonthAnimatedStyle]}>
-                  <View>{renderedExpandedWeeks}</View>
-                </Animated.View>
-                <Animated.View
-                  pointerEvents="none"
-                  style={[styles.monthPage, nextMonthAnimatedStyle]}
-                >
-                  <View>{renderedNextExpandedWeeks}</View>
-                </Animated.View>
-              </View>
-            ) : (
-              <View style={styles.weekRow}>{collapsedWeekCells}</View>
-            )}
+              <Animated.View
+                pointerEvents={renderExpandedBody ? 'auto' : 'none'}
+                style={[styles.expandedBody, expandedBodyAnimatedStyle]}
+              >
+                <CalendarPageStrip
+                  containerStyle={styles.monthPages}
+                  pageStyle={styles.monthPage}
+                  previous={<View>{renderedPreviousExpandedWeeks}</View>}
+                  current={<View>{renderedExpandedWeeks}</View>}
+                  next={<View>{renderedNextExpandedWeeks}</View>}
+                  previousAnimatedStyle={previousMonthAnimatedStyle}
+                  currentAnimatedStyle={currentMonthAnimatedStyle}
+                  nextAnimatedStyle={nextMonthAnimatedStyle}
+                />
+              </Animated.View>
+            ) : null}
+            <Animated.View
+              pointerEvents={renderExpandedBody ? 'none' : 'auto'}
+              style={[styles.collapsedBody, collapsedBodyAnimatedStyle]}
+            >
+              <CalendarPageStrip
+                containerStyle={styles.weekPages}
+                pageStyle={styles.weekPage}
+                previous={renderedPreviousWeek}
+                current={renderedCurrentWeek}
+                next={renderedNextWeek}
+                previousAnimatedStyle={previousMonthAnimatedStyle}
+                currentAnimatedStyle={currentMonthAnimatedStyle}
+                nextAnimatedStyle={nextMonthAnimatedStyle}
+              />
+            </Animated.View>
           </View>
         </Animated.View>
       </GestureDetector>
@@ -569,6 +732,17 @@ const createStyles = (colors: Colors) =>
     bodyClip: {
       flex: 1,
       overflow: 'hidden',
+      position: 'relative',
+    },
+    collapsedBody: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: ROW_HEIGHT,
+    },
+    expandedBody: {
+      ...StyleSheet.absoluteFillObject,
     },
     monthPages: {
       flex: 1,
@@ -579,5 +753,16 @@ const createStyles = (colors: Colors) =>
     },
     weekRow: {
       flexDirection: 'row',
+    },
+    weekPages: {
+      height: ROW_HEIGHT,
+      position: 'relative',
+    },
+    weekPage: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: ROW_HEIGHT,
     },
   });
