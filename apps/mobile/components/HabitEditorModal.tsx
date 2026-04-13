@@ -208,21 +208,12 @@ export function HabitEditorModal({
               >
                 <View
                   style={[
-                    styles.iconHalo,
-                    isSelected && [
-                      styles.iconHaloSelected,
-                      { borderColor: option.accentColor },
-                    ],
+                    styles.iconBubble,
+                    { backgroundColor: option.accentColor },
+                    isSelected && styles.iconBubbleSelected,
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.iconBubble,
-                      { backgroundColor: option.accentColor },
-                    ]}
-                  >
-                    <Ionicons name={option.icon} size={18} color={colors.white} />
-                  </View>
+                  <Ionicons name={option.icon} size={18} color={colors.white} />
                 </View>
                 {isSelected ? (
                   <View style={styles.iconCheck}>
@@ -495,18 +486,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     position: 'relative',
   },
   iconChoiceSelected: {
-    transform: [{ scale: 1.02 }],
-  },
-  iconHalo: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  iconHaloSelected: {
-    borderWidth: 2,
-    backgroundColor: colors.primaryLight,
+    transform: [{ scale: 1.04 }],
   },
   iconBubble: {
     width: 40,
@@ -514,6 +494,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  iconBubbleSelected: {
+    ...SHADOWS.small,
   },
   iconCheck: {
     position: 'absolute',
