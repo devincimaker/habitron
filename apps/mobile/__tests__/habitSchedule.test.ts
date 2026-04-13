@@ -1,6 +1,5 @@
 import { Habit } from '@habits-coach/shared';
 import {
-  formatHabitSchedule,
   getDayNameForDate,
   isHabitDueOnDate,
 } from '../utils/habitSchedule';
@@ -45,22 +44,5 @@ describe('habitSchedule', () => {
 
   it('does not show habits before their creation date', () => {
     expect(isHabitDueOnDate(baseHabit, '2026-03-31')).toBe(false);
-  });
-
-  it('formats daily and weekly schedule summaries', () => {
-    expect(formatHabitSchedule(baseHabit)).toBe('Every day');
-    expect(
-      formatHabitSchedule({
-        ...baseHabit,
-        weeklyDays: ['Mon', 'Wed', 'Fri'],
-      })
-    ).toBe('Mon, Wed, Fri');
-    expect(
-      formatHabitSchedule({
-        ...baseHabit,
-        frequency: 'weekly',
-        weeklyCount: 2,
-      })
-    ).toBe('2 times / week');
   });
 });

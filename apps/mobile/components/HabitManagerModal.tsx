@@ -15,12 +15,10 @@ import type { Habit } from '@habits-coach/shared';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
-import { formatHabitSchedule } from '../utils/habitSchedule';
+import { resolveHabitIcon } from '../utils/habitIcons';
 
 type HabitManagerTab = 'active' | 'archived';
 type IoniconName = keyof typeof Ionicons.glyphMap;
-
-const DEFAULT_HABIT_ICON = 'flash';
 
 interface HabitManagerModalProps {
   visible: boolean;
@@ -165,7 +163,7 @@ function HabitManagerRow({
 }: HabitManagerRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const swipeableRef = useRef<Swipeable>(null);
-  const iconName = (habit.icon || DEFAULT_HABIT_ICON) as IoniconName;
+  const iconName = resolveHabitIcon(habit.name, habit.icon) as IoniconName;
 
   const close = () => swipeableRef.current?.close();
   const handleAction = (callback: (habit: Habit) => void) => {
@@ -236,25 +234,12 @@ function HabitManagerRow({
 
         <View style={styles.rowCopy}>
           <HeadingMedium numberOfLines={1}>{habit.name}</HeadingMedium>
-          <Caption style={styles.rowMeta}>{formatHabitMeta(habit)}</Caption>
         </View>
 
         <Caption>{habit.active ? 'Active' : 'Archived'}</Caption>
       </Pressable>
     </Swipeable>
   );
-}
-
-function formatHabitMeta(habit: Habit): string {
-  const parts = [habit.frequency === 'daily' ? 'Daily' : 'Weekly'];
-
-  parts.push(formatHabitSchedule(habit));
-
-  if (habit.timeOfDay && habit.timeOfDay !== 'anytime') {
-    parts.push(habit.timeOfDay.charAt(0).toUpperCase() + habit.timeOfDay.slice(1));
-  }
-
-  return parts.join(' · ');
 }
 
 const createStyles = (colors: Colors) =>
@@ -360,9 +345,6 @@ const createStyles = (colors: Colors) =>
     },
     rowCopy: {
       flex: 1,
-    },
-    rowMeta: {
-      marginTop: 2,
     },
     actionsContainer: {
       flexDirection: 'row',

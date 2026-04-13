@@ -9,10 +9,8 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, STATUS_INDICATOR, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
-import { formatHabitSchedule, HABIT_WEEKDAYS } from '../utils/habitSchedule';
-
-const DEFAULT_HABIT_ICON = 'flash';
+import { useThemedStyles } from '../hooks/useColors';
+import { resolveHabitIcon } from '../utils/habitIcons';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
@@ -27,7 +25,6 @@ export function HabitItem({
   habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
-  const scheduleSummary = formatHabitSchedule(habit);
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
     if (direction === 'right') {
@@ -100,21 +97,6 @@ export function HabitItem({
     }
   };
 
-  const metaParts: string[] = [];
-  if (habit.timeOfDay && habit.timeOfDay !== 'anytime') {
-    metaParts.push(
-      habit.timeOfDay.charAt(0).toUpperCase() + habit.timeOfDay.slice(1)
-    );
-  }
-  if (
-    habit.frequency === 'weekly' ||
-    (habit.weeklyDays &&
-      habit.weeklyDays.length > 0 &&
-      habit.weeklyDays.length < HABIT_WEEKDAYS.length)
-  ) {
-    metaParts.push(scheduleSummary);
-  }
-
   const renderStatusContent = () => {
     switch (habit.todayStatus) {
       case 'completed':
@@ -123,7 +105,7 @@ export function HabitItem({
         return <Text style={[styles.statusIcon, { color: colors.skipped }]}>✗</Text>;
       default:
         // Show habit icon when pending
-        const iconName = (habit.icon || DEFAULT_HABIT_ICON) as keyof typeof Ionicons.glyphMap;
+        const iconName = resolveHabitIcon(habit.name, habit.icon);
         return <Ionicons name={iconName} size={18} color={colors.primary} />;
     }
   };
@@ -153,9 +135,6 @@ export function HabitItem({
             ]}>
               {habit.name}
             </Text>
-            {metaParts.length > 0 && (
-              <Text style={styles.timeOfDay}>{metaParts.join(' · ')}</Text>
-            )}
           </View>
         </Animated.View>
       </GestureDetector>
@@ -226,11 +205,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   skippedText: {
     color: colors.textLight,
-  },
-  timeOfDay: {
-    ...TYPOGRAPHY.bodyMedium,
-    color: colors.textLight,
-    marginTop: 2,
-    textTransform: 'capitalize',
   },
 });
