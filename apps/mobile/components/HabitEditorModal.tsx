@@ -8,7 +8,7 @@ import type {
   HabitTimeOfDay,
   HabitWeekday,
 } from '@habits-coach/shared';
-import { Button, Caption, HeadingLarge, Input, Label } from './ui';
+import { Button, Caption, Input, Label } from './ui';
 import {
   BORDER_RADIUS,
   SHADOWS,
@@ -162,16 +162,6 @@ export function HabitEditorModal({
 
   const renderBasicsStep = () => (
     <>
-      {!isEditing ? (
-        <View style={styles.stepIntro}>
-          <Caption style={styles.stepCount}>Step 1 of 2</Caption>
-          <HeadingLarge>Name and icon first</HeadingLarge>
-          <Caption>
-            Pick the habit name and the icon you want to see every day.
-          </Caption>
-        </View>
-      ) : null}
-
       <View style={styles.surfaceCard}>
         <Caption style={styles.cardEyebrow}>Habit name</Caption>
         <Input
@@ -218,11 +208,21 @@ export function HabitEditorModal({
               >
                 <View
                   style={[
-                    styles.iconBubble,
-                    { backgroundColor: option.accentColor },
+                    styles.iconHalo,
+                    isSelected && [
+                      styles.iconHaloSelected,
+                      { borderColor: option.accentColor },
+                    ],
                   ]}
                 >
-                  <Ionicons name={option.icon} size={18} color={colors.white} />
+                  <View
+                    style={[
+                      styles.iconBubble,
+                      { backgroundColor: option.accentColor },
+                    ]}
+                  >
+                    <Ionicons name={option.icon} size={18} color={colors.white} />
+                  </View>
                 </View>
                 {isSelected ? (
                   <View style={styles.iconCheck}>
@@ -239,16 +239,6 @@ export function HabitEditorModal({
 
   const renderDetailsStep = () => (
     <>
-      {!isEditing ? (
-        <View style={styles.stepIntro}>
-          <Caption style={styles.stepCount}>Step 2 of 2</Caption>
-          <HeadingLarge>Set the rhythm</HeadingLarge>
-          <Caption>
-            Finish the schedule and context so this habit is ready to track.
-          </Caption>
-        </View>
-      ) : null}
-
       <View style={styles.summaryCard}>
         <View
           style={[
@@ -431,13 +421,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingBottom: SPACING.xxl,
   },
-  stepIntro: {
-    marginBottom: SPACING.md,
-  },
-  stepCount: {
-    color: colors.primaryDark,
-    marginBottom: SPACING.xs,
-  },
   surfaceCard: {
     backgroundColor: colors.background,
     borderRadius: BORDER_RADIUS.lg,
@@ -509,31 +492,39 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: 'transparent',
     position: 'relative',
   },
   iconChoiceSelected: {
+    transform: [{ scale: 1.02 }],
+  },
+  iconHalo: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconHaloSelected: {
+    borderWidth: 2,
     backgroundColor: colors.primaryLight,
-    borderColor: colors.primary,
   },
   iconBubble: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
   iconCheck: {
     position: 'absolute',
-    right: 2,
-    bottom: 2,
+    right: 1,
+    bottom: 1,
     width: 18,
     height: 18,
     borderRadius: 9,
     backgroundColor: colors.primaryDark,
+    borderWidth: 2,
+    borderColor: colors.background,
     alignItems: 'center',
     justifyContent: 'center',
   },
