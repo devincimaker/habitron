@@ -10,23 +10,22 @@ import { Ionicons } from '@expo/vector-icons';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, STATUS_INDICATOR, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import { getHabitIconOption, resolveHabitIcon } from '../utils/habitIcons';
+import { getHabitIconAccentColor, resolveHabitIcon } from '../utils/habitIcons';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
   onStatusChange: (habitId: string, status: HabitStatus) => void;
-  onLongPress?: (habitId: string) => void;
   onPress?: (habitId: string) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
 
 export function HabitItem({
-  habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
+  habit, onStatusChange, onPress }: HabitItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
   const habitIcon = resolveHabitIcon(habit.name, habit.icon);
-  const habitIconColor = getHabitIconOption(habitIcon)?.accentColor ?? colors.primary;
+  const habitIconColor = getHabitIconAccentColor(habitIcon) ?? colors.primary;
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
     if (direction === 'right') {
@@ -35,10 +34,6 @@ export function HabitItem({
     } else {
       onStatusChange(habit.id, 'skipped');
     }
-  };
-
-  const handleLongPress = () => {
-    onLongPress?.(habit.id);
   };
 
   const handlePress = () => {
@@ -58,14 +53,6 @@ export function HabitItem({
       translateX.value = withSpring(0);
     });
 
-  const longPressGesture = Gesture.LongPress()
-    .minDuration(500)
-    .onEnd((event, success) => {
-      if (success) {
-        runOnJS(handleLongPress)();
-      }
-    });
-
   const tapGesture = Gesture.Tap()
     .onEnd((event, success) => {
       if (success) {
@@ -73,8 +60,7 @@ export function HabitItem({
       }
     });
 
-  // Exclusive: first gesture to activate wins (longPress > pan > tap)
-  const composedGesture = Gesture.Exclusive(longPressGesture, panGesture, tapGesture);
+  const composedGesture = Gesture.Exclusive(panGesture, tapGesture);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ translateX: translateX.value }],

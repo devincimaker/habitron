@@ -281,3 +281,7 @@ export function resolveHabitIcon(
 export function getHabitIconOption(icon: HabitIconName): HabitIconOption | undefined {
   return HABIT_ICON_OPTIONS.find((option) => option.icon === icon);
 }
+
+export function getHabitIconAccentColor(icon: HabitIconName): string | undefined {
+  return getHabitIconOption(icon)?.accentColor;
+}

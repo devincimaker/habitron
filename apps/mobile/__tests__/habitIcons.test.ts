@@ -1,5 +1,6 @@
 import {
   DEFAULT_HABIT_ICON,
+  getHabitIconAccentColor,
   getHabitIconLabel,
   getSuggestedHabitIcon,
   resolveHabitIcon,
@@ -24,5 +25,9 @@ describe('habitIcons', () => {
 
   it('returns a friendly label for known icons', () => {
     expect(getHabitIconLabel('sparkles')).toBe('Self-care');
+  });
+
+  it('returns the configured accent color for an icon', () => {
+    expect(getHabitIconAccentColor('water')).toBe('#78C9FF');
   });
 });

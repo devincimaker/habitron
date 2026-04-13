@@ -15,7 +15,7 @@ import type { Habit } from '@habits-coach/shared';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
-import { getHabitIconOption, resolveHabitIcon } from '../utils/habitIcons';
+import { getHabitIconAccentColor, resolveHabitIcon } from '../utils/habitIcons';
 
 type HabitManagerTab = 'active' | 'archived';
 type IoniconName = keyof typeof Ionicons.glyphMap;
@@ -165,7 +165,7 @@ function HabitManagerRow({
   const swipeableRef = useRef<Swipeable>(null);
   const iconName = resolveHabitIcon(habit.name, habit.icon) as IoniconName;
   const iconColor = habit.active
-    ? getHabitIconOption(iconName)?.accentColor ?? colors.primary
+    ? getHabitIconAccentColor(iconName) ?? colors.primary
     : colors.textLight;
 
   const close = () => swipeableRef.current?.close();
