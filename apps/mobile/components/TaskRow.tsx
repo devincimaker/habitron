@@ -6,7 +6,7 @@ import { runOnJS } from 'react-native-reanimated';
 import type { Todo } from '@habits-coach/shared';
 import { BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
-import { formatRelativeDateLabel, getNextDay } from '../utils/dateUtils';
+import { formatRelativeDateLabel, getTaskDateBadge } from '../utils/dateUtils';
 import { useThemedStyles } from '../hooks/useColors';
 
 export interface TaskRowDragStartEvent {
@@ -25,9 +25,8 @@ export interface TaskRowDragMoveEvent {
 
 interface TaskRowProps {
   todo: Todo;
-  selectedDate: string;
+  variant?: 'default' | 'compact';
   onToggleStatus: (todo: Todo) => Promise<void>;
-  onMoveTomorrow: (todo: Todo, nextDate: string) => Promise<void>;
   onCancel: (todo: Todo) => Promise<void>;
   onDelete: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
@@ -39,9 +38,8 @@ interface TaskRowProps {
 
 export function TaskRow({
   todo,
-  selectedDate,
+  variant = 'default',
   onToggleStatus,
-  onMoveTomorrow,
   onCancel,
   onDelete,
   onEdit,
@@ -52,8 +50,16 @@ export function TaskRow({
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const rowRef = useRef<View>(null);
-  const nextDay = getNextDay(selectedDate);
-  const nextDayLabel = formatRelativeDateLabel(nextDay);
+  const displayDate = todo.scheduledDate ?? todo.dueDate;
+  const dateBadge = displayDate ? getTaskDateBadge(displayDate) : null;
+  const isCompact = variant === 'compact';
+  const shouldShowCompactDate = isCompact && !!dateBadge;
+  const compactDateColor =
+    todo.status === 'completed'
+      ? colors.textLight
+      : dateBadge?.tone === 'overdue'
+        ? colors.error
+        : '#2F80ED';
 
   const handleDragStart = useCallback(
     (absoluteX: number, absoluteY: number) => {
@@ -106,7 +112,14 @@ export function TaskRow({
 
   return (
     <GestureDetector gesture={dragGesture}>
-      <View ref={rowRef} style={[styles.taskRow, isDragging && styles.draggingRow]}>
+      <View
+        ref={rowRef}
+        style={[
+          styles.taskRow,
+          isCompact && styles.compactTaskRow,
+          isDragging && styles.draggingRow,
+        ]}
+      >
         <View style={styles.taskMain}>
           <Pressable style={styles.taskStatusButton} onPress={() => void onToggleStatus(todo)}>
             <Ionicons
@@ -119,50 +132,77 @@ export function TaskRow({
           <Pressable style={styles.taskCopy} onPress={() => onEdit(todo)}>
             <BodyMedium
               color={colors.text}
-              style={todo.status === 'completed' ? styles.completedText : undefined}
+              style={StyleSheet.flatten([
+                isCompact ? styles.compactTitle : undefined,
+                todo.status === 'completed' ? styles.completedText : undefined,
+              ])}
             >
               {todo.title}
             </BodyMedium>
-            <View style={styles.taskMeta}>
-              {todo.scheduledBlock ? <Caption>{todo.scheduledBlock}</Caption> : null}
-              {todo.dueDate ? (
+            <View style={[styles.taskMeta, isCompact && styles.compactTaskMeta]}>
+              {shouldShowCompactDate ? (
+                <Caption
+                  color={compactDateColor}
+                  style={styles.compactDate}
+                >
+                  {dateBadge.label}
+                </Caption>
+              ) : null}
+              {!isCompact && todo.scheduledBlock ? <Caption>{todo.scheduledBlock}</Caption> : null}
+              {!isCompact && todo.dueDate ? (
                 <Caption>Due {formatRelativeDateLabel(todo.dueDate)}</Caption>
               ) : null}
-              {todo.tags.length > 0 ? (
-                <Caption>{todo.tags.map((tag) => `#${tag.name}`).join(' ')}</Caption>
-              ) : null}
+              {isCompact
+                ? todo.tags.slice(0, 2).map((tag) => (
+                    <View key={tag.id} style={styles.tagPill}>
+                      <Caption color={colors.textSecondary}>{tag.name}</Caption>
+                    </View>
+                  ))
+                : todo.tags.length > 0 ? (
+                    <Caption>{todo.tags.map((tag) => `#${tag.name}`).join(' ')}</Caption>
+                  ) : null}
             </View>
           </Pressable>
+
+          {isCompact ? (
+            <View style={styles.compactActions}>
+              {todo.status === 'open' ? (
+                <Pressable
+                  style={styles.compactActionButton}
+                  onPress={() => void onCancel(todo)}
+                  hitSlop={8}
+                >
+                  <Ionicons name="close" size={16} color={colors.error} />
+                </Pressable>
+              ) : null}
+              <Pressable
+                style={styles.compactActionButton}
+                onPress={() => onDelete(todo)}
+                hitSlop={8}
+              >
+                <Ionicons name="trash-outline" size={16} color={colors.textLight} />
+              </Pressable>
+            </View>
+          ) : null}
         </View>
 
-        <View style={styles.taskActions}>
-          {todo.status === 'open' ? (
-            <>
-              <Pressable
-                style={styles.taskActionChip}
-                onPress={() => void onMoveTomorrow(todo, nextDay)}
-              >
-                <Ionicons
-                  name="arrow-forward"
-                  size={12}
-                  color={colors.textSecondary}
-                />
-                <Caption color={colors.textSecondary}>Move to {nextDayLabel}</Caption>
-              </Pressable>
+        {!isCompact ? (
+          <View style={styles.taskActions}>
+            {todo.status === 'open' ? (
               <Pressable style={styles.taskActionChip} onPress={() => void onCancel(todo)}>
                 <Ionicons name="close" size={12} color={colors.error} />
                 <Caption color={colors.error}>Cancel</Caption>
               </Pressable>
-            </>
-          ) : (
-            <Pressable style={styles.taskActionChip} onPress={() => onEdit(todo)}>
-              <Caption color={colors.textSecondary}>Edit</Caption>
+            ) : (
+              <Pressable style={styles.taskActionChip} onPress={() => onEdit(todo)}>
+                <Caption color={colors.textSecondary}>Edit</Caption>
+              </Pressable>
+            )}
+            <Pressable style={styles.taskActionChip} onPress={() => onDelete(todo)}>
+              <Ionicons name="trash-outline" size={14} color={colors.textLight} />
             </Pressable>
-          )}
-          <Pressable style={styles.taskActionChip} onPress={() => onDelete(todo)}>
-            <Ionicons name="trash-outline" size={14} color={colors.textLight} />
-          </Pressable>
-        </View>
+          </View>
+        ) : null}
       </View>
     </GestureDetector>
   );
@@ -173,6 +213,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  compactTaskRow: {
+    paddingVertical: 10,
   },
   draggingRow: {
     opacity: 0.2,
@@ -188,6 +231,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   taskCopy: {
     flex: 1,
   },
+  compactTitle: {
+    lineHeight: 20,
+  },
   completedText: {
     textDecorationLine: 'line-through',
     color: colors.textLight,
@@ -197,6 +243,36 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     flexWrap: 'wrap',
     gap: SPACING.sm,
     marginTop: 2,
+  },
+  compactTaskMeta: {
+    gap: 6,
+    marginTop: 4,
+  },
+  compactDate: {
+    fontWeight: '600',
+    textTransform: 'none',
+  },
+  tagPill: {
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  compactActions: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 4,
+    marginLeft: SPACING.sm,
+    paddingTop: 2,
+  },
+  compactActionButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   taskActions: {
     flexDirection: 'row',

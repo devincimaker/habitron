@@ -27,7 +27,7 @@ export default function NameOnboardingScreen() {
     if (error) {
       setError('Failed to save name. Please try again.');
     } else {
-      router.replace('/(tabs)/today');
+      router.replace('/(tabs)/tasks');
     }
   };
 

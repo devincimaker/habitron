@@ -111,10 +111,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   getTodosForDate: (date) => {
     return get()
       .todos
-      .filter((todo) => {
-        if (todo.scheduledDate === date) return true;
-        return !todo.scheduledDate && todo.dueDate === date;
-      })
+      .filter((todo) => todo.scheduledDate === date)
       .sort((a, b) => {
         const priorityA = a.priority ?? 5;
         const priorityB = b.priority ?? 5;

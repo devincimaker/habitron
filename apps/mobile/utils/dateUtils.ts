@@ -75,13 +75,13 @@ export function canGoToNextDay(selectedDate: string): boolean {
 export function getPreviousDay(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   date.setDate(date.getDate() - 1);
-  return date.toISOString().split('T')[0];
+  return toDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 export function getNextDay(dateStr: string): string {
   const date = new Date(dateStr + 'T00:00:00');
   date.setDate(date.getDate() + 1);
-  return date.toISOString().split('T')[0];
+  return toDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
 }
 
 export function formatDateString(dateStr: string): string {
@@ -113,6 +113,18 @@ export function formatRelativeDateLabel(dateStr: string): string {
   }
 
   return formatShortDate(dateStr);
+}
+
+export function getTaskDateBadge(dateStr: string): {
+  label: string;
+  tone: 'upcoming' | 'overdue';
+} {
+  const today = getTodayDate();
+
+  return {
+    label: formatRelativeDateLabel(dateStr),
+    tone: dateStr < today ? 'overdue' : 'upcoming',
+  };
 }
 
 export function toDateString(year: number, month: number, day: number): string {

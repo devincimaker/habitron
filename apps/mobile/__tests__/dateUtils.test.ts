@@ -5,9 +5,21 @@ import {
   getPreviousDay,
   getNextDay,
   formatDateString,
+  formatShortDate,
+  getTaskDateBadge,
 } from '../utils/dateUtils';
+import { getTodayDate } from '@habits-coach/shared';
 
 describe('dateUtils', () => {
+  const today = getTodayDate();
+  const yesterday = getPreviousDay(today);
+  const sixDaysAgo = getPreviousDay(
+    getPreviousDay(
+      getPreviousDay(getPreviousDay(getPreviousDay(getPreviousDay(today))))
+    )
+  );
+  const sevenDaysAgo = getPreviousDay(sixDaysAgo);
+
   describe('getLast7Days', () => {
     it('returns exactly 7 days', () => {
       const days = getLast7Days();
@@ -54,50 +66,33 @@ describe('dateUtils', () => {
 
   describe('canGoToPreviousDay', () => {
     it('returns true for today', () => {
-      const today = new Date().toISOString().split('T')[0];
       expect(canGoToPreviousDay(today)).toBe(true);
     });
 
     it('returns true for yesterday', () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().split('T')[0];
-      expect(canGoToPreviousDay(dateStr)).toBe(true);
+      expect(canGoToPreviousDay(yesterday)).toBe(true);
     });
 
     it('returns false for 6 days ago (the boundary)', () => {
-      const sixDaysAgo = new Date();
-      sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
-      const dateStr = sixDaysAgo.toISOString().split('T')[0];
-      expect(canGoToPreviousDay(dateStr)).toBe(false);
+      expect(canGoToPreviousDay(sixDaysAgo)).toBe(false);
     });
 
     it('returns false for 7 days ago', () => {
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const dateStr = sevenDaysAgo.toISOString().split('T')[0];
-      expect(canGoToPreviousDay(dateStr)).toBe(false);
+      expect(canGoToPreviousDay(sevenDaysAgo)).toBe(false);
     });
   });
 
   describe('canGoToNextDay', () => {
     it('returns false for today', () => {
-      const today = new Date().toISOString().split('T')[0];
       expect(canGoToNextDay(today)).toBe(false);
     });
 
     it('returns true for yesterday', () => {
-      const yesterday = new Date();
-      yesterday.setDate(yesterday.getDate() - 1);
-      const dateStr = yesterday.toISOString().split('T')[0];
-      expect(canGoToNextDay(dateStr)).toBe(true);
+      expect(canGoToNextDay(yesterday)).toBe(true);
     });
 
     it('returns true for 6 days ago', () => {
-      const sixDaysAgo = new Date();
-      sixDaysAgo.setDate(sixDaysAgo.getDate() - 6);
-      const dateStr = sixDaysAgo.toISOString().split('T')[0];
-      expect(canGoToNextDay(dateStr)).toBe(true);
+      expect(canGoToNextDay(sixDaysAgo)).toBe(true);
     });
   });
 
@@ -135,6 +130,31 @@ describe('dateUtils', () => {
       // The exact format depends on locale, but it should include the day
       expect(formatted).toContain('11');
       expect(formatted).toContain('January');
+    });
+  });
+
+  describe('getTaskDateBadge', () => {
+    const tomorrow = getNextDay(today);
+
+    it('returns an overdue badge for past dates', () => {
+      expect(getTaskDateBadge(yesterday)).toEqual({
+        label: formatShortDate(yesterday),
+        tone: 'overdue',
+      });
+    });
+
+    it('returns today for the current date', () => {
+      expect(getTaskDateBadge(today)).toEqual({
+        label: 'Today',
+        tone: 'upcoming',
+      });
+    });
+
+    it('returns tomorrow for the next date', () => {
+      expect(getTaskDateBadge(tomorrow)).toEqual({
+        label: 'Tomorrow',
+        tone: 'upcoming',
+      });
     });
   });
 });
