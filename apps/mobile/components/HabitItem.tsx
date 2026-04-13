@@ -10,7 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, STATUS_INDICATOR, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import { resolveHabitIcon } from '../utils/habitIcons';
+import { getHabitIconOption, resolveHabitIcon } from '../utils/habitIcons';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
@@ -25,6 +25,8 @@ export function HabitItem({
   habit, onStatusChange, onLongPress, onPress }: HabitItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
+  const habitIcon = resolveHabitIcon(habit.name, habit.icon);
+  const habitIconColor = getHabitIconOption(habitIcon)?.accentColor ?? colors.primary;
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
     if (direction === 'right') {
@@ -104,9 +106,7 @@ export function HabitItem({
       case 'skipped':
         return <Text style={[styles.statusIcon, { color: colors.skipped }]}>✗</Text>;
       default:
-        // Show habit icon when pending
-        const iconName = resolveHabitIcon(habit.name, habit.icon);
-        return <Ionicons name={iconName} size={18} color={colors.primary} />;
+        return <Ionicons name={habitIcon} size={18} color={habitIconColor} />;
     }
   };
 
