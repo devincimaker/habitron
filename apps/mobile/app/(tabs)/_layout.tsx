@@ -26,14 +26,6 @@ export default function TabLayout() {
       }}
     >
       <Tabs.Screen
-        name="today"
-        options={{
-          title: 'Today',
-          headerTitle: 'Today',
-          href: null,
-        }}
-      />
-      <Tabs.Screen
         name="tasks"
         options={{
           title: 'Tasks',
