@@ -8,7 +8,7 @@ import { type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
 export const unstable_settings = {
-  initialRouteName: 'today',
+  initialRouteName: 'tasks',
 };
 
 export default function TabLayout() {
@@ -30,6 +30,7 @@ export default function TabLayout() {
         options={{
           title: 'Today',
           headerTitle: 'Today',
+          href: null,
         }}
       />
       <Tabs.Screen
@@ -37,6 +38,13 @@ export default function TabLayout() {
         options={{
           title: 'Tasks',
           headerTitle: 'Tasks',
+        }}
+      />
+      <Tabs.Screen
+        name="calendar"
+        options={{
+          title: 'Calendar',
+          headerTitle: 'Calendar',
         }}
       />
       <Tabs.Screen

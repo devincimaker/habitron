@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,13 +7,13 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { TAB_BAR, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
 const TAB_ICONS: Record<string, { active: IoniconsName; inactive: IoniconsName }> = {
-  today: { active: 'today', inactive: 'today-outline' },
   tasks: { active: 'checkbox', inactive: 'checkbox-outline' },
+  calendar: { active: 'calendar', inactive: 'calendar-outline' },
   coach: { active: 'chatbubble-ellipses', inactive: 'chatbubble-ellipses-outline' },
   habits: { active: 'repeat', inactive: 'repeat-outline' },
   journal: { active: 'book', inactive: 'book-outline' },
