@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import type {
   Habit,
   HabitDraft,
@@ -21,6 +22,7 @@ import { useThemedStyles } from '../hooks/useColors';
 import { getDefaultWeeklyDays, HABIT_WEEKDAYS } from '../utils/habitSchedule';
 import { WeeklyCountPicker } from './WeeklyCountPicker';
 import {
+  DEFAULT_HABIT_ICON,
   HABIT_ICON_OPTIONS,
   getHabitIconLabel,
   getHabitIconOption,
@@ -66,12 +68,11 @@ export function HabitEditorModal({
   const [weeklyDays, setWeeklyDays] = useState<HabitWeekday[]>(getDefaultWeeklyDays());
   const [weeklyCount, setWeeklyCount] = useState(1);
   const [timeOfDay, setTimeOfDay] = useState<HabitTimeOfDay>('anytime');
-  const [selectedIcon, setSelectedIcon] = useState<HabitIconName>(
-    resolveHabitIcon()
-  );
+  const [selectedIcon, setSelectedIcon] = useState<HabitIconName>(DEFAULT_HABIT_ICON);
   const [hasCustomIcon, setHasCustomIcon] = useState(false);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const suggestedIcon = useMemo(() => getSuggestedHabitIcon(name), [name]);
 
   useEffect(() => {
     if (!visible) return;
@@ -93,10 +94,15 @@ export function HabitEditorModal({
       return;
     }
 
-    setSelectedIcon(getSuggestedHabitIcon(name));
-  }, [hasCustomIcon, name, visible]);
+    setSelectedIcon(suggestedIcon);
+  }, [hasCustomIcon, suggestedIcon, visible]);
 
   const handleSelectIcon = (icon: HabitIconName) => {
+    if (selectedIcon === icon && hasCustomIcon) {
+      return;
+    }
+
+    void Haptics.selectionAsync();
     setSelectedIcon(icon);
     setHasCustomIcon(true);
   };
@@ -159,6 +165,7 @@ export function HabitEditorModal({
       : 'Habit Details';
 
   const selectedOption = getHabitIconOption(selectedIcon);
+  const showsBackButton = !isEditing && step === 'details';
 
   const renderBasicsStep = () => (
     <>
@@ -337,9 +344,13 @@ export function HabitEditorModal({
             style={styles.headerButton}
             onPress={handleClosePress}
             accessibilityRole="button"
-            accessibilityLabel={step === 'details' && !isEditing ? 'Back' : 'Close'}
+            accessibilityLabel={showsBackButton ? 'Back' : 'Close'}
           >
-            <Ionicons name="chevron-back" size={24} color={colors.text} />
+            <Ionicons
+              name={showsBackButton ? 'chevron-back' : 'close'}
+              size={24}
+              color={colors.text}
+            />
           </Pressable>
           <Text style={styles.headerTitle}>{headerTitle}</Text>
           <View style={styles.headerSpacer} />
@@ -476,13 +487,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   iconGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
+    justifyContent: 'space-between',
   },
   iconChoice: {
-    width: '18%',
+    width: '20%',
+    maxWidth: '20%',
     aspectRatio: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: SPACING.sm,
     position: 'relative',
   },
   iconChoiceSelected: {
