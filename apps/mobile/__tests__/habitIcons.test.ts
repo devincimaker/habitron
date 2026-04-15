@@ -15,6 +15,14 @@ describe('habitIcons', () => {
     expect(getSuggestedHabitIcon('Read 10 pages')).toBe('book');
   });
 
+  it('prefers meditation matches over generic language keywords', () => {
+    expect(getSuggestedHabitIcon('Practice meditating for 10 minutes')).toBe('leaf');
+  });
+
+  it('does not match partial words inside unrelated words', () => {
+    expect(getSuggestedHabitIcon('Pride march downtown')).toBe(DEFAULT_HABIT_ICON);
+  });
+
   it('falls back to the default icon when no keyword matches', () => {
     expect(getSuggestedHabitIcon('Call grandma')).toBe(DEFAULT_HABIT_ICON);
   });

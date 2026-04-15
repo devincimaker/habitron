@@ -15,10 +15,14 @@ import type { Habit } from '@habits-coach/shared';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
-import { getHabitIconAccentColor, resolveHabitIcon } from '../utils/habitIcons';
+import {
+  getHabitIconAccentColor,
+  resolveHabitIcon,
+  type HabitIconName,
+} from '../utils/habitIcons';
 
 type HabitManagerTab = 'active' | 'archived';
-type IoniconName = keyof typeof Ionicons.glyphMap;
+type ActionIconName = keyof typeof Ionicons.glyphMap;
 
 interface HabitManagerModalProps {
   visible: boolean;
@@ -163,7 +167,7 @@ function HabitManagerRow({
 }: HabitManagerRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const swipeableRef = useRef<Swipeable>(null);
-  const iconName = resolveHabitIcon(habit.name, habit.icon) as IoniconName;
+  const iconName: HabitIconName = resolveHabitIcon(habit.name, habit.icon);
   const iconColor = habit.active
     ? getHabitIconAccentColor(iconName) ?? colors.primary
     : colors.textLight;
@@ -178,19 +182,19 @@ function HabitManagerRow({
     ? [
         {
           key: 'edit',
-          icon: 'pencil' as IoniconName,
+          icon: 'pencil' as ActionIconName,
           color: '#F97316',
           onPress: () => handleAction(onEdit),
         },
         {
           key: 'archive',
-          icon: 'archive-outline' as IoniconName,
+          icon: 'archive-outline' as ActionIconName,
           color: colors.primary,
           onPress: () => handleAction(onArchive),
         },
         {
           key: 'delete',
-          icon: 'trash-outline' as IoniconName,
+          icon: 'trash-outline' as ActionIconName,
           color: colors.error,
           onPress: () => handleAction(onDelete),
         },
@@ -198,13 +202,13 @@ function HabitManagerRow({
     : [
         {
           key: 'restore',
-          icon: 'return-up-back-outline' as IoniconName,
+          icon: 'return-up-back-outline' as ActionIconName,
           color: colors.primary,
           onPress: () => handleAction(onRestore),
         },
         {
           key: 'delete',
-          icon: 'trash-outline' as IoniconName,
+          icon: 'trash-outline' as ActionIconName,
           color: colors.error,
           onPress: () => handleAction(onDelete),
         },
