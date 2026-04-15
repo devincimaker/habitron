@@ -6,6 +6,7 @@ import {
   HabitWeekday,
   getTodayDate,
 } from '@habits-coach/shared';
+import { normalizeHabitName } from '../utils/habitNames';
 
 // Database row types (snake_case from Supabase)
 interface DbHabit {
@@ -35,7 +36,7 @@ interface DbHabitLog {
 function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
   return {
     id: dbHabit.id,
-    name: dbHabit.name,
+    name: normalizeHabitName(dbHabit.name),
     frequency: dbHabit.frequency,
     weeklyDays: dbHabit.weekly_days ?? undefined,
     weeklyCount:
@@ -78,7 +79,7 @@ export async function addHabit(habit: HabitDraft): Promise<Habit> {
     .from('habits')
     .insert({
       user_id: user.id,
-      name: habit.name,
+      name: normalizeHabitName(habit.name),
       frequency: habit.frequency,
       weekly_days: habit.frequency === 'daily' ? habit.weeklyDays ?? null : null,
       weekly_count:
@@ -114,7 +115,7 @@ export async function updateHabit(
 ): Promise<Habit> {
   const updateData: Partial<DbHabit> = {};
 
-  if (updates.name !== undefined) updateData.name = updates.name;
+  if (updates.name !== undefined) updateData.name = normalizeHabitName(updates.name);
   if (updates.frequency !== undefined) updateData.frequency = updates.frequency;
   if (updates.frequency === 'daily') {
     updateData.weekly_days = updates.weeklyDays ?? null;

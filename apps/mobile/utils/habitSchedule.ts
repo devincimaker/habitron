@@ -43,20 +43,3 @@ export function isHabitDueOnDate(habit: Habit, date: string | Date): boolean {
 
   return false;
 }
-
-export function formatHabitSchedule(habit: Habit): string {
-  if (habit.frequency === 'weekly') {
-    const weeklyCount = habit.weeklyCount ?? 1;
-    return `${weeklyCount} ${weeklyCount === 1 ? 'time' : 'times'} / week`;
-  }
-
-  if (!habit.weeklyDays || habit.weeklyDays.length === 0) {
-    return 'Every day';
-  }
-
-  if (habit.weeklyDays.length === HABIT_WEEKDAYS.length) {
-    return 'Every day';
-  }
-
-  return habit.weeklyDays.join(', ');
-}
