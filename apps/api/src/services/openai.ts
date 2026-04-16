@@ -169,12 +169,7 @@ function buildJournalContext(entries: NonNullable<ChatRequest['journalEntries']>
   return `## Journal\n${entries
     .slice(0, 6)
     .map((entry) => {
-      const details = [
-        entry.mood ? `mood ${entry.mood}` : null,
-        entry.tags.length > 0 ? `tags ${entry.tags.join(', ')}` : null,
-      ]
-        .filter(Boolean)
-        .join(', ');
+      const details = entry.mood ? `mood ${entry.mood}` : '';
 
       return `- ${entry.entryDate}${details ? ` (${details})` : ''}: ${entry.content}`;
     })

@@ -1,5 +1,12 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Audio } from 'expo-av';
+import {
+  RecordingPresets,
+  requestRecordingPermissionsAsync,
+  setAudioModeAsync,
+  useAudioRecorder as useExpoAudioRecorder,
+  useAudioRecorderState,
+  type RecordingOptions,
+} from 'expo-audio';
 import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
 
@@ -7,32 +14,9 @@ export const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
 export const WARNING_THRESHOLD_MS = 3.5 * 60 * 1000; // 30 seconds before limit
 const METERING_INTERVAL_MS = 100;
 
-// Custom recording options that produce m4a format (supported by OpenAI Whisper)
-const RECORDING_OPTIONS: Audio.RecordingOptions = {
+const RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
   isMeteringEnabled: true,
-  android: {
-    extension: '.m4a',
-    outputFormat: Audio.AndroidOutputFormat.MPEG_4,
-    audioEncoder: Audio.AndroidAudioEncoder.AAC,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-  },
-  ios: {
-    extension: '.m4a',
-    outputFormat: Audio.IOSOutputFormat.MPEG4AAC,
-    audioQuality: Audio.IOSAudioQuality.HIGH,
-    sampleRate: 44100,
-    numberOfChannels: 2,
-    bitRate: 128000,
-    linearPCMBitDepth: 16,
-    linearPCMIsBigEndian: false,
-    linearPCMIsFloat: false,
-  },
-  web: {
-    mimeType: 'audio/webm',
-    bitsPerSecond: 128000,
-  },
 };
 
 interface UseAudioRecorderOptions {
@@ -52,8 +36,23 @@ interface UseAudioRecorderResult {
   error: string | null;
 }
 
+function getRecorderUri(recorder: ReturnType<typeof useExpoAudioRecorder>): string | null {
+  return recorder.uri ?? recorder.getStatus().url ?? null;
+}
+
+function normalizeMeterLevel(metering?: number): number {
+  if (metering === undefined) {
+    return 0;
+  }
+
+  // Convert dB to 0-1 range (typically around -160 to 0 dB).
+  return Math.max(0, Math.min(1, (metering + 60) / 60));
+}
+
 export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudioRecorderResult {
   const { onAutoStop } = options;
+  const recorder = useExpoAudioRecorder(RECORDING_OPTIONS);
+  const recorderState = useAudioRecorderState(recorder, METERING_INTERVAL_MS);
 
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -61,174 +60,156 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
   const [isNearingLimit, setIsNearingLimit] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const recordingRef = useRef<Audio.Recording | null>(null);
-  const meteringIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const durationIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const startTimeRef = useRef<number>(0);
-  const hasTriggeredWarningRef = useRef(false);
   const onAutoStopRef = useRef(onAutoStop);
+  const hasTriggeredWarningRef = useRef(false);
+  const hasTriggeredAutoStopRef = useRef(false);
 
-  // Keep ref updated with latest callback
   onAutoStopRef.current = onAutoStop;
 
-  const clearIntervals = useCallback(() => {
-    if (meteringIntervalRef.current) {
-      clearInterval(meteringIntervalRef.current);
-      meteringIntervalRef.current = null;
-    }
-    if (durationIntervalRef.current) {
-      clearInterval(durationIntervalRef.current);
-      durationIntervalRef.current = null;
-    }
+  const resetRecordingState = useCallback(() => {
+    setIsRecording(false);
+    setRecordingDuration(0);
+    setMeterLevel(0);
+    setIsNearingLimit(false);
+    hasTriggeredWarningRef.current = false;
+    hasTriggeredAutoStopRef.current = false;
   }, []);
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
-    clearIntervals();
-
-    if (!recordingRef.current) {
-      setIsRecording(false);
-      setIsNearingLimit(false);
+    if (!isRecording) {
+      resetRecordingState();
       return null;
     }
 
-    // Anti-fragile: Save URI before attempting unload
-    const savedUri = recordingRef.current.getURI();
-
     try {
-      await recordingRef.current.stopAndUnloadAsync();
-      recordingRef.current = null;
+      await recorder.stop();
+      const uri = getRecorderUri(recorder);
 
-      // Reset audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
+      await setAudioModeAsync({
+        allowsRecording: false,
       });
 
-      setIsRecording(false);
-      setIsNearingLimit(false);
-      setMeterLevel(0);
-
-      return savedUri;
+      resetRecordingState();
+      return uri;
     } catch (err) {
       console.error('Failed to stop recording:', err);
       Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
-      // Even if unload fails, we preserved the URI
-      recordingRef.current = null;
-      setIsRecording(false);
-      setIsNearingLimit(false);
-      setMeterLevel(0);
 
-      // Return saved URI even on error - audio file may still be valid
+      const savedUri = getRecorderUri(recorder);
+
+      await setAudioModeAsync({
+        allowsRecording: false,
+      }).catch(() => {});
+
+      resetRecordingState();
+
       if (savedUri) {
-        console.warn('Recording unload error, but URI preserved:', savedUri);
+        console.warn('Recording stop error, but URI preserved:', savedUri);
         return savedUri;
       }
 
       setError('Failed to stop recording');
       return null;
     }
-  }, [clearIntervals]);
+  }, [isRecording, recorder, resetRecordingState]);
 
   const startRecording = useCallback(async () => {
     try {
       setError(null);
+      hasTriggeredWarningRef.current = false;
+      hasTriggeredAutoStopRef.current = false;
+      setRecordingDuration(0);
+      setMeterLevel(0);
+      setIsNearingLimit(false);
 
-      // Request permissions
-      const { granted } = await Audio.requestPermissionsAsync();
+      const { granted } = await requestRecordingPermissionsAsync();
       if (!granted) {
         setError('Microphone permission is required');
+        setIsRecording(false);
         return;
       }
 
-      // Configure audio mode
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
       });
 
-      // Create and prepare recording with m4a format (supported by OpenAI Whisper)
-      const { recording } = await Audio.Recording.createAsync(RECORDING_OPTIONS);
-
-      recordingRef.current = recording;
-      startTimeRef.current = Date.now();
-      hasTriggeredWarningRef.current = false;
+      await recorder.prepareToRecordAsync(RECORDING_OPTIONS);
+      recorder.record();
       setIsRecording(true);
-      setRecordingDuration(0);
-      setIsNearingLimit(false);
-
-      // Start metering interval
-      meteringIntervalRef.current = setInterval(async () => {
-        if (recordingRef.current) {
-          const status = await recordingRef.current.getStatusAsync();
-          if (status.isRecording && status.metering !== undefined) {
-            // Convert dB to 0-1 range (typically -160 to 0 dB)
-            const normalized = Math.max(0, Math.min(1, (status.metering + 60) / 60));
-            setMeterLevel(normalized);
-          }
-        }
-      }, METERING_INTERVAL_MS);
-
-      // Start duration tracking
-      durationIntervalRef.current = setInterval(() => {
-        const elapsed = Date.now() - startTimeRef.current;
-        setRecordingDuration(elapsed);
-
-        // Warning state when approaching limit (30 seconds before)
-        if (elapsed >= WARNING_THRESHOLD_MS && !hasTriggeredWarningRef.current) {
-          hasTriggeredWarningRef.current = true;
-          setIsNearingLimit(true);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        }
-
-        // Auto-stop at max duration
-        if (elapsed >= MAX_RECORDING_DURATION_MS) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          stopRecording().then((uri) => {
-            if (uri && onAutoStopRef.current) {
-              onAutoStopRef.current(uri);
-            }
-          });
-        }
-      }, 100);
-
     } catch (err) {
       console.error('Failed to start recording:', err);
       Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
       setError('Failed to start recording');
-      setIsRecording(false);
+      resetRecordingState();
     }
-  }, [stopRecording]);
+  }, [recorder, resetRecordingState]);
 
   const cancelRecording = useCallback(async () => {
-    clearIntervals();
+    setError(null);
 
-    if (recordingRef.current) {
+    if (isRecording || recorder.getStatus().isRecording) {
       try {
-        await recordingRef.current.stopAndUnloadAsync();
+        await recorder.stop();
       } catch {
-        // Ignore errors when canceling
+        // Ignore stop errors when canceling.
       }
-      recordingRef.current = null;
     }
 
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-    });
+    await setAudioModeAsync({
+      allowsRecording: false,
+    }).catch(() => {});
 
-    setIsRecording(false);
-    setIsNearingLimit(false);
-    setMeterLevel(0);
-    setRecordingDuration(0);
-  }, [clearIntervals]);
+    resetRecordingState();
+  }, [isRecording, recorder, resetRecordingState]);
 
-  // Cleanup on unmount
+  useEffect(() => {
+    if (!isRecording) {
+      return;
+    }
+
+    setRecordingDuration(recorderState.durationMillis);
+    setMeterLevel(normalizeMeterLevel(recorderState.metering));
+
+    if (
+      recorderState.durationMillis >= WARNING_THRESHOLD_MS &&
+      !hasTriggeredWarningRef.current
+    ) {
+      hasTriggeredWarningRef.current = true;
+      setIsNearingLimit(true);
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    }
+
+    if (
+      recorderState.durationMillis >= MAX_RECORDING_DURATION_MS &&
+      !hasTriggeredAutoStopRef.current
+    ) {
+      hasTriggeredAutoStopRef.current = true;
+      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      void stopRecording().then((uri) => {
+        if (uri && onAutoStopRef.current) {
+          onAutoStopRef.current(uri);
+        }
+      });
+    }
+  }, [
+    isRecording,
+    recorderState.durationMillis,
+    recorderState.metering,
+    stopRecording,
+  ]);
+
   useEffect(() => {
     return () => {
-      clearIntervals();
-      if (recordingRef.current) {
-        recordingRef.current.stopAndUnloadAsync().catch(() => {});
+      if (recorder.getStatus().isRecording) {
+        void recorder.stop().catch(() => {});
       }
+
+      void setAudioModeAsync({
+        allowsRecording: false,
+      }).catch(() => {});
     };
-  }, [clearIntervals]);
+  }, [recorder]);
 
   return {
     isRecording,

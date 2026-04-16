@@ -72,8 +72,6 @@ export function JournalEntryCard({
     .filter(Boolean);
   const supportingText = remainingParagraphs.join(' ');
   const wasEdited = entry.updatedAt - entry.createdAt > 60_000;
-  const visibleTags = entry.tags.slice(0, 3);
-  const hiddenTagCount = Math.max(0, entry.tags.length - visibleTags.length);
 
   const highlightProgress = useSharedValue(isHighlighted ? 1 : 0);
 
@@ -122,7 +120,7 @@ export function JournalEntryCard({
     }
   };
 
-  const hasMetadata = mood || visibleTags.length > 0;
+  const hasMetadata = Boolean(mood);
 
   return (
     <AnimatedPressable
@@ -182,16 +180,6 @@ export function JournalEntryCard({
               </Caption>
             </View>
           ) : null}
-          {visibleTags.map((tag) => (
-            <View key={`${entry.id}-${tag}`} style={styles.tagChip}>
-              <Caption color={colors.primaryDark}>{tag}</Caption>
-            </View>
-          ))}
-          {hiddenTagCount > 0 ? (
-            <View style={styles.moreTagChip}>
-              <Caption color={colors.textSecondary}>+{hiddenTagCount} more</Caption>
-            </View>
-          ) : null}
         </View>
       ) : null}
     </AnimatedPressable>
@@ -249,17 +237,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: SPACING.xs,
     borderRadius: BORDER_RADIUS.full,
     borderWidth: 1,
-  },
-  tagChip: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: colors.primaryLight,
-  },
-  moreTagChip: {
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: colors.surface,
   },
 });

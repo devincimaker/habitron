@@ -142,7 +142,6 @@ export interface JournalEntry {
   entryDate: string;
   content: string;
   mood?: JournalMood;
-  tags: string[];
   source: JournalEntrySource;
   createdAt: number;
   updatedAt: number;
@@ -152,7 +151,6 @@ export interface JournalEntryDraft {
   entryDate?: string;
   content: string;
   mood?: JournalMood;
-  tags?: string[];
   source?: JournalEntrySource;
 }
 
