@@ -21,6 +21,10 @@ import {
 } from '../services/notifications';
 import * as Sentry from '@sentry/react-native';
 
+export const unstable_settings = {
+  initialRouteName: 'index',
+};
+
 Sentry.init({
   dsn: 'https://62fb18b511d16479fcc57e32f34cbf24@o4509554140577792.ingest.de.sentry.io/4510715469561936',
 

@@ -28,7 +28,6 @@ interface JournalEntryModalProps {
   visible: boolean;
   entry?: JournalEntry | null;
   prompt?: string | null;
-  recentTags?: string[];
   autoStartVoice?: boolean;
   onClose: () => void;
   onSave: (draft: JournalEntryDraft) => Promise<void>;
@@ -38,27 +37,6 @@ const MOOD_OPTIONS = JOURNAL_MOODS.map((mood) => ({
   label: `${mood.emoji} ${mood.label}`,
   value: mood.value,
 }));
-
-function formatTags(tags: string[]): string {
-  return tags.join(', ');
-}
-
-function parseTags(value: string): string[] {
-  const uniqueTags = new Map<string, string>();
-
-  value
-    .split(',')
-    .map((tag) => tag.trim())
-    .filter(Boolean)
-    .forEach((tag) => {
-      const key = tag.toLowerCase();
-      if (!uniqueTags.has(key)) {
-        uniqueTags.set(key, tag);
-      }
-    });
-
-  return Array.from(uniqueTags.values());
-}
 
 function formatSheetDate(entry?: JournalEntry | null): string {
   const referenceDate = entry?.entryDate
@@ -76,7 +54,6 @@ export function JournalEntryModal({
   visible,
   entry,
   prompt,
-  recentTags = [],
   autoStartVoice = false,
   onClose,
   onSave,
@@ -85,7 +62,6 @@ export function JournalEntryModal({
   const insets = useSafeAreaInsets();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
-  const [tagsText, setTagsText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [placeholderPrompt, setPlaceholderPrompt] = useState(JOURNAL_PROMPTS[0]);
   const allowTranscriptionRef = useRef(true);
@@ -98,7 +74,6 @@ export function JournalEntryModal({
     hasAutoStartedVoiceRef.current = false;
     setContent(entry?.content ?? '');
     setMood(entry?.mood);
-    setTagsText(formatTags(entry?.tags ?? []));
     setPlaceholderPrompt(
       JOURNAL_PROMPTS[Math.floor(Math.random() * JOURNAL_PROMPTS.length)]
     );
@@ -134,7 +109,6 @@ export function JournalEntryModal({
     void voiceInputProps.onMicPress();
   }, [autoStartVoice, visible, voiceInputProps]);
 
-  const parsedTags = useMemo(() => parseTags(tagsText), [tagsText]);
   const isVoiceActive = isRecordingMode || isTranscribing;
   const sheetTitle = entry
     ? 'Edit entry'
@@ -145,68 +119,25 @@ export function JournalEntryModal({
   const isDirty = useMemo(() => {
     const initialContent = entry?.content ?? '';
     const initialMood = entry?.mood;
-    const initialTags = formatTags(entry?.tags ?? []);
     return (
       content.trim() !== initialContent.trim() ||
-      mood !== initialMood ||
-      tagsText !== initialTags
+      mood !== initialMood
     );
-  }, [content, mood, tagsText, entry]);
+  }, [content, mood, entry]);
 
-  const addSuggestedTag = useCallback(
-    (tag: string) => {
-      const exists = parsedTags.some(
-        (current) => current.toLowerCase() === tag.toLowerCase()
-      );
-      if (exists) return;
-
-      setTagsText(formatTags([...parsedTags, tag]));
-    },
-    [parsedTags]
-  );
-
-  const moodTagsSection = (
-    <>
-      <View style={styles.metaGroup}>
-        <Label>Mood</Label>
-        <OptionChips
-          options={MOOD_OPTIONS}
-          selectedValue={mood}
-          onChange={(value) => setMood(value)}
-          allowDeselect
-          onClear={() => setMood(undefined)}
-          size="sm"
-          wrap
-        />
-      </View>
-
-      <View style={styles.metaGroup}>
-        <Label>Tags</Label>
-        <Input
-          placeholder="e.g. work, fitness, personal"
-          value={tagsText}
-          onChangeText={setTagsText}
-          autoCapitalize="none"
-          containerStyle={styles.fieldNoMargin}
-        />
-
-        {recentTags.length > 0 ? (
-          <View style={styles.suggestedTags}>
-            {recentTags.slice(0, 8).map((tag) => (
-              <Pressable
-                key={tag}
-                style={styles.suggestedTagChip}
-                onPress={() => addSuggestedTag(tag)}
-                accessibilityLabel={`Add tag: ${tag}`}
-                accessibilityRole="button"
-              >
-                <Caption color={colors.primaryDark}>{tag}</Caption>
-              </Pressable>
-            ))}
-          </View>
-        ) : null}
-      </View>
-    </>
+  const moodSection = (
+    <View style={styles.metaGroup}>
+      <Label>Mood</Label>
+      <OptionChips
+        options={MOOD_OPTIONS}
+        selectedValue={mood}
+        onChange={(value) => setMood(value)}
+        allowDeselect
+        onClear={() => setMood(undefined)}
+        size="sm"
+        wrap
+      />
+    </View>
   );
 
   const forceClose = useCallback(async () => {
@@ -242,7 +173,6 @@ export function JournalEntryModal({
       await onSave({
         content: content.trim(),
         mood,
-        tags: parsedTags,
         source: 'manual',
       });
       await forceClose();
@@ -312,12 +242,12 @@ export function JournalEntryModal({
               </View>
             ) : null}
 
-            {!entry ? moodTagsSection : null}
+            {!entry ? moodSection : null}
           </View>
 
           {entry ? (
             <View style={styles.metaCard}>
-              {moodTagsSection}
+              {moodSection}
             </View>
           ) : null}
         </ScrollView>
@@ -442,19 +372,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   metaGroup: {
     gap: SPACING.sm,
-  },
-  suggestedTags: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  suggestedTagChip: {
-    minHeight: 32,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    borderRadius: BORDER_RADIUS.full,
-    backgroundColor: colors.primaryLight,
   },
   footer: {
     flexDirection: 'row',

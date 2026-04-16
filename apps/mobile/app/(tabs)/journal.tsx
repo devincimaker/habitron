@@ -120,7 +120,6 @@ export default function JournalScreen() {
     addEntry,
     updateEntry,
     removeEntry,
-    getRecentTags,
   } = useJournalStore();
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -146,8 +145,6 @@ export default function JournalScreen() {
     };
   }, []);
 
-  const recentTags = useMemo(() => getRecentTags(), [entries, getRecentTags]);
-
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
 
@@ -156,8 +153,7 @@ export default function JournalScreen() {
 
       const matchesQuery =
         !normalizedQuery ||
-        entry.content.toLowerCase().includes(normalizedQuery) ||
-        entry.tags.some((tag) => tag.toLowerCase().includes(normalizedQuery));
+        entry.content.toLowerCase().includes(normalizedQuery);
 
       const matchesMood = !selectedMood || entry.mood === selectedMood;
 
@@ -331,7 +327,7 @@ export default function JournalScreen() {
             style={styles.filtersCard}
           >
             <Input
-              placeholder="Search reflections or tags"
+              placeholder="Search reflections"
               value={searchQuery}
               onChangeText={setSearchQuery}
               containerStyle={styles.searchInput}
@@ -459,7 +455,6 @@ export default function JournalScreen() {
         visible={showEditor}
         entry={editingEntry}
         prompt={editorPrompt}
-        recentTags={recentTags}
         autoStartVoice={autoStartVoice}
         onClose={closeEditor}
         onSave={handleSaveEntry}

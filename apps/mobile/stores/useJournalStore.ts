@@ -11,7 +11,6 @@ interface JournalState {
   removeEntry: (entryId: string) => Promise<void>;
   getEntriesForDate: (date: string) => JournalEntry[];
   getLatestEntryForDate: (date: string) => JournalEntry | null;
-  getRecentTags: (limit?: number) => string[];
   clearEntries: () => void;
 }
 
@@ -65,21 +64,6 @@ export const useJournalStore = create<JournalState>((set, get) => ({
 
   getLatestEntryForDate: (date) => {
     return get().entries.find((entry) => entry.entryDate === date) ?? null;
-  },
-
-  getRecentTags: (limit = 8) => {
-    const counts = new Map<string, number>();
-
-    for (const entry of get().entries) {
-      for (const tag of entry.tags) {
-        counts.set(tag, (counts.get(tag) ?? 0) + 1);
-      }
-    }
-
-    return [...counts.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
-      .slice(0, limit)
-      .map(([tag]) => tag);
   },
 
   clearEntries: () => {
