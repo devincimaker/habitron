@@ -104,13 +104,18 @@ export function TaskQuickCreateSheet({
   const canSave = Boolean(saveDraft) && !isSaving;
   const shouldShowTagSuggestions = Boolean(activeInlineTag) && tagSuggestions.length > 0;
 
-  const focusInput = () => {
+  const focusComposer = useCallback((delayMs = 0) => {
     requestAnimationFrame(() => {
-      setTimeout(() => {
-        inputRef.current?.focus();
-      }, 250);
+      if (delayMs > 0) {
+        setTimeout(() => {
+          inputRef.current?.focus();
+        }, delayMs);
+        return;
+      }
+
+      inputRef.current?.focus();
     });
-  };
+  }, []);
 
   useEffect(() => {
     if (!visible) {
@@ -120,12 +125,6 @@ export function TaskQuickCreateSheet({
       return;
     }
   }, [visible]);
-
-  const focusComposer = useCallback(() => {
-    requestAnimationFrame(() => {
-      inputRef.current?.focus();
-    });
-  }, []);
 
   const handleClose = () => {
     if (isSaving) return;
@@ -185,7 +184,7 @@ export function TaskQuickCreateSheet({
       transparent
       animationType="slide"
       onRequestClose={handleClose}
-      onShow={focusInput}
+      onShow={() => focusComposer(250)}
     >
       <KeyboardAvoidingView
         style={styles.overlay}
