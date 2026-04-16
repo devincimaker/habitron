@@ -7,6 +7,8 @@ import type { Todo } from '@habits-coach/shared';
 import { BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { formatRelativeDateLabel, getTaskDateBadge } from '../utils/dateUtils';
+import { getTodoTagTintColor } from '../utils/todoTagColors';
+import { formatTodoScheduledTime } from '../utils/todoTime';
 import { useThemedStyles } from '../hooks/useColors';
 
 export interface TaskRowDragStartEvent {
@@ -26,6 +28,7 @@ export interface TaskRowDragMoveEvent {
 interface TaskRowProps {
   todo: Todo;
   variant?: 'default' | 'compact';
+  showCompactActions?: boolean;
   onToggleStatus: (todo: Todo) => Promise<void>;
   onCancel: (todo: Todo) => Promise<void>;
   onDelete: (todo: Todo) => void;
@@ -39,6 +42,7 @@ interface TaskRowProps {
 export function TaskRow({
   todo,
   variant = 'default',
+  showCompactActions = true,
   onToggleStatus,
   onCancel,
   onDelete,
@@ -52,9 +56,14 @@ export function TaskRow({
   const rowRef = useRef<View>(null);
   const displayDate = todo.scheduledDate ?? todo.dueDate;
   const dateBadge = displayDate ? getTaskDateBadge(displayDate) : null;
+  const scheduledTimeLabel = formatTodoScheduledTime(todo.scheduledTime);
+  const compactScheduleLabel =
+    dateBadge && scheduledTimeLabel
+      ? `${dateBadge.label} ${scheduledTimeLabel}`
+      : dateBadge?.label ?? scheduledTimeLabel;
   const isCompact = variant === 'compact';
-  const shouldShowCompactDate = isCompact && !!dateBadge;
-  const compactDateColor =
+  const shouldShowCompactSchedule = isCompact && !!compactScheduleLabel;
+  const compactScheduleColor =
     todo.status === 'completed'
       ? colors.textLight
       : dateBadge?.tone === 'overdue'
@@ -140,31 +149,42 @@ export function TaskRow({
               {todo.title}
             </BodyMedium>
             <View style={[styles.taskMeta, isCompact && styles.compactTaskMeta]}>
-              {shouldShowCompactDate ? (
-                <Caption
-                  color={compactDateColor}
-                  style={styles.compactDate}
-                >
-                  {dateBadge.label}
-                </Caption>
-              ) : null}
-              {!isCompact && todo.scheduledBlock ? <Caption>{todo.scheduledBlock}</Caption> : null}
-              {!isCompact && todo.dueDate ? (
-                <Caption>Due {formatRelativeDateLabel(todo.dueDate)}</Caption>
-              ) : null}
               {isCompact
                 ? todo.tags.slice(0, 2).map((tag) => (
-                    <View key={tag.id} style={styles.tagPill}>
-                      <Caption color={colors.textSecondary}>{tag.name}</Caption>
+                    <View
+                      key={tag.id}
+                      style={[
+                        styles.tagPill,
+                        tag.color
+                          ? {
+                              backgroundColor: getTodoTagTintColor(tag.color, '1F'),
+                              borderColor: getTodoTagTintColor(tag.color, '3D'),
+                            }
+                          : undefined,
+                      ]}
+                    >
+                      <Caption color={tag.color ?? colors.textSecondary}>{tag.name}</Caption>
                     </View>
                   ))
                 : todo.tags.length > 0 ? (
                     <Caption>{todo.tags.map((tag) => `#${tag.name}`).join(' ')}</Caption>
                   ) : null}
+              {shouldShowCompactSchedule ? (
+                <Caption
+                  color={compactScheduleColor}
+                  style={styles.compactSchedule}
+                >
+                  {compactScheduleLabel}
+                </Caption>
+              ) : null}
+              {!isCompact && scheduledTimeLabel ? <Caption>{scheduledTimeLabel}</Caption> : null}
+              {!isCompact && todo.dueDate ? (
+                <Caption>Due {formatRelativeDateLabel(todo.dueDate)}</Caption>
+              ) : null}
             </View>
           </Pressable>
 
-          {isCompact ? (
+          {isCompact && showCompactActions ? (
             <View style={styles.compactActions}>
               {todo.status === 'open' ? (
                 <Pressable
@@ -248,7 +268,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     gap: 6,
     marginTop: 4,
   },
-  compactDate: {
+  compactSchedule: {
     fontWeight: '600',
     textTransform: 'none',
   },

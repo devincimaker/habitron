@@ -65,12 +65,12 @@ export async function applyCoachProposal(
         } else if (action.operation === 'schedule') {
           await deps.updateTodo(action.todoId, {
             scheduledDate: action.scheduledDate,
-            scheduledBlock: action.scheduledBlock,
+            scheduledTime: action.scheduledTime,
           });
         } else if (action.operation === 'unschedule') {
           await deps.updateTodo(action.todoId, {
             scheduledDate: undefined,
-            scheduledBlock: undefined,
+            scheduledTime: undefined,
           });
         } else if (action.operation === 'remove') {
           await deps.removeTodo(action.todoId);
