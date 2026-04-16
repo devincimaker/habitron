@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, ScrollView, StyleSheet, View } from 'react-native';
-import type { Goal, TimeBlock, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
+import type { Goal, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
 import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
 import { OptionChips } from './OptionChips';
 import { QuickDatePickerModal } from './QuickDatePickerModal';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
 import { useThemedStyles } from '../hooks/useColors';
+import { resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodoEditorModalProps {
   visible: boolean;
@@ -23,13 +24,6 @@ const PRIORITY_OPTIONS = [
   { label: 'High', value: 2 as const },
   { label: 'Normal', value: 3 as const },
   { label: 'Low', value: 4 as const },
-];
-
-const BLOCK_OPTIONS = [
-  { label: 'No block', value: 'none' as const },
-  { label: 'Morning', value: 'morning' as const },
-  { label: 'Afternoon', value: 'afternoon' as const },
-  { label: 'Evening', value: 'evening' as const },
 ];
 
 export function TodoEditorModal({
@@ -55,7 +49,8 @@ export function TodoEditorModal({
   const [priority, setPriority] = useState<number | undefined>();
   const [dueDate, setDueDate] = useState<string | undefined>();
   const [scheduledDate, setScheduledDate] = useState<string | undefined>();
-  const [scheduledBlock, setScheduledBlock] = useState<TimeBlock | undefined>();
+  const [scheduledTimeInput, setScheduledTimeInput] = useState('');
+  const [scheduledTimeError, setScheduledTimeError] = useState<string | undefined>();
   const [estimateMinutes, setEstimateMinutes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [editingDateField, setEditingDateField] = useState<'due' | 'scheduled' | null>(null);
@@ -72,12 +67,19 @@ export function TodoEditorModal({
     setPriority(todo?.priority);
     setDueDate(todo?.dueDate);
     setScheduledDate(todo?.scheduledDate ?? defaultScheduledDate);
-    setScheduledBlock(todo?.scheduledBlock);
+    setScheduledTimeInput(todo?.scheduledTime ?? '');
+    setScheduledTimeError(undefined);
     setEstimateMinutes(todo?.estimateMinutes ? String(todo.estimateMinutes) : '');
   }, [visible, todo, lists, defaultScheduledDate]);
 
   const handleSave = async () => {
     if (!title.trim()) return;
+
+    const schedule = resolveNewTodoSchedule(scheduledDate, scheduledTimeInput);
+    if (schedule === null) {
+      setScheduledTimeError('Use a valid time like 09:30 or 930');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -92,8 +94,8 @@ export function TodoEditorModal({
         goalId,
         priority: priority as 1 | 2 | 3 | 4 | undefined,
         dueDate,
-        scheduledDate,
-        scheduledBlock,
+        scheduledDate: schedule.scheduledDate,
+        scheduledTime: schedule.scheduledTime,
         estimateMinutes: estimateMinutes.trim()
           ? Number.parseInt(estimateMinutes.trim(), 10)
           : undefined,
@@ -169,11 +171,20 @@ export function TodoEditorModal({
             </View>
 
             <View style={styles.section}>
-              <Label>Scheduled Block</Label>
-              <OptionChips
-                options={BLOCK_OPTIONS}
-                selectedValue={scheduledBlock ?? 'none'}
-                onChange={(value) => setScheduledBlock(value === 'none' ? undefined : value)}
+              <Input
+                label="Start Time"
+                placeholder="09:30"
+                value={scheduledTimeInput}
+                onChangeText={(value) => {
+                  setScheduledTimeInput(value);
+                  if (scheduledTimeError) {
+                    setScheduledTimeError(undefined);
+                  }
+                }}
+                error={scheduledTimeError}
+                keyboardType="numbers-and-punctuation"
+                autoCapitalize="none"
+                autoCorrect={false}
               />
             </View>
 

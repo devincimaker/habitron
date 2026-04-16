@@ -1,17 +1,17 @@
 import { supabase } from './supabase';
 import type {
   Priority,
-  TimeBlock,
   Todo,
   TodoDraft,
   TodoList,
   TodoStatus,
   TodoTag,
 } from '@habits-coach/shared';
+import { getTodoTagColor } from '../utils/todoTagColors';
+import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from '../utils/todoTime';
 
 const DEFAULT_INBOX_NAME = 'Inbox';
 const DEFAULT_INBOX_COLOR = '#F5A623';
-const DEFAULT_TAG_COLOR = '#666666';
 
 interface DbTodoList {
   id: string;
@@ -44,7 +44,7 @@ interface DbTodo {
   priority: Priority | null;
   due_date: string | null;
   scheduled_date: string | null;
-  scheduled_block: TimeBlock | null;
+  scheduled_time: string | null;
   estimate_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
@@ -56,7 +56,17 @@ interface DbTodo {
 interface DbTodoTagAssignment {
   todo_id: string;
   tag_id: string;
-  todo_tags: DbTodoTag[] | null;
+  todo_tags: DbTodoTag | DbTodoTag[] | null;
+}
+
+function getAssignedDbTodoTag(assignment: DbTodoTagAssignment): DbTodoTag | null {
+  if (!assignment.todo_tags) {
+    return null;
+  }
+
+  return Array.isArray(assignment.todo_tags)
+    ? assignment.todo_tags[0] ?? null
+    : assignment.todo_tags;
 }
 
 function mapDbTodoListToTodoList(list: DbTodoList): TodoList {
@@ -90,7 +100,7 @@ function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
     priority: todo.priority ?? undefined,
     dueDate: todo.due_date ?? undefined,
     scheduledDate: todo.scheduled_date ?? undefined,
-    scheduledBlock: todo.scheduled_block ?? undefined,
+    scheduledTime: todo.scheduled_time ?? undefined,
     estimateMinutes: todo.estimate_minutes ?? undefined,
     completedAt: todo.completed_at ? new Date(todo.completed_at).getTime() : undefined,
     canceledAt: todo.canceled_at ? new Date(todo.canceled_at).getTime() : undefined,
@@ -101,6 +111,16 @@ function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
     createdAt: new Date(todo.created_at).getTime(),
     updatedAt: new Date(todo.updated_at).getTime(),
   };
+}
+
+function serializeScheduledTime(time?: string): string | null {
+  const normalizedTime = normalizeTodoScheduledTimeInput(time);
+
+  if (normalizedTime === null) {
+    throw new Error('Invalid scheduled time');
+  }
+
+  return normalizedTime ?? null;
 }
 
 async function getCurrentUserId(): Promise<string> {
@@ -188,7 +208,7 @@ async function getTodoTagAssignments(
 
   const tagsByTodoId = new Map<string, TodoTag[]>();
   for (const assignment of data as DbTodoTagAssignment[]) {
-    const dbTag = assignment.todo_tags?.[0];
+    const dbTag = getAssignedDbTodoTag(assignment);
     if (!dbTag) {
       continue;
     }
@@ -324,7 +344,7 @@ async function resolveTagIds(
       .insert({
         user_id: userId,
         name,
-        color: DEFAULT_TAG_COLOR,
+        color: getTodoTagColor(name),
       })
       .select()
       .single();
@@ -449,13 +469,14 @@ export async function getTodoTags(): Promise<TodoTag[]> {
 
 export async function createTodoTag(name: string, color?: string): Promise<TodoTag> {
   const userId = await getCurrentUserId();
+  const trimmedName = name.trim();
 
   const { data, error } = await supabase
     .from('todo_tags')
     .insert({
       user_id: userId,
-      name: name.trim(),
-      color: color ?? DEFAULT_TAG_COLOR,
+      name: trimmedName,
+      color: color ?? getTodoTagColor(trimmedName),
     })
     .select()
     .single();
@@ -492,6 +513,11 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
   const userId = await getCurrentUserId();
   const listId = await resolveListId(userId, todo);
   const tagIds = await resolveTagIds(userId, todo);
+  const schedule = resolveNewTodoSchedule(todo.scheduledDate, todo.scheduledTime);
+
+  if (schedule === null) {
+    throw new Error('Invalid scheduled time');
+  }
 
   const { data, error } = await supabase
     .from('todos')
@@ -504,8 +530,8 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
       status: 'open',
       priority: todo.priority ?? null,
       due_date: todo.dueDate ?? null,
-      scheduled_date: todo.scheduledDate ?? null,
-      scheduled_block: todo.scheduledBlock ?? null,
+      scheduled_date: schedule.scheduledDate ?? null,
+      scheduled_time: serializeScheduledTime(schedule.scheduledTime),
       estimate_minutes: todo.estimateMinutes ?? null,
       sort_order: Date.now(),
     })
@@ -540,8 +566,8 @@ export async function updateTodo(
   if (changes.scheduledDate !== undefined) {
     updateData.scheduled_date = changes.scheduledDate ?? null;
   }
-  if (changes.scheduledBlock !== undefined) {
-    updateData.scheduled_block = changes.scheduledBlock ?? null;
+  if (changes.scheduledTime !== undefined) {
+    updateData.scheduled_time = serializeScheduledTime(changes.scheduledTime);
   }
   if (changes.estimateMinutes !== undefined) {
     updateData.estimate_minutes = changes.estimateMinutes ?? null;

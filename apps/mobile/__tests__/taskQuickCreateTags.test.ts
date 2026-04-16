@@ -1,0 +1,120 @@
+jest.mock('@habits-coach/shared', () => ({
+  getTodayDate: () => '2026-04-16',
+}));
+
+import {
+  buildQuickCreateTodoDraft,
+  getActiveInlineTagContext,
+  getInlineTagNames,
+  getInlineScheduledTimeContext,
+  getQuickCreateTextSegments,
+  insertTagTriggerAtSelection,
+  replaceActiveInlineTagContext,
+  stripInlineScheduledTimeToken,
+  stripInlineTagTokens,
+} from '../utils/taskQuickCreateTags';
+
+describe('taskQuickCreateTags', () => {
+  it('extracts inline tag names once and preserves the first casing', () => {
+    expect(
+      getInlineTagNames('Write launch copy #Brand #girls #brand #Girls')
+    ).toEqual(['Brand', 'girls']);
+  });
+
+  it('does not treat hashtags inside words as todo tags', () => {
+    expect(getInlineTagNames('Study C# basics and ship #backend')).toEqual(['backend']);
+  });
+
+  it('strips inline tags from the saved title and collapses whitespace', () => {
+    expect(stripInlineTagTokens('Write launch copy   #brand\n#girls today')).toBe(
+      'Write launch copy today'
+    );
+  });
+
+  it('builds a todo draft with parsed tag names', () => {
+    expect(buildQuickCreateTodoDraft('Write launch copy #brand #girls')).toEqual({
+      title: 'Write launch copy',
+      tagNames: ['brand', 'girls'],
+    });
+  });
+
+  it('extracts a standalone inline scheduled time token', () => {
+    expect(getInlineScheduledTimeContext('Need Tomas algo 20:00 #brand')).toEqual({
+      start: 16,
+      end: 21,
+      raw: '20:00',
+      normalizedTime: '20:00',
+    });
+  });
+
+  it('strips the inline scheduled time token from the saved title', () => {
+    expect(stripInlineScheduledTimeToken('Need Tomas algo 20:00 #brand')).toBe(
+      'Need Tomas algo #brand'
+    );
+  });
+
+  it('builds a todo draft with both parsed tag names and scheduled time', () => {
+    expect(buildQuickCreateTodoDraft('Need Tomas algo 20:00 #brand')).toEqual({
+      title: 'Need Tomas algo',
+      tagNames: ['brand'],
+      scheduledDate: '2026-04-16',
+      scheduledTime: '20:00',
+    });
+  });
+
+  it('returns null when the composer only contains tags', () => {
+    expect(buildQuickCreateTodoDraft('#brand #girls')).toBeNull();
+  });
+
+  it('returns the active inline tag context for a partial tag token', () => {
+    expect(
+      getActiveInlineTagContext('Write launch copy #br', {
+        start: 22,
+        end: 22,
+      })
+    ).toEqual({
+      start: 18,
+      end: 21,
+      raw: '#br',
+      query: 'br',
+    });
+  });
+
+  it('inserts the tag trigger with a leading space when needed', () => {
+    expect(
+      insertTagTriggerAtSelection('Write launch copy', {
+        start: 17,
+        end: 17,
+      })
+    ).toEqual({
+      text: 'Write launch copy #',
+      selection: { start: 19, end: 19 },
+    });
+  });
+
+  it('replaces the active tag token with a selected suggestion and appends a space', () => {
+    expect(
+      replaceActiveInlineTagContext(
+        'Write launch copy #br',
+        {
+          start: 18,
+          end: 21,
+          raw: '#br',
+          query: 'br',
+        },
+        'brand'
+      )
+    ).toEqual({
+      text: 'Write launch copy #brand ',
+      selection: { start: 25, end: 25 },
+    });
+  });
+
+  it('builds text segments that mark the assigned scheduled time for highlighting', () => {
+    expect(getQuickCreateTextSegments('Need Tomas algo 20:00 #brand')).toEqual([
+      { text: 'Need Tomas algo ', kind: 'default' },
+      { text: '20:00', kind: 'scheduledTime' },
+      { text: ' #brand', kind: 'default' },
+    ]);
+  });
+});
