@@ -106,7 +106,7 @@ export interface Todo {
   priority?: Priority;
   dueDate?: string;
   scheduledDate?: string;
-  scheduledBlock?: TimeBlock;
+  scheduledTime?: string;
   estimateMinutes?: number;
   completedAt?: number;
   canceledAt?: number;
@@ -124,7 +124,7 @@ export interface TodoDraft {
   priority?: Priority;
   dueDate?: string;
   scheduledDate?: string;
-  scheduledBlock?: TimeBlock;
+  scheduledTime?: string;
   estimateMinutes?: number;
   listId?: string;
   listName?: string;
@@ -271,7 +271,7 @@ export type CoachAction =
       operation: 'schedule';
       todoId: string;
       scheduledDate: string;
-      scheduledBlock?: TimeBlock;
+      scheduledTime?: string;
     }
   | {
       entity: 'todo';

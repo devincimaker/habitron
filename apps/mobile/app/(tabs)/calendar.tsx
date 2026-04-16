@@ -40,6 +40,7 @@ import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { formatRelativeDateLabel, getMonthDisplayString } from '../../utils/dateUtils';
+import { formatTodoScheduledTime } from '../../utils/todoTime';
 
 interface DragState {
   todo: Todo;
@@ -70,6 +71,7 @@ export default function CalendarScreen() {
     addTodo,
     updateTodo,
     setTodoStatus,
+    setTodoStatusOptimistic,
     removeTodo,
     getTodosForDate,
     getOverdueTodos,
@@ -106,6 +108,7 @@ export default function CalendarScreen() {
   );
   const openScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'open');
   const completedScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'completed');
+  const dragScheduledTimeLabel = dragState ? formatTodoScheduledTime(dragState.todo.scheduledTime) : null;
   const taskDatesWithDots = useMemo(() => {
     const dates = new Set<string>();
 
@@ -148,16 +151,21 @@ export default function CalendarScreen() {
 
   const handleToggleTodoStatus = useCallback(
     async (todo: Todo) => {
-      const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
-      const updatedTodo = await setTodoStatus(todo.id, nextStatus);
+      try {
+        const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
+        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus);
 
-      await syncTodoPlanOutcome(
-        todo.scheduledDate,
-        updatedTodo.id,
-        nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
-      );
+        await syncTodoPlanOutcome(
+          todo.scheduledDate,
+          updatedTodo.id,
+          nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
+        );
+      } catch (error) {
+        console.warn('Failed to update todo status:', error);
+        Alert.alert('Could not update task', 'Please try again.');
+      }
     },
-    [setTodoStatus, syncTodoPlanOutcome]
+    [setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
 
   const handleCancelTodo = useCallback(
@@ -206,7 +214,7 @@ export default function CalendarScreen() {
       priority: deletedTodo.priority,
       dueDate: deletedTodo.dueDate,
       scheduledDate: deletedTodo.scheduledDate,
-      scheduledBlock: deletedTodo.scheduledBlock,
+      scheduledTime: deletedTodo.scheduledTime,
       estimateMinutes: deletedTodo.estimateMinutes,
       goalId: deletedTodo.goalId,
       tagIds: deletedTodo.tags.map((tag) => tag.id),
@@ -462,8 +470,8 @@ export default function CalendarScreen() {
             >
               <Text style={styles.dragTitle}>{dragState.todo.title}</Text>
               <View style={styles.dragMeta}>
-                {dragState.todo.scheduledBlock ? (
-                  <Text style={styles.dragMetaText}>{dragState.todo.scheduledBlock}</Text>
+                {dragScheduledTimeLabel ? (
+                  <Text style={styles.dragMetaText}>{dragScheduledTimeLabel}</Text>
                 ) : null}
                 {dragState.todo.dueDate ? (
                   <Text style={styles.dragMetaText}>

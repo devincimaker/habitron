@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import type { Todo, TodoDraft, TodoList, TodoStatus, TodoTag } from '@habits-coach/shared';
 import * as todosService from '../services/todos';
+import { getTodoTagColor } from '../utils/todoTagColors';
+import { compareTodoScheduledTimes, resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodosState {
   todos: Todo[];
@@ -9,8 +11,10 @@ interface TodosState {
   isLoading: boolean;
   loadTodos: () => Promise<void>;
   addTodo: (todo: TodoDraft) => Promise<Todo>;
+  addTodoOptimistic: (todo: TodoDraft) => Promise<Todo>;
   updateTodo: (todoId: string, changes: Partial<TodoDraft>) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: TodoStatus) => Promise<Todo>;
+  setTodoStatusOptimistic: (todoId: string, status: TodoStatus) => Promise<Todo>;
   removeTodo: (todoId: string) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
@@ -27,6 +31,106 @@ async function reloadMetadata() {
   ]);
 
   return { lists, tags };
+}
+
+function createOptimisticTodoId() {
+  return `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function resolveOptimisticListId(
+  lists: TodoList[],
+  draft: TodoDraft
+): string {
+  if (draft.listId) {
+    return draft.listId;
+  }
+
+  const normalizedListName = draft.listName?.trim().toLowerCase();
+  if (normalizedListName) {
+    const matchedList = lists.find(
+      (list) => list.name.trim().toLowerCase() === normalizedListName
+    );
+    if (matchedList) {
+      return matchedList.id;
+    }
+  }
+
+  return lists.find((list) => list.isInbox)?.id ?? lists[0]?.id ?? 'optimistic-inbox';
+}
+
+function resolveOptimisticTags(tags: TodoTag[], draft: TodoDraft): TodoTag[] {
+  if (draft.tagIds?.length) {
+    return draft.tagIds
+      .map((tagId) => tags.find((tag) => tag.id === tagId))
+      .filter((tag): tag is TodoTag => Boolean(tag));
+  }
+
+  if (!draft.tagNames?.length) {
+    return [];
+  }
+
+  const now = Date.now();
+
+  return Array.from(
+    new Set(
+      draft.tagNames.map((tagName) => tagName.trim()).filter(Boolean)
+    )
+  ).map((tagName, index) => {
+    const existingTag = tags.find(
+      (tag) => tag.name.trim().toLowerCase() === tagName.toLowerCase()
+    );
+
+    if (existingTag) {
+      return existingTag;
+    }
+
+    return {
+      id: `optimistic-tag-${now}-${index}`,
+      name: tagName,
+      color: getTodoTagColor(tagName),
+      createdAt: now,
+      updatedAt: now,
+    };
+  });
+}
+
+function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: TodoDraft): Todo {
+  const now = Date.now();
+  const schedule = resolveNewTodoSchedule(draft.scheduledDate, draft.scheduledTime);
+
+  if (schedule === null) {
+    throw new Error('Invalid scheduled time');
+  }
+
+  return {
+    id: createOptimisticTodoId(),
+    title: draft.title.trim(),
+    notes: draft.notes?.trim() || undefined,
+    status: 'open',
+    priority: draft.priority,
+    dueDate: draft.dueDate,
+    scheduledDate: schedule.scheduledDate,
+    scheduledTime: schedule.scheduledTime,
+    estimateMinutes: draft.estimateMinutes,
+    sortOrder: now,
+    listId: resolveOptimisticListId(state.lists, draft),
+    goalId: draft.goalId,
+    tags: resolveOptimisticTags(state.tags, draft),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+function applyOptimisticTodoStatus(todo: Todo, status: TodoStatus): Todo {
+  const now = Date.now();
+
+  return {
+    ...todo,
+    status,
+    completedAt: status === 'completed' ? now : undefined,
+    canceledAt: status === 'canceled' ? now : undefined,
+    updatedAt: now,
+  };
 }
 
 export const useTodosStore = create<TodosState>((set, get) => ({
@@ -66,6 +170,34 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     return createdTodo;
   },
 
+  addTodoOptimistic: async (todo) => {
+    const optimisticTodo = buildOptimisticTodo(get(), todo);
+
+    set((state) => ({
+      todos: [...state.todos, optimisticTodo],
+    }));
+
+    try {
+      const createdTodo = await todosService.addTodo(todo);
+      const metadata = await reloadMetadata();
+
+      set((state) => ({
+        todos: state.todos.map((existingTodo) =>
+          existingTodo.id === optimisticTodo.id ? createdTodo : existingTodo
+        ),
+        lists: metadata.lists,
+        tags: metadata.tags,
+      }));
+
+      return createdTodo;
+    } catch (error) {
+      set((state) => ({
+        todos: state.todos.filter((existingTodo) => existingTodo.id !== optimisticTodo.id),
+      }));
+      throw error;
+    }
+  },
+
   updateTodo: async (todoId, changes) => {
     const updatedTodo = await todosService.updateTodo(todoId, changes);
     const metadata = await reloadMetadata();
@@ -83,6 +215,33 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
     }));
     return updatedTodo;
+  },
+
+  setTodoStatusOptimistic: async (todoId, status) => {
+    const existingTodo = get().todos.find((todo) => todo.id === todoId);
+
+    if (!existingTodo) {
+      return get().setTodoStatus(todoId, status);
+    }
+
+    const optimisticTodo = applyOptimisticTodoStatus(existingTodo, status);
+
+    set((state) => ({
+      todos: state.todos.map((todo) => (todo.id === todoId ? optimisticTodo : todo)),
+    }));
+
+    try {
+      const updatedTodo = await todosService.setTodoStatus(todoId, status);
+      set((state) => ({
+        todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
+      }));
+      return updatedTodo;
+    } catch (error) {
+      set((state) => ({
+        todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
+      }));
+      throw error;
+    }
   },
 
   removeTodo: async (todoId) => {
@@ -115,7 +274,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       .sort((a, b) => {
         const priorityA = a.priority ?? 5;
         const priorityB = b.priority ?? 5;
-        return priorityA - priorityB || a.sortOrder - b.sortOrder;
+        return compareTodoScheduledTimes(a.scheduledTime, b.scheduledTime) || priorityA - priorityB || a.sortOrder - b.sortOrder;
       });
   },
 

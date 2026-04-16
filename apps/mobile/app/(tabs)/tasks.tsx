@@ -12,16 +12,17 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
-import { SectionHeader } from '../../components/SectionHeader';
+import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRow } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
-import { BodyMedium, Card } from '../../components/ui';
+import { BodyLarge, BodyMedium, Card } from '../../components/ui';
 import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
+import { compareTodoScheduledTimes } from '../../utils/todoTime';
 
 function getTaskSortDate(todo: Todo) {
   return todo.scheduledDate ?? todo.dueDate;
@@ -31,7 +32,7 @@ function compareUndatedOpenTodos(a: Todo, b: Todo) {
   const priorityA = a.priority ?? 5;
   const priorityB = b.priority ?? 5;
 
-  return priorityA - priorityB || a.sortOrder - b.sortOrder;
+  return compareTodoScheduledTimes(a.scheduledTime, b.scheduledTime) || priorityA - priorityB || a.sortOrder - b.sortOrder;
 }
 
 function compareOpenTodos(a: Todo, b: Todo) {
@@ -65,14 +66,18 @@ export default function TasksScreen() {
     isLoading,
     loadTodos,
     addTodo,
+    addTodoOptimistic,
     updateTodo,
     setTodoStatus,
+    setTodoStatusOptimistic,
     removeTodo,
   } = useTodosStore();
   const { goals, loadGoals } = useGoalsStore();
 
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
+  const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
   const [deletedTodo, setDeletedTodo] = useState<Todo | null>(null);
   const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const openTodos = useMemo(
@@ -111,18 +116,33 @@ export default function TasksScreen() {
     [addTodo, editingTodo, syncTodoPlanOutcome, updateTodo]
   );
 
+  const handleQuickCreate = useCallback(
+    async (draft: TodoDraft) => {
+      void addTodoOptimistic(draft).catch((error) => {
+        console.warn('Failed to create todo:', error);
+        Alert.alert('Could not create task', 'Please try again.');
+      });
+    },
+    [addTodoOptimistic]
+  );
+
   const handleToggleTodoStatus = useCallback(
     async (todo: Todo) => {
-      const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
-      const updatedTodo = await setTodoStatus(todo.id, nextStatus);
+      try {
+        const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
+        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus);
 
-      await syncTodoPlanOutcome(
-        todo.scheduledDate,
-        updatedTodo.id,
-        nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
-      );
+        await syncTodoPlanOutcome(
+          todo.scheduledDate,
+          updatedTodo.id,
+          nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
+        );
+      } catch (error) {
+        console.warn('Failed to update todo status:', error);
+        Alert.alert('Could not update task', 'Please try again.');
+      }
     },
-    [setTodoStatus, syncTodoPlanOutcome]
+    [setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
 
   const handleCancelTodo = useCallback(
@@ -161,7 +181,7 @@ export default function TasksScreen() {
       priority: deletedTodo.priority,
       dueDate: deletedTodo.dueDate,
       scheduledDate: deletedTodo.scheduledDate,
-      scheduledBlock: deletedTodo.scheduledBlock,
+      scheduledTime: deletedTodo.scheduledTime,
       estimateMinutes: deletedTodo.estimateMinutes,
       goalId: deletedTodo.goalId,
       tagIds: deletedTodo.tags.map((tag) => tag.id),
@@ -224,25 +244,54 @@ export default function TasksScreen() {
           )}
 
           {completedTodos.length > 0 ? (
-            <>
-              <SectionHeader
-                title="Completed"
-                subtitle="Closed out recently"
-              />
-              <Card variant="outlined">
-                {completedTodos.map((todo) => (
-                  <TaskRow
-                    key={`completed-${todo.id}`}
-                    todo={todo}
-                    onToggleStatus={handleToggleTodoStatus}
-                    onCancel={handleCancelTodo}
-                    onDelete={handleDeleteTodo}
-                    onEdit={openTaskEditor}
-                    variant="compact"
+            <Card
+              variant="outlined"
+              noPadding
+              style={styles.completedCard}
+            >
+              <Pressable
+                style={styles.completedHeader}
+                onPress={() => setIsCompletedExpanded((current) => !current)}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  isCompletedExpanded
+                    ? `Collapse completed tasks, ${completedTodos.length} items`
+                    : `Expand completed tasks, ${completedTodos.length} items`
+                }
+              >
+                <BodyLarge color={colors.textLight} style={styles.completedTitle}>
+                  Completed
+                </BodyLarge>
+
+                <View style={styles.completedHeaderRight}>
+                  <BodyLarge color={colors.textLight} style={styles.completedCount}>
+                    {completedTodos.length}
+                  </BodyLarge>
+                  <Ionicons
+                    name={isCompletedExpanded ? 'chevron-down' : 'chevron-forward'}
+                    size={22}
+                    color={colors.textLight}
                   />
-                ))}
-              </Card>
-            </>
+                </View>
+              </Pressable>
+
+              {isCompletedExpanded ? (
+                <View style={styles.completedContent}>
+                  {completedTodos.map((todo) => (
+                    <TaskRow
+                      key={`completed-${todo.id}`}
+                      todo={todo}
+                      onToggleStatus={handleToggleTodoStatus}
+                      onCancel={handleCancelTodo}
+                      onDelete={handleDeleteTodo}
+                      onEdit={openTaskEditor}
+                      variant="compact"
+                      showCompactActions={false}
+                    />
+                  ))}
+                </View>
+              ) : null}
+            </Card>
           ) : null}
         </ScrollView>
 
@@ -251,12 +300,18 @@ export default function TasksScreen() {
             styles.fab,
             { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
           ]}
-          onPress={() => openTaskEditor()}
+          onPress={() => setShowQuickCreate(true)}
           accessibilityRole="button"
           accessibilityLabel="Add a new task"
         >
           <Ionicons name="add" size={28} color={colors.white} />
         </Pressable>
+
+        <TaskQuickCreateSheet
+          visible={showQuickCreate}
+          onClose={() => setShowQuickCreate(false)}
+          onSave={handleQuickCreate}
+        />
 
         <TodoEditorModal
           visible={showTodoEditor}
@@ -292,6 +347,36 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     paddingTop: SPACING.sm,
+  },
+  completedCard: {
+    marginHorizontal: SPACING.md,
+    opacity: 0.55,
+    overflow: 'hidden',
+  },
+  completedHeader: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: 18,
+  },
+  completedTitle: {
+    flexShrink: 1,
+  },
+  completedHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginLeft: SPACING.md,
+  },
+  completedCount: {
+    minWidth: 16,
+    textAlign: 'right',
+  },
+  completedContent: {
+    paddingHorizontal: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   fab: {
     position: 'absolute',

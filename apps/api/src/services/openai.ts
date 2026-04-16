@@ -45,6 +45,7 @@ You reason over five domains:
 - Do not fabricate IDs.
 - A daily plan should usually contain 3-8 items total and at least one focus item.
 - Mark clearly non-essential items as \`isOptional: true\`.
+- For task \`scheduledTime\`, use a 24-hour \`HH:MM\` string like \`09:30\`.
 
 ## Response Format
 Always return valid JSON in this exact shape:
@@ -69,7 +70,7 @@ Or with changes:
           "tagNames": ["admin"],
           "priority": 2,
           "scheduledDate": "2026-03-24",
-          "scheduledBlock": "morning",
+          "scheduledTime": "09:30",
           "estimateMinutes": 20
         }
       }
@@ -149,7 +150,7 @@ function buildTodosContext(todos: NonNullable<ChatRequest['todos']>): string {
         todo.priority ? `priority ${todo.priority}` : null,
         todo.dueDate ? `due ${todo.dueDate}` : null,
         todo.scheduledDate ? `scheduled ${todo.scheduledDate}` : null,
-        todo.scheduledBlock ? todo.scheduledBlock : null,
+        todo.scheduledTime ? `at ${todo.scheduledTime}` : null,
         todo.tags.length > 0 ? `tags ${todo.tags.map((tag) => tag.name).join(', ')}` : null,
       ]
         .filter(Boolean)
