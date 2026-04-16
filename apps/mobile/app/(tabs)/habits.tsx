@@ -24,7 +24,6 @@ import type {
   HabitDraft,
   HabitStatus,
 } from '@habits-coach/shared';
-import { IconPicker } from '../../components/IconPicker';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
 import { HabitItem } from '../../components/HabitItem';
@@ -66,7 +65,6 @@ export default function HabitsScreen() {
   } = useHabitsStore();
   const { plansByDate, loadPlan, updateOutcomeForHabit } = useDailyPlansStore();
 
-  const [iconPickerHabitId, setIconPickerHabitId] = useState<string | null>(null);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitEditor, setShowHabitEditor] = useState(false);
   const [showHabitManager, setShowHabitManager] = useState(false);
@@ -131,15 +129,6 @@ export default function HabitsScreen() {
     [loadPlan, plansByDate, selectedDate, setHabitStatus, updateOutcomeForHabit]
   );
 
-  const handleSelectIcon = useCallback(
-    async (icon: string) => {
-      if (!iconPickerHabitId) return;
-      await updateHabit(iconPickerHabitId, { icon });
-      setIconPickerHabitId(null);
-    },
-    [iconPickerHabitId, updateHabit]
-  );
-
   const handleSaveHabit = useCallback(
     async (draft: HabitDraft) => {
       if (editingHabit) {
@@ -189,7 +178,7 @@ export default function HabitsScreen() {
       Gesture.Pan()
         .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
         .failOffsetY([-12, 12])
-        .enabled(!showHabitEditor && !showHabitManager && iconPickerHabitId === null)
+        .enabled(!showHabitEditor && !showHabitManager)
         .onEnd((event) => {
           if (event.translationX > SWIPE_THRESHOLD) {
             runOnJS(navigateToPreviousDay)();
@@ -197,14 +186,13 @@ export default function HabitsScreen() {
             runOnJS(navigateToNextDay)();
           }
         }),
-    [iconPickerHabitId, navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
+    [navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
   );
   const renderHabitRow = useCallback(
     ({ item }: { item: typeof habitsWithStatus[number] }) => (
       <HabitItem
         habit={item}
         onStatusChange={handleStatusChange}
-        onLongPress={setIconPickerHabitId}
         onPress={(habitId) => {
           const selected = habits.find((candidate) => candidate.id === habitId);
           if (selected) {
@@ -299,10 +287,6 @@ export default function HabitsScreen() {
     [activeHabitCount, styles]
   );
 
-  const selectedHabit = iconPickerHabitId
-    ? habitsWithStatus.find((habit) => habit.id === iconPickerHabitId)
-    : null;
-
   return (
     <GestureDetector gesture={daySwipeGesture}>
       <View style={styles.container}>
@@ -346,13 +330,6 @@ export default function HabitsScreen() {
         >
           <Ionicons name="add" size={28} color={colors.white} />
         </Pressable>
-
-        <IconPicker
-          visible={iconPickerHabitId !== null}
-          selectedIcon={selectedHabit?.icon}
-          onSelectIcon={handleSelectIcon}
-          onClose={() => setIconPickerHabitId(null)}
-        />
 
         <HabitManagerModal
           visible={showHabitManager}

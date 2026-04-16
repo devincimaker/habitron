@@ -45,6 +45,7 @@ describe('useProfileStore', () => {
     // Reset store state before each test
     useProfileStore.setState({
       name: null,
+      dailyReminderEnabled: true,
       isLoading: false,
       isInitialized: false,
     });
@@ -69,7 +70,7 @@ describe('useProfileStore', () => {
       await useProfileStore.getState().loadProfile();
 
       expect(mockGetUser).toHaveBeenCalled();
-      expect(mockSelect).toHaveBeenCalledWith('name');
+      expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled');
       expect(mockEq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(useProfileStore.getState().name).toBe('John');
       expect(useProfileStore.getState().isInitialized).toBe(true);

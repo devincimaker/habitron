@@ -15,12 +15,14 @@ import type { Habit } from '@habits-coach/shared';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
-import { formatHabitSchedule } from '../utils/habitSchedule';
+import {
+  getHabitIconAccentColor,
+  resolveHabitIcon,
+  type HabitIconName,
+} from '../utils/habitIcons';
 
 type HabitManagerTab = 'active' | 'archived';
-type IoniconName = keyof typeof Ionicons.glyphMap;
-
-const DEFAULT_HABIT_ICON = 'flash';
+type ActionIconName = keyof typeof Ionicons.glyphMap;
 
 interface HabitManagerModalProps {
   visible: boolean;
@@ -165,7 +167,10 @@ function HabitManagerRow({
 }: HabitManagerRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const swipeableRef = useRef<Swipeable>(null);
-  const iconName = (habit.icon || DEFAULT_HABIT_ICON) as IoniconName;
+  const iconName: HabitIconName = resolveHabitIcon(habit.name, habit.icon);
+  const iconColor = habit.active
+    ? getHabitIconAccentColor(iconName) ?? colors.primary
+    : colors.textLight;
 
   const close = () => swipeableRef.current?.close();
   const handleAction = (callback: (habit: Habit) => void) => {
@@ -177,19 +182,19 @@ function HabitManagerRow({
     ? [
         {
           key: 'edit',
-          icon: 'pencil' as IoniconName,
+          icon: 'pencil' as ActionIconName,
           color: '#F97316',
           onPress: () => handleAction(onEdit),
         },
         {
           key: 'archive',
-          icon: 'archive-outline' as IoniconName,
+          icon: 'archive-outline' as ActionIconName,
           color: colors.primary,
           onPress: () => handleAction(onArchive),
         },
         {
           key: 'delete',
-          icon: 'trash-outline' as IoniconName,
+          icon: 'trash-outline' as ActionIconName,
           color: colors.error,
           onPress: () => handleAction(onDelete),
         },
@@ -197,13 +202,13 @@ function HabitManagerRow({
     : [
         {
           key: 'restore',
-          icon: 'return-up-back-outline' as IoniconName,
+          icon: 'return-up-back-outline' as ActionIconName,
           color: colors.primary,
           onPress: () => handleAction(onRestore),
         },
         {
           key: 'delete',
-          icon: 'trash-outline' as IoniconName,
+          icon: 'trash-outline' as ActionIconName,
           color: colors.error,
           onPress: () => handleAction(onDelete),
         },
@@ -231,30 +236,17 @@ function HabitManagerRow({
     >
       <Pressable style={styles.row} onPress={() => onEdit(habit)}>
         <View style={styles.rowIcon}>
-          <Ionicons name={iconName} size={20} color={habit.active ? colors.primary : colors.textLight} />
+          <Ionicons name={iconName} size={20} color={iconColor} />
         </View>
 
         <View style={styles.rowCopy}>
           <HeadingMedium numberOfLines={1}>{habit.name}</HeadingMedium>
-          <Caption style={styles.rowMeta}>{formatHabitMeta(habit)}</Caption>
         </View>
 
         <Caption>{habit.active ? 'Active' : 'Archived'}</Caption>
       </Pressable>
     </Swipeable>
   );
-}
-
-function formatHabitMeta(habit: Habit): string {
-  const parts = [habit.frequency === 'daily' ? 'Daily' : 'Weekly'];
-
-  parts.push(formatHabitSchedule(habit));
-
-  if (habit.timeOfDay && habit.timeOfDay !== 'anytime') {
-    parts.push(habit.timeOfDay.charAt(0).toUpperCase() + habit.timeOfDay.slice(1));
-  }
-
-  return parts.join(' · ');
 }
 
 const createStyles = (colors: Colors) =>
@@ -360,9 +352,6 @@ const createStyles = (colors: Colors) =>
     },
     rowCopy: {
       flex: 1,
-    },
-    rowMeta: {
-      marginTop: 2,
     },
     actionsContainer: {
       flexDirection: 'row',
