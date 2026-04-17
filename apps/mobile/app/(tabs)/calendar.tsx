@@ -16,6 +16,7 @@ import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
+import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { SectionHeader } from '../../components/SectionHeader';
 import {
   TaskRow,
@@ -34,12 +35,14 @@ import {
   type Colors,
 } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
+import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { formatRelativeDateLabel, getMonthDisplayString } from '../../utils/dateUtils';
+import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 import { formatTodoScheduledTime } from '../../utils/todoTime';
 
 interface DragState {
@@ -60,7 +63,6 @@ export default function CalendarScreen() {
   const taskCalendarRef = useRef<TaskCalendarRef>(null);
   const dragHoverDateRef = useRef<string | null>(null);
   const rootFrameRef = useRef({ x: 0, y: 0 });
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const { selectedDate, setSelectedDate } = useHabitsStore();
   const {
@@ -69,10 +71,9 @@ export default function CalendarScreen() {
     isLoading,
     loadTodos,
     addTodo,
+    addTodoOptimistic,
     updateTodo,
-    setTodoStatus,
     setTodoStatusOptimistic,
-    removeTodo,
     getTodosForDate,
     getOverdueTodos,
   } = useTodosStore();
@@ -80,8 +81,9 @@ export default function CalendarScreen() {
   const { loadPlan } = useDailyPlansStore();
 
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
-  const [deletedTodo, setDeletedTodo] = useState<Todo | null>(null);
+  const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragHoverDate, setDragHoverDate] = useState<string | null>(null);
   const headerTitle = useMemo(() => {
@@ -158,7 +160,7 @@ export default function CalendarScreen() {
         await syncTodoPlanOutcome(
           todo.scheduledDate,
           updatedTodo.id,
-          nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
+          getTodoPlanOutcomeForStatus(nextStatus)
         );
       } catch (error) {
         console.warn('Failed to update todo status:', error);
@@ -168,21 +170,14 @@ export default function CalendarScreen() {
     [setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
 
-  const handleCancelTodo = useCallback(
-    async (todo: Todo) => {
-      Alert.alert('Cancel Task', `Cancel "${todo.title}"?`, [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel Task',
-          style: 'destructive',
-          onPress: async () => {
-            await setTodoStatus(todo.id, 'canceled');
-            await syncTodoPlanOutcome(todo.scheduledDate, todo.id, 'canceled');
-          },
-        },
-      ]);
+  const handleQuickCreate = useCallback(
+    async (draft: TodoDraft) => {
+      void addTodoOptimistic(draft).catch((error) => {
+        console.warn('Failed to create todo:', error);
+        Alert.alert('Could not create task', 'Please try again.');
+      });
     },
-    [setTodoStatus, syncTodoPlanOutcome]
+    [addTodoOptimistic]
   );
 
   const handleMoveTodo = useCallback(
@@ -194,34 +189,6 @@ export default function CalendarScreen() {
     },
     [syncTodoPlanOutcome, updateTodo]
   );
-
-  const handleDeleteTodo = useCallback(
-    (todo: Todo) => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-      setDeletedTodo(todo);
-      void removeTodo(todo.id);
-    },
-    [removeTodo]
-  );
-
-  const handleUndoDelete = useCallback(() => {
-    if (!deletedTodo) return;
-    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    void addTodo({
-      title: deletedTodo.title,
-      notes: deletedTodo.notes,
-      priority: deletedTodo.priority,
-      dueDate: deletedTodo.dueDate,
-      scheduledDate: deletedTodo.scheduledDate,
-      scheduledTime: deletedTodo.scheduledTime,
-      estimateMinutes: deletedTodo.estimateMinutes,
-      goalId: deletedTodo.goalId,
-      tagIds: deletedTodo.tags.map((tag) => tag.id),
-      listId: deletedTodo.listId,
-    });
-    setDeletedTodo(null);
-  }, [addTodo, deletedTodo]);
 
   const openTaskEditor = useCallback((todo?: Todo | null) => {
     setEditingTodo(todo ?? null);
@@ -309,6 +276,36 @@ export default function CalendarScreen() {
     [getCalendarDropDate, handleMoveTodo]
   );
 
+  const renderTaskCard = useCallback(
+    (items: Todo[], keyPrefix?: string) => (
+      <Card variant="outlined">
+        {items.map((todo) => (
+          <TaskRow
+            key={keyPrefix ? `${keyPrefix}-${todo.id}` : todo.id}
+            todo={todo}
+            variant="compact"
+            onToggleStatus={handleToggleTodoStatus}
+            onRemove={removeTodo}
+            onEdit={openTaskEditor}
+            onDragStart={handleTaskDragStart}
+            onDragMove={handleTaskDragMove}
+            onDragEnd={handleTaskDragEnd}
+            isDragging={dragState?.todo.id === todo.id}
+          />
+        ))}
+      </Card>
+    ),
+    [
+      dragState?.todo.id,
+      handleTaskDragEnd,
+      handleTaskDragMove,
+      handleTaskDragStart,
+      handleToggleTodoStatus,
+      openTaskEditor,
+      removeTodo,
+    ]
+  );
+
   return (
     <>
       <Tabs.Screen
@@ -350,22 +347,7 @@ export default function CalendarScreen() {
                 title="Overdue"
                 subtitle="Scheduled earlier and still open"
               />
-              <Card variant="outlined">
-                {overdueTodos.map((todo) => (
-                  <TaskRow
-                    key={`overdue-${todo.id}`}
-                    todo={todo}
-                    onToggleStatus={handleToggleTodoStatus}
-                    onCancel={handleCancelTodo}
-                    onDelete={handleDeleteTodo}
-                    onEdit={openTaskEditor}
-                    onDragStart={handleTaskDragStart}
-                    onDragMove={handleTaskDragMove}
-                    onDragEnd={handleTaskDragEnd}
-                    isDragging={dragState?.todo.id === todo.id}
-                  />
-                ))}
-              </Card>
+              {renderTaskCard(overdueTodos, 'overdue')}
             </>
           ) : null}
 
@@ -379,22 +361,7 @@ export default function CalendarScreen() {
           />
 
           {openScheduledTodos.length > 0 ? (
-            <Card variant="outlined">
-              {openScheduledTodos.map((todo) => (
-                <TaskRow
-                  key={todo.id}
-                  todo={todo}
-                  onToggleStatus={handleToggleTodoStatus}
-                  onCancel={handleCancelTodo}
-                  onDelete={handleDeleteTodo}
-                  onEdit={openTaskEditor}
-                  onDragStart={handleTaskDragStart}
-                  onDragMove={handleTaskDragMove}
-                  onDragEnd={handleTaskDragEnd}
-                  isDragging={dragState?.todo.id === todo.id}
-                />
-              ))}
-            </Card>
+            renderTaskCard(openScheduledTodos)
           ) : null}
 
           {completedScheduledTodos.length > 0 ? (
@@ -403,22 +370,7 @@ export default function CalendarScreen() {
                 title="Completed"
                 subtitle="Things already closed out for this day"
               />
-              <Card variant="outlined">
-                {completedScheduledTodos.map((todo) => (
-                  <TaskRow
-                    key={`completed-${todo.id}`}
-                    todo={todo}
-                    onToggleStatus={handleToggleTodoStatus}
-                    onCancel={handleCancelTodo}
-                    onDelete={handleDeleteTodo}
-                    onEdit={openTaskEditor}
-                    onDragStart={handleTaskDragStart}
-                    onDragMove={handleTaskDragMove}
-                    onDragEnd={handleTaskDragEnd}
-                    isDragging={dragState?.todo.id === todo.id}
-                  />
-                ))}
-              </Card>
+              {renderTaskCard(completedScheduledTodos, 'completed')}
             </>
           ) : null}
         </ScrollView>
@@ -428,12 +380,19 @@ export default function CalendarScreen() {
             styles.fab,
             { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
           ]}
-          onPress={() => openTaskEditor()}
+          onPress={() => setShowQuickCreate(true)}
           accessibilityRole="button"
           accessibilityLabel="Add a new task for this day"
         >
           <Ionicons name="add" size={28} color={colors.white} />
         </Pressable>
+
+        <TaskQuickCreateSheet
+          visible={showQuickCreate}
+          onClose={() => setShowQuickCreate(false)}
+          onSave={handleQuickCreate}
+          defaultScheduledDate={selectedDate}
+        />
 
         <TodoEditorModal
           visible={showTodoEditor}
@@ -448,11 +407,11 @@ export default function CalendarScreen() {
           onSave={handleSaveTodo}
         />
 
-        {deletedTodo ? (
+        {removedTodo ? (
           <UndoSnackbar
-            message={`"${deletedTodo.title}" deleted`}
-            onUndo={handleUndoDelete}
-            onDismiss={() => setDeletedTodo(null)}
+            message={`"${removedTodo.title}" removed`}
+            onUndo={undoRemoveTodo}
+            onDismiss={dismissRemovedTodo}
           />
         ) : null}
 
