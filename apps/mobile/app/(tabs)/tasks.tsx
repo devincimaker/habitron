@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'expo-router';
 import {
   Alert,
@@ -10,7 +10,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRow } from '../../components/TaskRow';
@@ -19,9 +18,11 @@ import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyLarge, BodyMedium, Card } from '../../components/ui';
 import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
+import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
+import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 import { compareTodoScheduledTimes } from '../../utils/todoTime';
 
 function getTaskSortDate(todo: Todo) {
@@ -68,9 +69,7 @@ export default function TasksScreen() {
     addTodo,
     addTodoOptimistic,
     updateTodo,
-    setTodoStatus,
     setTodoStatusOptimistic,
-    removeTodo,
   } = useTodosStore();
   const { goals, loadGoals } = useGoalsStore();
 
@@ -78,8 +77,7 @@ export default function TasksScreen() {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
-  const [deletedTodo, setDeletedTodo] = useState<Todo | null>(null);
-  const undoTimeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const openTodos = useMemo(
     () =>
       todos
@@ -135,7 +133,7 @@ export default function TasksScreen() {
         await syncTodoPlanOutcome(
           todo.scheduledDate,
           updatedTodo.id,
-          nextStatus === 'completed' ? 'completed_as_planned' : 'planned'
+          getTodoPlanOutcomeForStatus(nextStatus)
         );
       } catch (error) {
         console.warn('Failed to update todo status:', error);
@@ -144,51 +142,6 @@ export default function TasksScreen() {
     },
     [setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
-
-  const handleCancelTodo = useCallback(
-    async (todo: Todo) => {
-      Alert.alert('Cancel Task', `Cancel "${todo.title}"?`, [
-        { text: 'Keep', style: 'cancel' },
-        {
-          text: 'Cancel Task',
-          style: 'destructive',
-          onPress: async () => {
-            await setTodoStatus(todo.id, 'canceled');
-            await syncTodoPlanOutcome(todo.scheduledDate, todo.id, 'canceled');
-          },
-        },
-      ]);
-    },
-    [setTodoStatus, syncTodoPlanOutcome]
-  );
-
-  const handleDeleteTodo = useCallback(
-    (todo: Todo) => {
-      void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-      setDeletedTodo(todo);
-      void removeTodo(todo.id);
-    },
-    [removeTodo]
-  );
-
-  const handleUndoDelete = useCallback(() => {
-    if (!deletedTodo) return;
-    if (undoTimeoutRef.current) clearTimeout(undoTimeoutRef.current);
-    void addTodo({
-      title: deletedTodo.title,
-      notes: deletedTodo.notes,
-      priority: deletedTodo.priority,
-      dueDate: deletedTodo.dueDate,
-      scheduledDate: deletedTodo.scheduledDate,
-      scheduledTime: deletedTodo.scheduledTime,
-      estimateMinutes: deletedTodo.estimateMinutes,
-      goalId: deletedTodo.goalId,
-      tagIds: deletedTodo.tags.map((tag) => tag.id),
-      listId: deletedTodo.listId,
-    });
-    setDeletedTodo(null);
-  }, [addTodo, deletedTodo]);
 
   const openTaskEditor = useCallback((todo?: Todo | null) => {
     setEditingTodo(todo ?? null);
@@ -228,8 +181,7 @@ export default function TasksScreen() {
                   key={todo.id}
                   todo={todo}
                   onToggleStatus={handleToggleTodoStatus}
-                  onCancel={handleCancelTodo}
-                  onDelete={handleDeleteTodo}
+                  onRemove={removeTodo}
                   onEdit={openTaskEditor}
                   variant="compact"
                 />
@@ -282,11 +234,9 @@ export default function TasksScreen() {
                       key={`completed-${todo.id}`}
                       todo={todo}
                       onToggleStatus={handleToggleTodoStatus}
-                      onCancel={handleCancelTodo}
-                      onDelete={handleDeleteTodo}
+                      onRemove={removeTodo}
                       onEdit={openTaskEditor}
                       variant="compact"
-                      showCompactActions={false}
                     />
                   ))}
                 </View>
@@ -325,11 +275,11 @@ export default function TasksScreen() {
           onSave={handleSaveTodo}
         />
 
-        {deletedTodo ? (
+        {removedTodo ? (
           <UndoSnackbar
-            message={`"${deletedTodo.title}" deleted`}
-            onUndo={handleUndoDelete}
-            onDismiss={() => setDeletedTodo(null)}
+            message={`"${removedTodo.title}" removed`}
+            onUndo={undoRemoveTodo}
+            onDismiss={dismissRemovedTodo}
           />
         ) : null}
       </View>

@@ -35,6 +35,7 @@ interface TaskQuickCreateSheetProps {
   visible: boolean;
   onClose: () => void;
   onSave: (draft: TodoDraft) => Promise<void>;
+  defaultScheduledDate?: string;
 }
 
 const QUICK_ACTIONS = [
@@ -68,6 +69,7 @@ export function TaskQuickCreateSheet({
   visible,
   onClose,
   onSave,
+  defaultScheduledDate,
 }: TaskQuickCreateSheetProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -76,7 +78,10 @@ export function TaskQuickCreateSheet({
   const [title, setTitle] = useState('');
   const [selection, setSelection] = useState<TextSelectionRange>(INITIAL_SELECTION);
   const [isSaving, setIsSaving] = useState(false);
-  const saveDraft = useMemo(() => buildQuickCreateTodoDraft(title), [title]);
+  const saveDraft = useMemo(
+    () => buildQuickCreateTodoDraft(title, defaultScheduledDate),
+    [defaultScheduledDate, title]
+  );
   const highlightedTextSegments = useMemo(() => getQuickCreateTextSegments(title), [title]);
   const activeInlineTag = useMemo(
     () => getActiveInlineTagContext(title, selection),

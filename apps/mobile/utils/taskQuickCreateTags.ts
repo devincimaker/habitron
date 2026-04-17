@@ -114,8 +114,14 @@ export function stripInlineScheduledTimeToken(text: string) {
     .trim();
 }
 
-export function buildQuickCreateTodoDraft(text: string): TodoDraft | null {
-  const schedule = resolveNewTodoSchedule(undefined, getInlineScheduledTimeContext(text)?.normalizedTime);
+export function buildQuickCreateTodoDraft(
+  text: string,
+  defaultScheduledDate?: string
+): TodoDraft | null {
+  const schedule = resolveNewTodoSchedule(
+    defaultScheduledDate,
+    getInlineScheduledTimeContext(text)?.normalizedTime
+  );
   if (schedule === null) {
     return null;
   }
@@ -129,7 +135,7 @@ export function buildQuickCreateTodoDraft(text: string): TodoDraft | null {
   return {
     title,
     ...(tagNames.length > 0 ? { tagNames } : {}),
-    ...(schedule.scheduledTime ? schedule : {}),
+    ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
   };
 }
 

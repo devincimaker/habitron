@@ -62,6 +62,16 @@ describe('taskQuickCreateTags', () => {
     });
   });
 
+  it('uses the provided default scheduled date for calendar quick create', () => {
+    expect(
+      buildQuickCreateTodoDraft('Write launch copy #brand', '2026-04-20')
+    ).toEqual({
+      title: 'Write launch copy',
+      tagNames: ['brand'],
+      scheduledDate: '2026-04-20',
+    });
+  });
+
   it('returns null when the composer only contains tags', () => {
     expect(buildQuickCreateTodoDraft('#brand #girls')).toBeNull();
   });
