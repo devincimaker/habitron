@@ -27,7 +27,7 @@ export default function SplashScreen() {
     if (!profileInitialized) return;
 
     // Navigate based on profile state
-    const destination = name ? '/(tabs)/tasks' : '/(onboarding)/name';
+    const destination = name ? '/(tabs)/tasks' : '/(onboarding)/tour';
     const timer = setTimeout(() => router.replace(destination), 1500);
     return () => clearTimeout(timer);
   }, [authInitialized, session, profileInitialized, name, router]);
@@ -40,7 +40,7 @@ export default function SplashScreen() {
       >
         <View style={styles.content}>
           <Text style={styles.title}>Habits Coach</Text>
-          <Text style={styles.subtitle}>Build better habits with Habitron</Text>
+          <Text style={styles.subtitle}>Get started with Thrive Coach</Text>
           <ActivityIndicator
             color={colors.white}
             style={styles.loader}
