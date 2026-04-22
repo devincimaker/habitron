@@ -5,6 +5,9 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "turbo dev --ui tui",
+    "worktree:create": "./scripts/create-worktree.sh",
+    "worktree:setup": "./scripts/setup-worktree.sh",
+    "worktree:teardown": "./scripts/teardown-worktree.sh",
     "build": "turbo build",
     "build:ios": "pnpm --filter @habits-coach/mobile build:ios",
     "submit:ios": "pnpm --filter @habits-coach/mobile submit:ios",

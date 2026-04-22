@@ -9,6 +9,27 @@ pnpm dev
 
 In worktrees, this will use the `IOS_SIMULATOR` and `EXPO_PORT` values from `apps/mobile/.env`.
 
+## Worktrees
+
+Use the repo-owned command to create worktrees:
+```bash
+pnpm worktree:create -- <branch-name> [worktree-name]
+```
+
+This command creates the git worktree, copies the `.env` files, allocates a simulator and ports, and prints the assigned resources.
+
+If you need the raw script entry point:
+```bash
+scripts/create-worktree.sh <branch-name> [worktree-name]
+```
+
+Resource allocation is determined by executable scripts, not by hardcoded markdown. Treat these as the source of truth:
+- `scripts/create-worktree.sh`
+- `scripts/setup-worktree.sh`
+- `scripts/teardown-worktree.sh`
+
+The main checkout's current `.env` values are treated as reserved when allocating worktree resources.
+
 ### iOS Simulator
 
 **CRITICAL:** Always use the simulator specified in `apps/mobile/.env` (`IOS_SIMULATOR`). Never use a different simulator, even if:
