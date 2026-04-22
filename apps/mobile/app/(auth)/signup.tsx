@@ -37,7 +37,7 @@ export default function SignUpScreen() {
     if (error) {
       setError(error.message);
     } else {
-      router.replace('/(onboarding)/name');
+      router.replace('/(onboarding)/tour');
     }
   };
 
@@ -49,7 +49,7 @@ export default function SignUpScreen() {
       <View style={styles.content}>
         <View style={styles.header}>
           <DisplayLarge style={styles.title}>Create Account</DisplayLarge>
-          <BodyMedium>Start your habits journey today</BodyMedium>
+          <BodyMedium>Start with Thrive Coach</BodyMedium>
         </View>
 
         <View style={styles.form}>

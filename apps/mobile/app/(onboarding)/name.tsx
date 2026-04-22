@@ -41,7 +41,7 @@ export default function NameOnboardingScreen() {
           <Text style={styles.emoji}>👋</Text>
           <DisplayLarge style={styles.title}>Welcome!</DisplayLarge>
           <BodyMedium style={styles.subtitle}>
-            What should Habitron call you?
+            What should Thrive Coach call you?
           </BodyMedium>
         </View>
 
