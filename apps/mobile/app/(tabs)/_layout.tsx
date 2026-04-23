@@ -1,9 +1,7 @@
 import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { CustomTabBar } from '../../components/CustomTabBar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
-import { useSessionStore } from '../../stores/useSessionStore';
 import { type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
@@ -13,7 +11,6 @@ export const unstable_settings = {
 
 export default function TabLayout() {
   const [styles] = useThemedStyles(createStyles);
-  const { isActive, startSession } = useSessionStore();
 
   return (
     <Tabs
@@ -44,14 +41,6 @@ export default function TabLayout() {
         options={{
           title: 'Coach',
           headerTitle: 'Coach',
-        }}
-        listeners={{
-          tabPress: () => {
-            if (!isActive) {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              startSession();
-            }
-          },
         }}
       />
       <Tabs.Screen

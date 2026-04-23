@@ -2,14 +2,12 @@ import { StyleSheet, View } from 'react-native';
 import type { DailyPlan } from '@habits-coach/shared';
 import { BodyMedium, Button, Card, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface DailyPlanCardProps {
   plan: DailyPlan | null;
   onPlanWithCoach: () => void;
 }
-
-const BLOCK_ORDER = ['morning', 'afternoon', 'evening'] as const;
 
 export function DailyPlanCard({
   plan, onPlanWithCoach }: DailyPlanCardProps) {
@@ -31,6 +29,10 @@ export function DailyPlanCard({
     );
   }
 
+  const sortedItems = [...plan.items].sort(
+    (a, b) => a.scheduledTime.localeCompare(b.scheduledTime) || a.position - b.position
+  );
+
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
@@ -42,33 +44,24 @@ export function DailyPlanCard({
         <BodyMedium style={styles.rationale}>{plan.rationale}</BodyMedium>
       ) : null}
 
-      {BLOCK_ORDER.map((block) => {
-        const items = plan.items.filter((item) => item.scheduledBlock === block);
-        if (items.length === 0) return null;
-
-        return (
-          <View key={block} style={styles.blockSection}>
-            <Caption style={styles.blockLabel}>{block.toUpperCase()}</Caption>
-            {items.map((item) => (
-              <View key={item.id} style={styles.itemRow}>
-                <View style={styles.itemBullet} />
-                <View style={styles.itemContent}>
-                  <BodyMedium color={colors.text}>
-                    {item.titleSnapshot}
-                    {item.isOptional ? ' (optional)' : ''}
-                  </BodyMedium>
-                  {item.notesSnapshot ? (
-                    <Caption>{item.notesSnapshot}</Caption>
-                  ) : null}
-                </View>
-                {item.outcome !== 'planned' ? (
-                  <Caption style={styles.outcome}>{formatOutcome(item.outcome)}</Caption>
-                ) : null}
-              </View>
-            ))}
+      {sortedItems.map((item) => (
+        <View key={item.id} style={styles.itemRow}>
+          <Caption style={styles.itemTime}>{item.scheduledTime}</Caption>
+          <View style={styles.itemBullet} />
+          <View style={styles.itemContent}>
+            <BodyMedium color={colors.text}>
+              {item.titleSnapshot}
+              {item.isOptional ? ' (optional)' : ''}
+            </BodyMedium>
+            {item.notesSnapshot ? (
+              <Caption>{item.notesSnapshot}</Caption>
+            ) : null}
           </View>
-        );
-      })}
+          {item.outcome !== 'planned' ? (
+            <Caption style={styles.outcome}>{formatOutcome(item.outcome)}</Caption>
+          ) : null}
+        </View>
+      ))}
 
       <Button
         title="Replan With Habitron"
@@ -119,17 +112,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   rationale: {
     marginBottom: SPACING.sm,
   },
-  blockSection: {
-    marginTop: SPACING.sm,
-  },
-  blockLabel: {
-    color: colors.primaryDark,
-    marginBottom: SPACING.xs,
-  },
   itemRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginTop: SPACING.xs,
+  },
+  itemTime: {
+    color: colors.primaryDark,
+    marginRight: SPACING.sm,
+    minWidth: 42,
   },
   itemBullet: {
     width: 8,

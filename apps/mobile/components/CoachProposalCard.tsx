@@ -1,18 +1,30 @@
 import { View, StyleSheet } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import type { CoachProposal } from '@habits-coach/shared';
 import { Button, Card, BodyMedium, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, type Colors } from '../constants/theme';
-import { describeCoachAction, getProposalSummary } from '../utils/coachProposal';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import {
+  describeCoachAction,
+  getProposalSummary,
+  type CoachActionDescriptionContext,
+} from '../utils/coachProposal';
+import { formatTodoScheduledTime } from '../utils/todoTime';
+import { useThemedStyles } from '../hooks/useColors';
+
+export type CoachProposalCardStatus = 'pending' | 'applying' | 'applied';
 
 interface CoachProposalCardProps {
   proposal: CoachProposal;
+  status: CoachProposalCardStatus;
+  actionContext?: CoachActionDescriptionContext;
   onConfirm: () => void;
   onDismiss: () => void;
 }
 
 export function CoachProposalCard({
   proposal,
+  status,
+  actionContext,
   onConfirm,
   onDismiss,
 }: CoachProposalCardProps) {
@@ -31,7 +43,9 @@ export function CoachProposalCard({
           {proposal.actions.map((action, index) => (
             <View key={`${action.entity}-${action.operation}-${index}`} style={styles.actionRow}>
               <View style={styles.actionBullet} />
-              <BodyMedium color={colors.text}>{describeCoachAction(action)}</BodyMedium>
+              <BodyMedium color={colors.text}>
+                {describeCoachAction(action, actionContext)}
+              </BodyMedium>
             </View>
           ))}
         </View>
@@ -45,8 +59,8 @@ export function CoachProposalCard({
           ) : null}
           {planDraft.items.map((item, index) => (
             <View key={`${item.title}-${index}`} style={styles.planItemRow}>
-              <Caption style={styles.planBlock}>
-                {item.scheduledBlock.toUpperCase()}
+              <Caption style={styles.planTime}>
+                {formatTodoScheduledTime(item.scheduledTime) ?? item.scheduledTime}
               </Caption>
               <BodyMedium color={colors.text}>
                 {item.title}
@@ -57,19 +71,34 @@ export function CoachProposalCard({
         </Card>
       )}
 
-      <View style={styles.actions}>
-        <Button
-          title="Not now"
-          variant="ghost"
-          onPress={onDismiss}
-          size="sm"
-        />
-        <Button
-          title="Apply"
-          onPress={onConfirm}
-          size="sm"
-        />
-      </View>
+      {status === 'applied' ? (
+        <View style={styles.appliedRow}>
+          <View style={styles.appliedBadge}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
+            <BodyMedium color={colors.success}>Accepted</BodyMedium>
+          </View>
+          <Caption style={styles.appliedCaption}>
+            Changes accepted. You can keep chatting from here.
+          </Caption>
+        </View>
+      ) : (
+        <View style={styles.actions}>
+          <Button
+            title="Not now"
+            variant="ghost"
+            onPress={onDismiss}
+            size="sm"
+            disabled={status === 'applying'}
+          />
+          <Button
+            title="Accept"
+            onPress={onConfirm}
+            size="sm"
+            loading={status === 'applying'}
+            disabled={status === 'applying'}
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -121,8 +150,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.xs,
   },
-  planBlock: {
-    width: 82,
+  planTime: {
+    width: 64,
     color: colors.primaryDark,
     ...TYPOGRAPHY.caption,
   },
@@ -131,5 +160,17 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'flex-end',
     gap: SPACING.sm,
     marginTop: SPACING.md,
+  },
+  appliedRow: {
+    marginTop: SPACING.md,
+    gap: SPACING.xs,
+  },
+  appliedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  appliedCaption: {
+    color: colors.textSecondary,
   },
 });

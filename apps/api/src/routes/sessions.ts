@@ -4,14 +4,27 @@ import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
+import {
+  listCoachDebugEvents,
+  logCoachDebugEvent,
+  sessionBelongsToUser,
+} from '../services/coachDebugEvents.js';
 import type {
+  CreateCoachDebugEventRequest,
+  CreateCoachDebugEventResponse,
+  GetCoachDebugEventsResponse,
   CoachingSessionMessage,
   CoachingSessionSummary,
+  CreateSessionResponse,
   CreateSessionRequest,
-  UpdateSessionRequest,
-  FinalizeSessionRequest,
   ErrorResponse,
+  FinalizeSessionRequest,
+  FinalizeSessionResponse,
+  GetActiveSessionResponse,
+  GetSessionResponse,
+  GetSessionsResponse,
   MemoryCategory,
+  UpdateSessionRequest,
 } from '@habits-coach/shared';
 
 const router: Router = Router();
@@ -38,6 +51,27 @@ interface DbMemory {
   source_session_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface DbSessionUpdate {
+  messages?: UpdateSessionRequest['messages'];
+  name?: UpdateSessionRequest['name'];
+  ended_at?: string;
+  is_processed?: boolean;
+}
+
+async function ensureSessionOwnership(
+  sessionId: string,
+  userId: string,
+  res: Response
+): Promise<boolean> {
+  const belongsToUser = await sessionBelongsToUser(sessionId, userId);
+  if (belongsToUser) {
+    return true;
+  }
+
+  res.status(404).json({ error: 'Session not found' } satisfies ErrorResponse);
+  return false;
 }
 
 // GET /api/sessions - List sessions (last 50)
@@ -77,7 +111,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       memoryCount: memoryCountMap.get(s.id) || 0,
     }));
 
-    res.json({ sessions: result });
+    res.json({ sessions: result } satisfies GetSessionsResponse);
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Failed to fetch sessions' } satisfies ErrorResponse);
@@ -100,7 +134,7 @@ router.get('/active', authMiddleware, async (req: Request, res: Response): Promi
     if (error && error.code !== 'PGRST116') throw error;  // PGRST116 = no rows
 
     if (!data) {
-      res.json({ session: null });
+      res.json({ session: null } satisfies GetActiveSessionResponse);
       return;
     }
 
@@ -115,10 +149,55 @@ router.get('/active', authMiddleware, async (req: Request, res: Response): Promi
         messages: session.messages || [],
         updatedAt: new Date(session.updated_at).getTime(),
       },
-    });
+    } satisfies GetActiveSessionResponse);
   } catch (error) {
     console.error('Get active session error:', error);
     res.status(500).json({ error: 'Failed to fetch active session' } satisfies ErrorResponse);
+  }
+});
+
+// GET /api/sessions/:id/debug-events - List session debug events
+router.get('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
+      return;
+    }
+
+    const events = await listCoachDebugEvents(id, req.user!.id);
+    res.json({ events } satisfies GetCoachDebugEventsResponse);
+  } catch (error) {
+    console.error('Get session debug events error:', error);
+    res.status(500).json({ error: 'Failed to fetch session debug events' } satisfies ErrorResponse);
+  }
+});
+
+// POST /api/sessions/:id/debug-events - Create a session debug event
+router.post('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { event } = req.body as CreateCoachDebugEventRequest;
+
+    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
+      return;
+    }
+
+    if (!event || typeof event.eventType !== 'string') {
+      res.status(400).json({ error: 'Invalid request: eventType is required' } satisfies ErrorResponse);
+      return;
+    }
+
+    const createdEvent = await logCoachDebugEvent({
+      sessionId: id,
+      userId: req.user!.id,
+      event,
+    });
+
+    res.json({ event: createdEvent } satisfies CreateCoachDebugEventResponse);
+  } catch (error) {
+    console.error('Create session debug event error:', error);
+    res.status(500).json({ error: 'Failed to create session debug event' } satisfies ErrorResponse);
   }
 });
 
@@ -168,7 +247,7 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
           updatedAt: new Date(m.updated_at).getTime(),
         })),
       },
-    });
+    } satisfies GetSessionResponse);
   } catch (error) {
     console.error('Get session error:', error);
     res.status(500).json({ error: 'Failed to fetch session' } satisfies ErrorResponse);
@@ -197,7 +276,7 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
         id: data.id,
         startedAt: new Date(data.started_at).getTime(),
       },
-    });
+    } satisfies CreateSessionResponse);
   } catch (error) {
     console.error('Create session error:', error);
     res.status(500).json({ error: 'Failed to create session' } satisfies ErrorResponse);
@@ -210,7 +289,7 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
     const { id } = req.params;
     const { messages, name, endedAt, isProcessed } = req.body as UpdateSessionRequest;
 
-    const updates: Record<string, unknown> = {};
+    const updates: DbSessionUpdate = {};
     if (messages !== undefined) updates.messages = messages;
     if (name !== undefined) updates.name = name;
     if (endedAt !== undefined) updates.ended_at = new Date(endedAt).toISOString();
@@ -323,7 +402,7 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
     res.json({
       success: true,
       name: sessionName,
-    });
+    } satisfies FinalizeSessionResponse);
   } catch (error) {
     console.error('Finalize session error:', error);
     res.status(500).json({ error: 'Failed to finalize session' } satisfies ErrorResponse);

@@ -10,8 +10,8 @@ import {
 import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
 
-export const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
-export const WARNING_THRESHOLD_MS = 3.5 * 60 * 1000; // 30 seconds before limit
+const MAX_RECORDING_DURATION_MS = 4 * 60 * 1000; // 4 minutes
+const WARNING_THRESHOLD_MS = 3.5 * 60 * 1000; // 30 seconds before limit
 const METERING_INTERVAL_MS = 100;
 
 const RECORDING_OPTIONS: RecordingOptions = {
@@ -36,8 +36,46 @@ interface UseAudioRecorderResult {
   error: string | null;
 }
 
-function getRecorderUri(recorder: ReturnType<typeof useExpoAudioRecorder>): string | null {
-  return recorder.uri ?? recorder.getStatus().url ?? null;
+type ExpoAudioRecorder = ReturnType<typeof useExpoAudioRecorder>;
+
+function getRecorderStatus(
+  recorder: ExpoAudioRecorder,
+  context: string
+) {
+  try {
+    return recorder.getStatus();
+  } catch (error) {
+    console.warn(`Failed to read recorder status during ${context}:`, error);
+    return null;
+  }
+}
+
+function getRecorderUri(
+  recorder: ExpoAudioRecorder,
+  context: string
+): string | null {
+  return recorder.uri ?? getRecorderStatus(recorder, context)?.url ?? null;
+}
+
+async function disableRecordingAudioMode(context: string): Promise<void> {
+  try {
+    await setAudioModeAsync({
+      allowsRecording: false,
+    });
+  } catch (error) {
+    console.warn(`Failed to reset audio mode during ${context}:`, error);
+  }
+}
+
+async function stopRecorderForCleanup(
+  recorder: ExpoAudioRecorder,
+  context: string
+): Promise<void> {
+  try {
+    await recorder.stop();
+  } catch (error) {
+    console.warn(`Failed to stop recorder during ${context}:`, error);
+  }
 }
 
 function normalizeMeterLevel(metering?: number): number {
@@ -83,7 +121,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
     try {
       await recorder.stop();
-      const uri = getRecorderUri(recorder);
+      const uri = getRecorderUri(recorder, 'stop');
 
       await setAudioModeAsync({
         allowsRecording: false,
@@ -95,11 +133,9 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       console.error('Failed to stop recording:', err);
       Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
 
-      const savedUri = getRecorderUri(recorder);
+      const savedUri = getRecorderUri(recorder, 'stop after failure');
 
-      await setAudioModeAsync({
-        allowsRecording: false,
-      }).catch(() => {});
+      await disableRecordingAudioMode('stop after failure');
 
       resetRecordingState();
 
@@ -140,6 +176,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
     } catch (err) {
       console.error('Failed to start recording:', err);
       Sentry.captureException(err, { tags: { feature: 'voice-recording' } });
+      await disableRecordingAudioMode('start');
       setError('Failed to start recording');
       resetRecordingState();
     }
@@ -148,17 +185,11 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
   const cancelRecording = useCallback(async () => {
     setError(null);
 
-    if (isRecording || recorder.getStatus().isRecording) {
-      try {
-        await recorder.stop();
-      } catch {
-        // Ignore stop errors when canceling.
-      }
+    if (isRecording || getRecorderStatus(recorder, 'cancel')?.isRecording) {
+      await stopRecorderForCleanup(recorder, 'cancel');
     }
 
-    await setAudioModeAsync({
-      allowsRecording: false,
-    }).catch(() => {});
+    await disableRecordingAudioMode('cancel');
 
     resetRecordingState();
   }, [isRecording, recorder, resetRecordingState]);
@@ -201,13 +232,11 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
 
   useEffect(() => {
     return () => {
-      if (recorder.getStatus().isRecording) {
-        void recorder.stop().catch(() => {});
+      if (getRecorderStatus(recorder, 'cleanup')?.isRecording) {
+        void stopRecorderForCleanup(recorder, 'cleanup');
       }
 
-      void setAudioModeAsync({
-        allowsRecording: false,
-      }).catch(() => {});
+      void disableRecordingAudioMode('cleanup');
     };
   }, [recorder]);
 

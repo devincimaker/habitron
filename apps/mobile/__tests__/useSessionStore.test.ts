@@ -11,12 +11,14 @@ const mockCreateSession = jest.fn();
 const mockUpdateSession = jest.fn();
 const mockFinalizeSession = jest.fn();
 const mockGetActiveSession = jest.fn();
+const mockCreateSessionDebugEvent = jest.fn();
 
 jest.mock('../services/sessions', () => ({
   createSession: () => mockCreateSession(),
   updateSession: (...args: unknown[]) => mockUpdateSession(...args),
   finalizeSession: (...args: unknown[]) => mockFinalizeSession(...args),
   getActiveSession: () => mockGetActiveSession(),
+  createSessionDebugEvent: (...args: unknown[]) => mockCreateSessionDebugEvent(...args),
 }));
 
 import { useSessionStore } from '../stores/useSessionStore';
@@ -188,5 +190,47 @@ describe('useSessionStore - Lazy Session Creation', () => {
     expect(useSessionStore.getState().isActive).toBe(true);
     expect(useSessionStore.getState().messages).toHaveLength(2);
     expect(useSessionStore.getState().sessionId).toBeNull();
+  });
+
+  it('should log a debug event when session sync fails', async () => {
+    mockCreateSession.mockResolvedValue({
+      id: 'test-session-id',
+      startedAt: Date.now(),
+    });
+    mockUpdateSession.mockRejectedValue(new Error('Sync failed'));
+    mockCreateSessionDebugEvent.mockResolvedValue(undefined);
+
+    await useSessionStore.getState().startSession();
+    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+
+    expect(mockCreateSessionDebugEvent).toHaveBeenCalledWith(
+      'test-session-id',
+      expect.objectContaining({
+        eventType: 'session_sync_failed',
+        errorStage: 'session_sync',
+      })
+    );
+  });
+
+  it('should log a debug event when finalizing a session fails', async () => {
+    mockCreateSession.mockResolvedValue({
+      id: 'test-session-id',
+      startedAt: Date.now(),
+    });
+    mockUpdateSession.mockResolvedValue(undefined);
+    mockFinalizeSession.mockRejectedValue(new Error('Finalize failed'));
+    mockCreateSessionDebugEvent.mockResolvedValue(undefined);
+
+    await useSessionStore.getState().startSession();
+    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+    await useSessionStore.getState().endSession();
+
+    expect(mockCreateSessionDebugEvent).toHaveBeenCalledWith(
+      'test-session-id',
+      expect.objectContaining({
+        eventType: 'session_sync_failed',
+        errorStage: 'session_finalize',
+      })
+    );
   });
 });

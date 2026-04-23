@@ -5,9 +5,11 @@ import type {
   DailyPlanDraftItem,
   DailyPlanItem,
   DailyPlanItemOutcome,
+  DailyPlanItemType,
   DailyPlanSource,
   DailyPlanStatus,
 } from '@habits-coach/shared';
+import { normalizeTodoScheduledTimeInput } from '../utils/todoTime';
 
 interface DbDailyPlan {
   id: string;
@@ -27,12 +29,12 @@ interface DbDailyPlanItem {
   id: string;
   plan_id: string;
   user_id: string;
-  item_type: 'habit' | 'todo' | 'note';
+  item_type: DailyPlanItemType;
   habit_id: string | null;
   todo_id: string | null;
   title_snapshot: string;
   notes_snapshot: string | null;
-  scheduled_block: 'morning' | 'afternoon' | 'evening';
+  scheduled_time: string;
   estimate_minutes_snapshot: number | null;
   is_optional: boolean;
   position: number;
@@ -49,7 +51,7 @@ function mapDbPlanItemToPlanItem(item: DbDailyPlanItem): DailyPlanItem {
     todoId: item.todo_id ?? undefined,
     titleSnapshot: item.title_snapshot,
     notesSnapshot: item.notes_snapshot ?? undefined,
-    scheduledBlock: item.scheduled_block,
+    scheduledTime: item.scheduled_time,
     estimateMinutesSnapshot: item.estimate_minutes_snapshot ?? undefined,
     isOptional: item.is_optional,
     position: item.position,
@@ -74,6 +76,16 @@ function mapDbPlanToPlan(plan: DbDailyPlan, items: DbDailyPlanItem[]): DailyPlan
       .sort((a, b) => a.position - b.position)
       .map(mapDbPlanItemToPlanItem),
   };
+}
+
+function serializePlannedScheduledTime(time: string): string {
+  const normalizedTime = normalizeTodoScheduledTimeInput(time);
+
+  if (!normalizedTime) {
+    throw new Error('Invalid planned scheduled time');
+  }
+
+  return normalizedTime;
 }
 
 async function getCurrentUserId(): Promise<string> {
@@ -196,7 +208,7 @@ export async function saveAcceptedDailyPlan(
       todo_id: resolved.todoId,
       title_snapshot: item.title,
       notes_snapshot: item.notes ?? null,
-      scheduled_block: item.scheduledBlock,
+      scheduled_time: serializePlannedScheduledTime(item.scheduledTime),
       estimate_minutes_snapshot: item.estimateMinutes ?? null,
       is_optional: item.isOptional ?? false,
       position: index,
