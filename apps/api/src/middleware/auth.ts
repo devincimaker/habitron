@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
+import { extractBearerToken } from './authHeader.js';
 
 // Create Supabase client with service role key for verification
 const supabase = createClient(
@@ -32,7 +33,11 @@ export async function authMiddleware(
     return;
   }
 
-  const token = authHeader.substring(7);
+  const token = extractBearerToken(authHeader);
+  if (!token) {
+    res.status(401).json({ error: 'Invalid or expired token' });
+    return;
+  }
 
   try {
     const {
