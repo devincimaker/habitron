@@ -8,7 +8,15 @@ Remove the current worktree and associated resources.
 
 ## Steps
 
-1. **Detect current worktree**: Check if the current working directory is inside a `tmp/` worktree. If not, error out with "Not in a worktree".
+1. **Detect current worktree**: Resolve the main checkout via git metadata and compare it to the current directory:
+   ```bash
+   CURRENT_WORKTREE=$(git rev-parse --show-toplevel)
+   CURRENT_WORKTREE=$(cd "$CURRENT_WORKTREE" && pwd -P)
+   GIT_COMMON_DIR=$(git rev-parse --git-common-dir)
+   GIT_COMMON_DIR=$(cd "$GIT_COMMON_DIR" && pwd -P)
+   MAIN_REPO=$(dirname "$GIT_COMMON_DIR")
+   ```
+   If `CURRENT_WORKTREE` equals `MAIN_REPO`, error out with "Not in a worktree".
 
 2. **Get branch name**:
    ```bash
@@ -19,19 +27,19 @@ Remove the current worktree and associated resources.
 
 4. **Confirm deletion**: Show what will be deleted and ask for confirmation.
 
-5. **Change to main project**:
+5. **Tear down allocated resources**:
    ```bash
-   cd /Users/devinci/Solopreneur/habitron
+   "$CURRENT_WORKTREE/scripts/teardown-worktree.sh"
    ```
 
 6. **Remove the worktree**:
    ```bash
-   git worktree remove "tmp/<worktree-name>" --force
+   git -C "$MAIN_REPO" worktree remove "$CURRENT_WORKTREE" --force
    ```
 
 7. **Delete the git branch**:
    ```bash
-   git branch -D <branch-name>
+   git -C "$MAIN_REPO" branch -D <branch-name>
    ```
 
 8. **Delete Supabase branch** (if detected in step 3):

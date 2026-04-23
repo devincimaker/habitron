@@ -13,17 +13,29 @@ This command accepts an optional argument: `$ARGUMENTS`
 
 If the argument is a Linear ticket ID (e.g., `HAB-45`), fetch the issue details and use them to auto-generate the branch name.
 
-## Resource Pools
+## Source Of Truth
 
-**Reserved for main** (do not allocate to worktrees):
-- Simulator: iPhone 16 Plus
-- EXPO_PORT: 8081
-- API PORT: 3001
+Do not reimplement port or simulator allocation in this command. Use the executable repo command:
 
-**Available for worktrees** (allocate in order):
-- Simulators: iPhone 16, iPhone 16 Pro, iPhone 16 Pro Max, iPhone 16e, iPhone 16 - Side Hoe
-- EXPO_PORT: 8082, 8083, 8084, 8085, 8086
-- API PORT: 3002, 3003, 3004, 3005, 3006
+```bash
+pnpm worktree:create -- "$BRANCH_NAME"
+```
+
+If a custom directory name is needed:
+
+```bash
+pnpm worktree:create -- "$BRANCH_NAME" "$WORKTREE_NAME"
+```
+
+By default, new branches start from the caller's current `HEAD`. To force a different base:
+
+```bash
+pnpm worktree:create -- --base origin/master "$BRANCH_NAME"
+```
+
+The allocator logic lives in:
+- `scripts/create-worktree.sh`
+- `scripts/setup-worktree.sh`
 
 ## Steps
 
@@ -53,71 +65,29 @@ If the argument is a Linear ticket ID (e.g., `HAB-45`), fetch the issue details 
 
 5. **Ask about Supabase**: Do they want a branch database? (Yes/No)
 
-6. **Scan existing worktrees** to find allocated resources:
+6. **Create the worktree using the repo command**:
    ```bash
-   git worktree list
+   pnpm worktree:create -- "$BRANCH_NAME"
    ```
-   For each worktree in `tmp/`, spawn parallel subagents to read:
-   - `apps/mobile/.env` → extract `EXPO_PORT` and `IOS_SIMULATOR`
-   - `apps/api/.env` → extract `PORT`
+   If a custom directory name is needed, pass it as the second argument.
 
-   Collect all in-use ports and simulators.
-
-7. **Allocate resources**: Pick the first available from each pool that isn't already in use:
-   - Pick first unused simulator from the list
-   - Pick first unused EXPO_PORT
-   - Pick first unused API PORT
-
-8. **Create worktree** in `tmp/` folder:
+7. **If Supabase branch requested**:
    ```bash
-   git worktree add -b "$BRANCH_NAME" "tmp/${BRANCH_NAME//\//-}"
+   supabase link --project-ref wxszqhuhkeuspizwaarc
+   supabase branches create "$BRANCH_NAME"
    ```
+   Parse the output to extract the new database URL and keys, then edit:
+   - `apps/api/.env`: Update `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
+   - `apps/mobile/.env`: Update `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`
 
-9. **Copy .env files**:
-   ```bash
-   cp apps/api/.env "tmp/${BRANCH_NAME//\//-}/apps/api/.env"
-   cp apps/mobile/.env "tmp/${BRANCH_NAME//\//-}/apps/mobile/.env"
-   ```
+8. **If Linear ticket was used**: Update the issue state to "In Progress" using `mcp__linear-server__update_issue`
 
-10. **Configure worktree-specific settings**: Update the copied `.env` files with allocated resources:
-
-    For `apps/api/.env` - update the PORT:
-    ```bash
-    sed -i '' "s/^PORT=.*/PORT=$ALLOCATED_API_PORT/" "tmp/${BRANCH_NAME//\//-}/apps/api/.env"
-    ```
-
-    For `apps/mobile/.env` - update API URL and append simulator/port settings:
-    ```bash
-    # Update the API URL to use the allocated API port
-    sed -i '' "s|EXPO_PUBLIC_API_URL=http://localhost:[0-9]*|EXPO_PUBLIC_API_URL=http://localhost:$ALLOCATED_API_PORT|" "tmp/${BRANCH_NAME//\//-}/apps/mobile/.env"
-
-    # Append worktree-specific settings
-    cat >> "tmp/${BRANCH_NAME//\//-}/apps/mobile/.env" << EOF
-
-# Worktree-specific settings
-IOS_SIMULATOR=$ALLOCATED_SIMULATOR
-EXPO_PORT=$ALLOCATED_EXPO_PORT
-EOF
-    ```
-
-11. **Install deps**: `pnpm install` in new worktree
-
-12. **If Supabase branch requested**:
-    ```bash
-    supabase link --project-ref wxszqhuhkeuspizwaarc
-    supabase branches create "$BRANCH_NAME"
-    ```
-    Parse the output to extract the new database URL and keys, then edit:
-    - `apps/api/.env`: Update `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`
-    - `apps/mobile/.env`: Update `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_ANON_KEY`
-
-13. **If Linear ticket was used**: Update the issue state to "In Progress" using `mcp__linear-server__update_issue`
-
-14. **Show summary**: worktree path, branch name, allocated resources, Linear ticket (if used), next steps
+9. **Show summary**: worktree path, branch name, allocated resources, Linear ticket (if used), next steps
 
 ## Cleanup reminder
 
 ```bash
-git worktree remove tmp/<branch-name>
+scripts/teardown-worktree.sh
+git -C <main-repo-path> worktree remove <worktree-path>
 supabase branches delete <branch-name>  # if branch db was created
 ```
