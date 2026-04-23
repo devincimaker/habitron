@@ -241,19 +241,24 @@ export type CoachAction =
     }
   | {
       entity: 'habit';
-      operation: 'create';
+      operation: 'add';
       clientKey?: string;
       habit: HabitDraft;
     }
   | {
       entity: 'habit';
-      operation: 'expand' | 'contract';
+      operation: 'edit';
       habitId: string;
       changes: Partial<HabitDraft>;
     }
   | {
       entity: 'habit';
       operation: 'archive';
+      habitId: string;
+    }
+  | {
+      entity: 'habit';
+      operation: 'remove';
       habitId: string;
     }
   | {
@@ -284,11 +289,36 @@ export type CoachAction =
       entity: 'todo';
       operation: 'complete' | 'cancel' | 'reopen' | 'remove';
       todoId: string;
+    }
+  | {
+      entity: 'journal' | 'diary';
+      operation: 'create';
+      clientKey?: string;
+      entry: JournalEntryDraft;
     };
 
 export interface CoachProposal {
   actions: CoachAction[];
   dailyPlanDraft?: DailyPlanDraft | null;
+}
+
+export type CoachSkillId =
+  | 'general-coach'
+  | 'day-planning'
+  | 'task-management'
+  | 'habit-design';
+export type CoachingSkillStatus = 'active' | 'paused' | 'completed';
+
+export interface CoachingSkillInstance {
+  id: string;
+  skillId: CoachSkillId;
+  status: CoachingSkillStatus;
+  isLead: boolean;
+  phase: string | null;
+  state: Record<string, unknown>;
+  activatedAt: number;
+  lastUsedAt: number;
+  completedAt: number | null;
 }
 
 // Chat types
@@ -297,6 +327,7 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   proposal?: CoachProposal;
+  proposalStatus?: 'pending' | 'applying' | 'applied' | 'dismissed' | 'failed';
   timestamp: number;
 }
 
@@ -321,6 +352,7 @@ export interface HabitWithStatus extends Habit {
 
 // API types
 export interface ChatRequest {
+  sessionId?: string;
   messages: Array<{
     role: 'user' | 'assistant';
     content: string;
@@ -337,12 +369,14 @@ export interface ChatRequest {
   userName?: string;
   today?: string;
   timezone?: string;
-  sessionId?: string;
 }
 
 export interface ChatResponse {
   message: string;
   proposal?: CoachProposal | null;
+  leadSkillId?: CoachSkillId;
+  activeSkillIds?: CoachSkillId[];
+  skillPhase?: string | null;
 }
 
 export interface ErrorResponse {
@@ -391,16 +425,13 @@ export interface CoachingSessionSummary {
   endedAt: number | null;
   messageCount: number;
   memoryCount?: number;
+  leadSkillId?: CoachSkillId | null;
 }
 
 export interface CoachingSessionDetail extends CoachingSessionSummary {
   messages: CoachingSessionMessage[];
   memories: Memory[];
-}
-
-export interface ActiveSession extends CoachingSessionSummary {
-  messages: CoachingSessionMessage[];
-  updatedAt: number;
+  activeSkills?: CoachingSkillInstance[];
 }
 
 export interface CreateSessionRequest {
@@ -426,21 +457,19 @@ export interface FinalizeSessionRequest {
   extractMemories?: boolean;  // Default true
 }
 
+export interface UpdateSessionSkillRequest {
+  phase?: string | null;
+  status?: CoachingSkillStatus;
+  isLead?: boolean;
+  statePatch?: Record<string, unknown>;
+}
+
 export interface GetSessionsResponse {
   sessions: CoachingSessionSummary[];
 }
 
-export interface GetActiveSessionResponse {
-  session: ActiveSession | null;
-}
-
 export interface GetSessionResponse {
   session: CoachingSessionDetail;
-}
-
-export interface FinalizeSessionResponse {
-  success: boolean;
-  name: string;
 }
 
 export type HabitAction = Extract<CoachAction, { entity: 'habit' }>;

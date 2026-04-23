@@ -2,7 +2,8 @@ import { StyleSheet, View } from 'react-native';
 import type { DailyPlan } from '@habits-coach/shared';
 import { BodyMedium, Button, Card, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles } from '../hooks/useColors';
+import { useThemedStyles, useColors } from '../hooks/useColors';
+import { compareTodoScheduledTimes, formatTodoScheduledTime } from '../utils/todoTime';
 
 interface DailyPlanCardProps {
   plan: DailyPlan | null;
@@ -29,10 +30,6 @@ export function DailyPlanCard({
     );
   }
 
-  const sortedItems = [...plan.items].sort(
-    (a, b) => a.scheduledTime.localeCompare(b.scheduledTime) || a.position - b.position
-  );
-
   return (
     <Card style={styles.card}>
       <View style={styles.header}>
@@ -44,24 +41,33 @@ export function DailyPlanCard({
         <BodyMedium style={styles.rationale}>{plan.rationale}</BodyMedium>
       ) : null}
 
-      {sortedItems.map((item) => (
-        <View key={item.id} style={styles.itemRow}>
-          <Caption style={styles.itemTime}>{item.scheduledTime}</Caption>
-          <View style={styles.itemBullet} />
-          <View style={styles.itemContent}>
-            <BodyMedium color={colors.text}>
-              {item.titleSnapshot}
-              {item.isOptional ? ' (optional)' : ''}
-            </BodyMedium>
-            {item.notesSnapshot ? (
-              <Caption>{item.notesSnapshot}</Caption>
+      {plan.items
+        .slice()
+        .sort(
+          (left, right) =>
+            compareTodoScheduledTimes(left.scheduledTime, right.scheduledTime)
+            || left.position - right.position
+        )
+        .map((item) => (
+          <View key={item.id} style={styles.itemRow}>
+            <Caption style={styles.timeLabel}>
+              {formatTodoScheduledTime(item.scheduledTime) ?? item.scheduledTime}
+            </Caption>
+            <View style={styles.itemBullet} />
+            <View style={styles.itemContent}>
+              <BodyMedium color={colors.text}>
+                {item.titleSnapshot}
+                {item.isOptional ? ' (optional)' : ''}
+              </BodyMedium>
+              {item.notesSnapshot ? (
+                <Caption>{item.notesSnapshot}</Caption>
+              ) : null}
+            </View>
+            {item.outcome !== 'planned' ? (
+              <Caption style={styles.outcome}>{formatOutcome(item.outcome)}</Caption>
             ) : null}
           </View>
-          {item.outcome !== 'planned' ? (
-            <Caption style={styles.outcome}>{formatOutcome(item.outcome)}</Caption>
-          ) : null}
-        </View>
-      ))}
+        ))}
 
       <Button
         title="Replan With Habitron"
@@ -115,12 +121,12 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   itemRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    marginTop: SPACING.xs,
+    marginTop: SPACING.sm,
   },
-  itemTime: {
+  timeLabel: {
     color: colors.primaryDark,
-    marginRight: SPACING.sm,
-    minWidth: 42,
+    width: 56,
+    marginTop: 1,
   },
   itemBullet: {
     width: 8,

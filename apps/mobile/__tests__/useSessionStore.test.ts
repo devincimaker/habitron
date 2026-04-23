@@ -11,14 +11,12 @@ const mockCreateSession = jest.fn();
 const mockUpdateSession = jest.fn();
 const mockFinalizeSession = jest.fn();
 const mockGetActiveSession = jest.fn();
-const mockCreateSessionDebugEvent = jest.fn();
 
 jest.mock('../services/sessions', () => ({
   createSession: () => mockCreateSession(),
   updateSession: (...args: unknown[]) => mockUpdateSession(...args),
   finalizeSession: (...args: unknown[]) => mockFinalizeSession(...args),
   getActiveSession: () => mockGetActiveSession(),
-  createSessionDebugEvent: (...args: unknown[]) => mockCreateSessionDebugEvent(...args),
 }));
 
 import { useSessionStore } from '../stores/useSessionStore';
@@ -34,6 +32,7 @@ describe('useSessionStore - Lazy Session Creation', () => {
       messages: [],
       isLoading: false,
       isSyncing: false,
+      isCreatingSession: false,
     });
 
     // Clear all mocks
@@ -151,7 +150,9 @@ describe('useSessionStore - Lazy Session Creation', () => {
     await useSessionStore.getState().addMessage({ role: 'user', content: 'User message' });
     await useSessionStore.getState().endSession();
 
-    expect(mockFinalizeSession).toHaveBeenCalledWith('test-session-id');
+    expect(mockFinalizeSession).toHaveBeenCalledWith('test-session-id', {
+      extractMemories: false,
+    });
   });
 
   /**
@@ -176,60 +177,83 @@ describe('useSessionStore - Lazy Session Creation', () => {
   });
 
   /**
-   * Test: Backend creation failure should not crash the app
+   * Test: Backend creation failure should reject the user message
    *
-   * If the backend call fails, the message should still be added locally
-   * and the app should continue to function.
+   * Session creation is required for orchestrated coach state. If backend
+   * session creation fails, we should not append a user message locally.
    */
-  it('should handle backend creation failure gracefully', async () => {
+  it('should reject first user message when backend session creation fails', async () => {
     mockCreateSession.mockRejectedValue(new Error('Network error'));
 
     await useSessionStore.getState().startSession();
-    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+    await expect(
+      useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' })
+    ).rejects.toThrow('Network error');
 
     expect(useSessionStore.getState().isActive).toBe(true);
-    expect(useSessionStore.getState().messages).toHaveLength(2);
+    expect(useSessionStore.getState().messages).toHaveLength(1);
+    expect(useSessionStore.getState().messages[0].role).toBe('assistant');
     expect(useSessionStore.getState().sessionId).toBeNull();
   });
 
-  it('should log a debug event when session sync fails', async () => {
-    mockCreateSession.mockResolvedValue({
-      id: 'test-session-id',
-      startedAt: Date.now(),
-    });
-    mockUpdateSession.mockRejectedValue(new Error('Sync failed'));
-    mockCreateSessionDebugEvent.mockResolvedValue(undefined);
-
+  it('should update proposal state on an existing message', async () => {
     await useSessionStore.getState().startSession();
-    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+    await useSessionStore.getState().addMessage({
+      role: 'assistant',
+      content: 'Here is a plan.',
+      proposal: {
+        actions: [],
+        dailyPlanDraft: {
+          date: '2026-04-13',
+          items: [
+            {
+              itemType: 'note',
+              title: 'Deep work',
+              scheduledTime: '13:00',
+            },
+          ],
+        },
+      },
+      proposalStatus: 'pending',
+    });
 
-    expect(mockCreateSessionDebugEvent).toHaveBeenCalledWith(
-      'test-session-id',
-      expect.objectContaining({
-        eventType: 'session_sync_failed',
-        errorStage: 'session_sync',
-      })
-    );
+    const proposalMessage = useSessionStore
+      .getState()
+      .messages
+      .find((message) => message.proposal);
+
+    expect(proposalMessage).toBeTruthy();
+
+    useSessionStore.getState().updateMessage(proposalMessage!.id, {
+      proposalStatus: 'applied',
+    });
+
+    expect(
+      useSessionStore
+        .getState()
+        .messages
+        .find((message) => message.id === proposalMessage!.id)?.proposalStatus
+    ).toBe('applied');
   });
 
-  it('should log a debug event when finalizing a session fails', async () => {
-    mockCreateSession.mockResolvedValue({
-      id: 'test-session-id',
-      startedAt: Date.now(),
-    });
-    mockUpdateSession.mockResolvedValue(undefined);
-    mockFinalizeSession.mockRejectedValue(new Error('Finalize failed'));
-    mockCreateSessionDebugEvent.mockResolvedValue(undefined);
-
+  it('returns the created message id from addMessage', async () => {
     await useSessionStore.getState().startSession();
-    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
-    await useSessionStore.getState().endSession();
 
-    expect(mockCreateSessionDebugEvent).toHaveBeenCalledWith(
-      'test-session-id',
+    const messageId = await useSessionStore.getState().addMessage({
+      role: 'assistant',
+      content: 'Here is a plan.',
+    });
+
+    expect(
+      useSessionStore
+        .getState()
+        .messages
+        .find((message) => message.id === messageId)
+    ).toEqual(
       expect.objectContaining({
-        eventType: 'session_sync_failed',
-        errorStage: 'session_finalize',
+        id: messageId,
+        role: 'assistant',
+        content: 'Here is a plan.',
       })
     );
   });

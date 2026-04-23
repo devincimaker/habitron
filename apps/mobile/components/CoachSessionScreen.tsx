@@ -36,7 +36,10 @@ import { VoiceInputButton } from './VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { sendMessage } from '../services/api';
-import { getCoachRequestErrorMessage } from '../services/apiUrl';
+import {
+  getCoachRequestErrorMessage,
+  getCoachSessionStartErrorMessage,
+} from '../services/apiUrl';
 import { createSessionDebugEvent } from '../services/sessions';
 import type {
   ChatMessage as ChatMessageType,
@@ -120,7 +123,7 @@ export function CoachSessionScreen({
   } = useSessionStore();
 
   const { loadSessions } = useSessionsStore();
-  const { habits, loadHabits, addHabit, updateHabit, archiveHabit } = useHabitsStore();
+  const { habits, loadHabits, addHabit, updateHabit, archiveHabit, removeHabit } = useHabitsStore();
   const { goals, loadGoals, addGoal, updateGoal, archiveGoal } = useGoalsStore();
   const {
     todos,
@@ -130,7 +133,7 @@ export function CoachSessionScreen({
     setTodoStatus,
     removeTodo,
   } = useTodosStore();
-  const { entries: journalEntries, loadEntries } = useJournalStore();
+  const { entries: journalEntries, loadEntries, addEntry } = useJournalStore();
   const { plansByDate, loadPlan, saveAcceptedPlan } = useDailyPlansStore();
   const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
   const { name: userName } = useProfileStore();
@@ -229,20 +232,23 @@ export function CoachSessionScreen({
     [sessionId]
   );
 
-  const sendUserMessage = useCallback(async (text: string) => {
+  const sendUserMessage = useCallback(async (text: string): Promise<boolean> => {
     const trimmedText = text.trim();
     if (!trimmedText || isSendingRef.current) {
-      return;
+      return false;
     }
 
     isSendingRef.current = true;
-    if (latestProposalStatus === 'pending') {
-      setProposalStatus(latestProposal?.messageId ?? null, 'superseded');
-    }
-    await addMessage({ role: 'user', content: trimmedText });
-    setLoading(true);
+    let didQueueUserMessage = false;
 
     try {
+      await addMessage({ role: 'user', content: trimmedText });
+      didQueueUserMessage = true;
+      if (latestProposalStatus === 'pending') {
+        setProposalStatus(latestProposal?.messageId ?? null, 'superseded');
+      }
+      setLoading(true);
+
       const allMessages = useSessionStore.getState().messages;
       const currentSessionId = useSessionStore.getState().sessionId ?? sessionId ?? undefined;
       const turnIndex = getTurnIndexFromMessages(allMessages);
@@ -267,7 +273,7 @@ export function CoachSessionScreen({
       };
 
       const response = await sendMessage(request);
-      const assistantMessage = await addMessage({
+      const assistantMessageId = await addMessage({
         role: 'assistant',
         content: response.message,
         proposal: response.proposal ?? undefined,
@@ -279,14 +285,20 @@ export function CoachSessionScreen({
           turnIndex,
           proposalPayload: response.proposal,
           metadata: {
-            assistantMessageId: assistantMessage.id,
+            assistantMessageId: assistantMessageId ?? null,
             actionCount: response.proposal.actions.length,
             actionSummaries: getCoachProposalDebugSummaries(response.proposal),
           },
         });
       }
+      return true;
     } catch (error) {
       console.warn('Error sending message:', error);
+      if (!didQueueUserMessage) {
+        Alert.alert('Could not start session', getCoachSessionStartErrorMessage(error));
+        return false;
+      }
+
       Sentry.captureException(error, {
         tags: {
           feature: 'coach-session',
@@ -301,8 +313,11 @@ export function CoachSessionScreen({
         role: 'assistant',
         content: getCoachRequestErrorMessage(error),
       });
+      return true;
     } finally {
-      setLoading(false);
+      if (didQueueUserMessage) {
+        setLoading(false);
+      }
       isSendingRef.current = false;
     }
   }, [
@@ -404,8 +419,10 @@ export function CoachSessionScreen({
     if (!text || isLoading) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setInputText('');
-    await sendUserMessage(text);
+    const didSend = await sendUserMessage(text);
+    if (didSend) {
+      setInputText('');
+    }
   }, [inputText, isLoading, sendUserMessage]);
 
   const handleConfirmProposal = useCallback(async () => {
@@ -436,10 +453,12 @@ export function CoachSessionScreen({
         addHabit,
         updateHabit,
         archiveHabit,
+        removeHabit,
         addTodo,
         updateTodo,
         setTodoStatus,
         removeTodo,
+        addJournalEntry: addEntry,
         saveAcceptedPlan,
         existingPlanId:
           proposal.dailyPlanDraft?.date === today ? todayPlan?.id : undefined,
@@ -481,7 +500,7 @@ export function CoachSessionScreen({
     }
 
     try {
-      const appliedMessage = await addMessage({
+      const appliedMessageId = await addMessage({
         role: 'assistant',
         content: getProposalAppliedMessage(proposal, proposalActionContext),
       });
@@ -492,7 +511,7 @@ export function CoachSessionScreen({
         proposalPayload: proposal,
         metadata: {
           proposalMessageId: messageId,
-          appliedMessageId: appliedMessage.id,
+          appliedMessageId: appliedMessageId ?? null,
           actionCount: proposal.actions.length,
           actionSummaries,
         },
@@ -521,6 +540,7 @@ export function CoachSessionScreen({
       });
     }
   }, [
+    addEntry,
     addGoal,
     addHabit,
     addMessage,
@@ -536,6 +556,7 @@ export function CoachSessionScreen({
     logSessionDebugEvent,
     messages,
     proposalActionContext,
+    removeHabit,
     removeTodo,
     saveAcceptedPlan,
     sessionId,
@@ -586,7 +607,9 @@ export function CoachSessionScreen({
     voiceInputProps,
     handleStopRecording,
   } = useVoiceInput({
-    onSend: sendUserMessage,
+    onSend: async (text) => {
+      await sendUserMessage(text);
+    },
     onStopSuccess: setInputText,
   });
 

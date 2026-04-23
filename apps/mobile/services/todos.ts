@@ -45,6 +45,7 @@ interface DbTodo {
   due_date: string | null;
   scheduled_date: string | null;
   scheduled_time: string | null;
+  scheduled_block?: 'morning' | 'afternoon' | 'evening' | null;
   estimate_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
@@ -92,6 +93,8 @@ function mapDbTodoTagToTodoTag(tag: DbTodoTag): TodoTag {
 }
 
 function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
+  const scheduledTime = todo.scheduled_time ?? mapLegacyScheduledBlockToTime(todo.scheduled_block);
+
   return {
     id: todo.id,
     title: todo.title,
@@ -100,7 +103,7 @@ function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
     priority: todo.priority ?? undefined,
     dueDate: todo.due_date ?? undefined,
     scheduledDate: todo.scheduled_date ?? undefined,
-    scheduledTime: todo.scheduled_time ?? undefined,
+    scheduledTime: scheduledTime ?? undefined,
     estimateMinutes: todo.estimate_minutes ?? undefined,
     completedAt: todo.completed_at ? new Date(todo.completed_at).getTime() : undefined,
     canceledAt: todo.canceled_at ? new Date(todo.canceled_at).getTime() : undefined,
@@ -121,6 +124,106 @@ function serializeScheduledTime(time?: string): string | null {
   }
 
   return normalizedTime ?? null;
+}
+
+function mapLegacyScheduledBlockToTime(
+  block?: DbTodo['scheduled_block']
+): string | null {
+  switch (block) {
+    case 'morning':
+      return '09:00';
+    case 'afternoon':
+      return '13:00';
+    case 'evening':
+      return '18:00';
+    default:
+      return null;
+  }
+}
+
+function mapScheduledTimeToLegacyBlock(time?: string | null): DbTodo['scheduled_block'] {
+  const normalizedTime = normalizeTodoScheduledTimeInput(time);
+
+  if (!normalizedTime) {
+    return null;
+  }
+
+  const hour = Number.parseInt(normalizedTime.slice(0, 2), 10);
+
+  if (hour < 12) {
+    return 'morning';
+  }
+
+  if (hour < 17) {
+    return 'afternoon';
+  }
+
+  return 'evening';
+}
+
+function isMissingScheduledTimeSchemaError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = error as { code?: unknown; message?: unknown };
+  return maybeError.code === 'PGRST204'
+    && typeof maybeError.message === 'string'
+    && maybeError.message.includes("'scheduled_time'");
+}
+
+async function insertTodoRow(payload: Record<string, unknown>): Promise<DbTodo> {
+  let { data, error } = await supabase
+    .from('todos')
+    .insert(payload)
+    .select()
+    .single();
+
+  if (isMissingScheduledTimeSchemaError(error)) {
+    const fallbackPayload: Record<string, unknown> = {
+      ...payload,
+      scheduled_block: mapScheduledTimeToLegacyBlock((payload.scheduled_time as string | null | undefined) ?? null),
+    };
+    delete fallbackPayload.scheduled_time;
+
+    ({ data, error } = await supabase
+      .from('todos')
+      .insert(fallbackPayload)
+      .select()
+      .single());
+  }
+
+  if (error) {
+    console.error('Error adding todo:', error);
+    throw error;
+  }
+
+  return data as DbTodo;
+}
+
+async function updateTodoRow(todoId: string, payload: Partial<DbTodo>): Promise<void> {
+  let { error } = await supabase
+    .from('todos')
+    .update(payload)
+    .eq('id', todoId);
+
+  if (isMissingScheduledTimeSchemaError(error)) {
+    const fallbackPayload = {
+      ...payload,
+      scheduled_block: mapScheduledTimeToLegacyBlock(payload.scheduled_time),
+    };
+    delete fallbackPayload.scheduled_time;
+
+    ({ error } = await supabase
+      .from('todos')
+      .update(fallbackPayload)
+      .eq('id', todoId));
+  }
+
+  if (error) {
+    console.error('Error updating todo:', error);
+    throw error;
+  }
 }
 
 async function getCurrentUserId(): Promise<string> {
@@ -519,31 +622,20 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
     throw new Error('Invalid scheduled time');
   }
 
-  const { data, error } = await supabase
-    .from('todos')
-    .insert({
-      user_id: userId,
-      goal_id: todo.goalId ?? null,
-      list_id: listId,
-      title: todo.title,
-      notes: todo.notes ?? null,
-      status: 'open',
-      priority: todo.priority ?? null,
-      due_date: todo.dueDate ?? null,
-      scheduled_date: schedule.scheduledDate ?? null,
-      scheduled_time: serializeScheduledTime(schedule.scheduledTime),
-      estimate_minutes: todo.estimateMinutes ?? null,
-      sort_order: Date.now(),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error adding todo:', error);
-    throw error;
-  }
-
-  const createdTodo = data as DbTodo;
+  const createdTodo = await insertTodoRow({
+    user_id: userId,
+    goal_id: todo.goalId ?? null,
+    list_id: listId,
+    title: todo.title,
+    notes: todo.notes ?? null,
+    status: 'open',
+    priority: todo.priority ?? null,
+    due_date: todo.dueDate ?? null,
+    scheduled_date: schedule.scheduledDate ?? null,
+    scheduled_time: serializeScheduledTime(schedule.scheduledTime),
+    estimate_minutes: todo.estimateMinutes ?? null,
+    sort_order: Date.now(),
+  });
 
   if (tagIds !== undefined) {
     await syncTodoTags(createdTodo.id, userId, tagIds);
@@ -563,11 +655,18 @@ export async function updateTodo(
   if (changes.notes !== undefined) updateData.notes = changes.notes ?? null;
   if (changes.priority !== undefined) updateData.priority = changes.priority ?? null;
   if (changes.dueDate !== undefined) updateData.due_date = changes.dueDate ?? null;
-  if (changes.scheduledDate !== undefined) {
-    updateData.scheduled_date = changes.scheduledDate ?? null;
-  }
-  if (changes.scheduledTime !== undefined) {
-    updateData.scheduled_time = serializeScheduledTime(changes.scheduledTime);
+  if ('scheduledDate' in changes || 'scheduledTime' in changes) {
+    const resolvedSchedule = resolveNewTodoSchedule(
+      changes.scheduledDate,
+      changes.scheduledTime === undefined ? null : changes.scheduledTime
+    );
+
+    if (resolvedSchedule === null) {
+      throw new Error('Invalid scheduled time');
+    }
+
+    updateData.scheduled_date = resolvedSchedule.scheduledDate ?? null;
+    updateData.scheduled_time = serializeScheduledTime(resolvedSchedule.scheduledTime);
   }
   if (changes.estimateMinutes !== undefined) {
     updateData.estimate_minutes = changes.estimateMinutes ?? null;
@@ -582,15 +681,7 @@ export async function updateTodo(
   }
 
   if (Object.keys(updateData).length > 0) {
-    const { error } = await supabase
-      .from('todos')
-      .update(updateData)
-      .eq('id', todoId);
-
-    if (error) {
-      console.error('Error updating todo:', error);
-      throw error;
-    }
+    await updateTodoRow(todoId, updateData);
   }
 
   const tagIds = await resolveTagIds(userId, {

@@ -1,42 +1,62 @@
 import { View, StyleSheet } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import type { CoachProposal } from '@habits-coach/shared';
+import type { CoachProposal, Goal, Habit, Todo } from '@habits-coach/shared';
 import { Button, Card, BodyMedium, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, type Colors } from '../constants/theme';
-import {
-  describeCoachAction,
-  getProposalSummary,
-  type CoachActionDescriptionContext,
-} from '../utils/coachProposal';
+import { describeCoachAction, getProposalSummary } from '../utils/coachProposal';
+import { useThemedStyles, useColors } from '../hooks/useColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
-import { useThemedStyles } from '../hooks/useColors';
 
-export type CoachProposalCardStatus = 'pending' | 'applying' | 'applied';
+export type CoachProposalCardStatus = 'pending' | 'applying' | 'applied' | 'failed';
 
 interface CoachProposalCardProps {
   proposal: CoachProposal;
-  status: CoachProposalCardStatus;
-  actionContext?: CoachActionDescriptionContext;
   onConfirm: () => void;
   onDismiss: () => void;
+  status?: CoachProposalCardStatus;
+  actionContext?: {
+    goals?: Goal[];
+    habits?: Habit[];
+    todos?: Todo[];
+  };
+  goals?: Goal[];
+  habits?: Habit[];
+  todos?: Todo[];
 }
 
 export function CoachProposalCard({
   proposal,
-  status,
-  actionContext,
   onConfirm,
   onDismiss,
+  status = 'pending',
+  actionContext,
+  goals,
+  habits,
+  todos,
 }: CoachProposalCardProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const planDraft = proposal.dailyPlanDraft;
+  const isPending = status === 'pending';
+  const isApplying = status === 'applying';
+  const isApplied = status === 'applied';
+  const isFailed = status === 'failed';
+  const descriptionContext = actionContext ?? { goals, habits, todos };
 
   return (
     <View style={styles.container}>
       <Label color={colors.primary} style={styles.eyebrow}>
-        Coach Proposal
+        {isApplied ? 'Accepted Plan' : isApplying ? 'Applying Plan' : isFailed ? 'Plan Needs Retry' : 'Coach Proposal'}
       </Label>
       <HeadingLarge>{getProposalSummary(proposal)}</HeadingLarge>
+      {isApplied ? (
+        <BodyMedium color={colors.textSecondary} style={styles.statusText}>
+          Plan accepted. The suggested tasks and plan changes were applied.
+        </BodyMedium>
+      ) : null}
+      {isFailed ? (
+        <BodyMedium color={colors.error} style={styles.statusText}>
+          Applying this proposal failed. You can retry after the latest fix or adjust the plan.
+        </BodyMedium>
+      ) : null}
 
       {proposal.actions.length > 0 && (
         <View style={styles.section}>
@@ -44,7 +64,7 @@ export function CoachProposalCard({
             <View key={`${action.entity}-${action.operation}-${index}`} style={styles.actionRow}>
               <View style={styles.actionBullet} />
               <BodyMedium color={colors.text}>
-                {describeCoachAction(action, actionContext)}
+                {describeCoachAction(action, descriptionContext)}
               </BodyMedium>
             </View>
           ))}
@@ -59,7 +79,7 @@ export function CoachProposalCard({
           ) : null}
           {planDraft.items.map((item, index) => (
             <View key={`${item.title}-${index}`} style={styles.planItemRow}>
-              <Caption style={styles.planTime}>
+              <Caption style={styles.planBlock}>
                 {formatTodoScheduledTime(item.scheduledTime) ?? item.scheduledTime}
               </Caption>
               <BodyMedium color={colors.text}>
@@ -71,34 +91,46 @@ export function CoachProposalCard({
         </Card>
       )}
 
-      {status === 'applied' ? (
-        <View style={styles.appliedRow}>
-          <View style={styles.appliedBadge}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.success} />
-            <BodyMedium color={colors.success}>Accepted</BodyMedium>
-          </View>
-          <Caption style={styles.appliedCaption}>
-            Changes accepted. You can keep chatting from here.
-          </Caption>
-        </View>
-      ) : (
-        <View style={styles.actions}>
+      <View style={styles.actions}>
+        {isPending ? (
+          <>
+            <Button
+              title="Not now"
+              variant="ghost"
+              onPress={onDismiss}
+              size="sm"
+            />
+            <Button
+              title="Apply"
+              onPress={onConfirm}
+              size="sm"
+            />
+          </>
+        ) : null}
+        {isApplying ? (
           <Button
-            title="Not now"
-            variant="ghost"
-            onPress={onDismiss}
-            size="sm"
-            disabled={status === 'applying'}
-          />
-          <Button
-            title="Accept"
+            title="Applying..."
             onPress={onConfirm}
             size="sm"
-            loading={status === 'applying'}
-            disabled={status === 'applying'}
+            loading
           />
-        </View>
-      )}
+        ) : null}
+        {isApplied ? (
+          <Button
+            title="Plan Accepted"
+            onPress={onConfirm}
+            size="sm"
+            disabled
+          />
+        ) : null}
+        {isFailed ? (
+          <Button
+            title="Apply Again"
+            onPress={onConfirm}
+            size="sm"
+          />
+        ) : null}
+      </View>
     </View>
   );
 }
@@ -122,6 +154,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   section: {
     marginTop: SPACING.md,
     gap: SPACING.sm,
+  },
+  statusText: {
+    marginTop: SPACING.sm,
   },
   actionRow: {
     flexDirection: 'row',
@@ -150,8 +185,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     gap: SPACING.sm,
     marginTop: SPACING.xs,
   },
-  planTime: {
-    width: 64,
+  planBlock: {
+    width: 82,
     color: colors.primaryDark,
     ...TYPOGRAPHY.caption,
   },
@@ -160,17 +195,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'flex-end',
     gap: SPACING.sm,
     marginTop: SPACING.md,
-  },
-  appliedRow: {
-    marginTop: SPACING.md,
-    gap: SPACING.xs,
-  },
-  appliedBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-  },
-  appliedCaption: {
-    color: colors.textSecondary,
   },
 });

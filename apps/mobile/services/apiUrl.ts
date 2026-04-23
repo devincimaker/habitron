@@ -76,3 +76,22 @@ export function getCoachRequestErrorMessage(error: unknown): string {
 
   return 'Sorry, I had trouble processing that. Please try again.';
 }
+
+export function getCoachSessionStartErrorMessage(error: unknown): string {
+  if (
+    error instanceof Error &&
+    /network request failed/i.test(error.message)
+  ) {
+    if (IS_DEV && isLocalApiUrl(API_BASE_URL)) {
+      return "I couldn't reach the local coach server. Start it with pnpm dev and try again.";
+    }
+
+    return "I couldn't start this coaching session because the coach service is unavailable. Please try again.";
+  }
+
+  if (error instanceof Error && /not authenticated/i.test(error.message)) {
+    return 'You need to sign in again before starting a coaching session.';
+  }
+
+  return "I couldn't start this coaching session. Please try again.";
+}

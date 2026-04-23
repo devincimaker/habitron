@@ -1,86 +1,84 @@
+import { supabase } from './supabase';
 import type {
-  ActiveSession,
+  CoachSkillId,
+  CoachDebugEventInput,
   CoachDebugEvent,
   CoachingSessionSummary,
   CoachingSessionDetail,
-  CreateCoachDebugEventRequest,
-  CreateCoachDebugEventResponse,
-  CreateSessionResponse,
-  FinalizeSessionRequest,
-  FinalizeSessionResponse,
-  GetCoachDebugEventsResponse,
-  GetActiveSessionResponse,
-  GetSessionResponse,
-  GetSessionsResponse,
-  UpdateSessionRequest,
+  CoachingSessionMessage,
+  UpdateSessionSkillRequest,
 } from '@habits-coach/shared';
-import { supabase } from './supabase';
 import { handleFetchError } from './fetchErrorHandler';
 import { createApiUrl } from './apiUrl';
 
 async function getAuthToken(): Promise<string> {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
-
+  const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
     throw new Error('Not authenticated');
   }
-
   return session.access_token;
 }
 
-async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getAuthToken();
-  const headers = {
-    ...(init.headers as Record<string, string> | undefined),
-    Authorization: `Bearer ${token}`,
-  };
-
-  return fetch(createApiUrl(path), {
-    ...init,
-    headers,
-  });
-}
-
 export async function getSessions(): Promise<CoachingSessionSummary[]> {
-  const response = await fetchApi('/api/sessions');
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl('/api/sessions'), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch sessions');
   }
 
-  const data = (await response.json()) as GetSessionsResponse;
+  const data = await response.json();
   return data.sessions;
 }
 
-export async function getActiveSession(): Promise<ActiveSession | null> {
-  const response = await fetchApi('/api/sessions/active');
+export async function getActiveSession(): Promise<{
+  id: string;
+  name?: string | null;
+  startedAt: number;
+  messages: CoachingSessionMessage[];
+  updatedAt: number;
+  leadSkillId?: CoachSkillId | null;
+} | null> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl('/api/sessions/active'), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch active session');
   }
 
-  const data = (await response.json()) as GetActiveSessionResponse;
+  const data = await response.json();
   return data.session;
 }
 
 export async function getSession(id: string): Promise<CoachingSessionDetail> {
-  const response = await fetchApi(`/api/sessions/${id}`);
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch session');
   }
 
-  const data = (await response.json()) as GetSessionResponse;
+  const data = await response.json();
   return data.session;
 }
 
-export async function createSession(): Promise<CreateSessionResponse['session']> {
-  const response = await fetchApi('/api/sessions', {
+export async function createSession(): Promise<{ id: string; startedAt: number }> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl('/api/sessions'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -88,18 +86,25 @@ export async function createSession(): Promise<CreateSessionResponse['session']>
     await handleFetchError(response, 'Failed to create session');
   }
 
-  const data = (await response.json()) as CreateSessionResponse;
+  const data = await response.json();
   return data.session;
 }
 
 export async function updateSession(
   id: string,
-  updates: UpdateSessionRequest
+  updates: {
+    messages?: CoachingSessionMessage[];
+    name?: string;
+    endedAt?: number;
+  }
 ): Promise<void> {
-  const response = await fetchApi(`/api/sessions/${id}`, {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(updates),
   });
@@ -111,12 +116,15 @@ export async function updateSession(
 
 export async function finalizeSession(
   id: string,
-  options?: FinalizeSessionRequest
-): Promise<FinalizeSessionResponse> {
-  const response = await fetchApi(`/api/sessions/${id}/finalize`, {
+  options?: { generateSummary?: boolean; extractMemories?: boolean }
+): Promise<{ success: boolean; name: string }> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${id}/finalize`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(options || {}),
   });
@@ -125,46 +133,62 @@ export async function finalizeSession(
     await handleFetchError(response, 'Failed to finalize session');
   }
 
-  return (await response.json()) as FinalizeSessionResponse;
+  return response.json();
 }
 
-export async function deleteSession(id: string): Promise<void> {
-  const response = await fetchApi(`/api/sessions/${id}`, {
-    method: 'DELETE',
+export async function updateSessionSkill(
+  sessionId: string,
+  skillId: CoachSkillId,
+  updates: UpdateSessionSkillRequest
+): Promise<void> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${sessionId}/skills/${skillId}`), {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(updates),
   });
 
   if (!response.ok) {
-    await handleFetchError(response, 'Failed to delete session');
+    await handleFetchError(response, 'Failed to update session skill');
   }
-}
-
-export async function getSessionDebugEvents(id: string): Promise<CoachDebugEvent[]> {
-  const response = await fetchApi(`/api/sessions/${id}/debug-events`);
-
-  if (!response.ok) {
-    await handleFetchError(response, 'Failed to fetch session debug events');
-  }
-
-  const data = (await response.json()) as GetCoachDebugEventsResponse;
-  return data.events;
 }
 
 export async function createSessionDebugEvent(
-  id: string,
-  event: CreateCoachDebugEventRequest['event']
-): Promise<CreateCoachDebugEventResponse['event']> {
-  const response = await fetchApi(`/api/sessions/${id}/debug-events`, {
+  sessionId: string,
+  event: CoachDebugEventInput
+): Promise<CoachDebugEvent> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${sessionId}/debug-events`), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ event } satisfies CreateCoachDebugEventRequest),
+    body: JSON.stringify({ event }),
   });
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to create session debug event');
   }
 
-  const data = (await response.json()) as CreateCoachDebugEventResponse;
+  const data = await response.json();
   return data.event;
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    await handleFetchError(response, 'Failed to delete session');
+  }
 }
