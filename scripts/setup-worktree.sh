@@ -3,7 +3,11 @@ set -euo pipefail
 
 # Setup script for Conductor worktrees.
 # Copies .env files from the main repo and allocates unique ports/simulators.
-# The main checkout's current .env values are treated as reserved.
+#
+# Allocations are coordinated through ~/.conductor/state/resources.json
+# (see scripts/lib/resource-registry.sh), so multiple app repos can share
+# the same simulator/port pools without colliding. The main checkout's
+# current .env values are also honored as reserved.
 
 # --- Resource pools (order matters — first available is picked) ---
 
@@ -76,11 +80,32 @@ cp "$MAIN_MOBILE_ENV" "$CURRENT_DIR/apps/mobile/.env"
 echo "  Copied apps/api/.env"
 echo "  Copied apps/mobile/.env"
 
-# --- Reserve the main checkout's current resources ---
+# --- Load the shared resource registry ---
+
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+# shellcheck source=lib/resource-registry.sh
+source "$SCRIPT_DIR/lib/resource-registry.sh"
+
+registry_init
+registry_reap_stale
+# Drop any prior claim for this worktree so re-running setup is idempotent.
+registry_release "$CURRENT_DIR"
+
+# --- Gather reserved resources (registry across all apps + main .env) ---
 
 USED_SIMULATORS=()
 USED_EXPO_PORTS=()
 USED_API_PORTS=()
+
+while IFS= read -r val; do
+  [ -n "$val" ] && USED_SIMULATORS+=("$val")
+done < <(registry_list_reserved_simulators)
+while IFS= read -r val; do
+  [ -n "$val" ] && USED_EXPO_PORTS+=("$val")
+done < <(registry_list_reserved_expo_ports)
+while IFS= read -r val; do
+  [ -n "$val" ] && USED_API_PORTS+=("$val")
+done < <(registry_list_reserved_api_ports)
 
 MAIN_SIMULATOR=$(read_env_value "$MAIN_MOBILE_ENV" "IOS_SIMULATOR")
 MAIN_EXPO_PORT=$(read_env_value "$MAIN_MOBILE_ENV" "EXPO_PORT")
@@ -89,33 +114,6 @@ MAIN_API_PORT=$(read_env_value "$MAIN_API_ENV" "PORT")
 [ -n "${MAIN_SIMULATOR:-}" ] && USED_SIMULATORS+=("$MAIN_SIMULATOR")
 [ -n "${MAIN_EXPO_PORT:-}" ] && USED_EXPO_PORTS+=("$MAIN_EXPO_PORT")
 [ -n "${MAIN_API_PORT:-}" ] && USED_API_PORTS+=("$MAIN_API_PORT")
-
-# --- Scan existing worktrees for allocated resources ---
-
-while IFS= read -r line; do
-  WT_PATH=${line#worktree }
-
-  # Skip main repo and current worktree
-  [ "$WT_PATH" = "$MAIN_REPO" ] && continue
-  [ "$WT_PATH" = "$CURRENT_DIR" ] && continue
-
-  # Read API port
-  WT_API_ENV="$WT_PATH/apps/api/.env"
-  if [ -f "$WT_API_ENV" ]; then
-    PORT_VAL=$(read_env_value "$WT_API_ENV" "PORT")
-    [ -n "${PORT_VAL:-}" ] && USED_API_PORTS+=("$PORT_VAL")
-  fi
-
-  # Read EXPO_PORT and IOS_SIMULATOR
-  WT_MOBILE_ENV="$WT_PATH/apps/mobile/.env"
-  if [ -f "$WT_MOBILE_ENV" ]; then
-    EXPO_VAL=$(read_env_value "$WT_MOBILE_ENV" "EXPO_PORT")
-    [ -n "${EXPO_VAL:-}" ] && USED_EXPO_PORTS+=("$EXPO_VAL")
-
-    SIM_VAL=$(read_env_value "$WT_MOBILE_ENV" "IOS_SIMULATOR")
-    [ -n "${SIM_VAL:-}" ] && USED_SIMULATORS+=("$SIM_VAL")
-  fi
-done < <(git worktree list --porcelain | awk '/^worktree / { print }')
 
 # --- Allocate resources (first unused from each pool) ---
 
@@ -134,7 +132,8 @@ for sim in "${SIMULATOR_POOL[@]}"; do
   fi
 done
 if [ -z "$ALLOCATED_SIMULATOR" ]; then
-  echo "ERROR: No simulators available. All are in use by other worktrees."
+  echo "ERROR: No simulators available. All are claimed by other worktrees or apps."
+  echo "       Check: jq '.reservations[].simulator' ~/.conductor/state/resources.json"
   exit 1
 fi
 
@@ -153,7 +152,7 @@ for port in "${EXPO_PORT_POOL[@]}"; do
   fi
 done
 if [ -z "$ALLOCATED_EXPO_PORT" ]; then
-  echo "ERROR: No Expo ports available. All are in use by other worktrees."
+  echo "ERROR: No Expo ports available. All are claimed by other worktrees or apps."
   exit 1
 fi
 
@@ -172,9 +171,46 @@ for port in "${API_PORT_POOL[@]}"; do
   fi
 done
 if [ -z "$ALLOCATED_API_PORT" ]; then
-  echo "ERROR: No API ports available. All are in use by other worktrees."
+  echo "ERROR: No API ports available. All are claimed by other worktrees or apps."
   exit 1
 fi
+
+# --- Resolve simulator UDID so teardown can target it precisely ---
+
+ALLOCATED_SIMULATOR_UDID=""
+if command -v xcrun >/dev/null 2>&1; then
+  ALLOCATED_SIMULATOR_UDID=$(xcrun simctl list devices available 2>/dev/null \
+    | grep " ${ALLOCATED_SIMULATOR} (" \
+    | head -1 \
+    | grep -oE '[A-F0-9-]{36}' || true)
+fi
+if [ -z "$ALLOCATED_SIMULATOR_UDID" ]; then
+  echo "WARNING: Could not resolve UDID for '$ALLOCATED_SIMULATOR'."
+  echo "         Teardown will skip simulator shutdown for this worktree."
+fi
+
+# --- Claim in the registry before touching .env files ---
+
+REPO_SLUG=$(basename "$MAIN_REPO")
+registry_claim \
+  "$CURRENT_DIR" \
+  "$REPO_SLUG" \
+  "$ALLOCATED_SIMULATOR" \
+  "$ALLOCATED_SIMULATOR_UDID" \
+  "$ALLOCATED_EXPO_PORT" \
+  "$ALLOCATED_API_PORT"
+
+# If anything downstream fails, release the claim and wipe the .env files.
+rollback_on_failure() {
+  local rc=$?
+  if [ "$rc" -ne 0 ]; then
+    echo "" >&2
+    echo "Setup failed (exit $rc) — releasing registry claim and removing .env files." >&2
+    registry_release "$CURRENT_DIR" || true
+    rm -f "$CURRENT_DIR/apps/api/.env" "$CURRENT_DIR/apps/mobile/.env"
+  fi
+}
+trap rollback_on_failure EXIT
 
 # --- Patch .env files with allocated resources ---
 
@@ -218,6 +254,10 @@ echo " Path:          $CURRENT_DIR"
 echo " API PORT:      $ALLOCATED_API_PORT"
 echo " EXPO_PORT:     $ALLOCATED_EXPO_PORT"
 echo " IOS_SIMULATOR: $ALLOCATED_SIMULATOR"
+if [ -n "$ALLOCATED_SIMULATOR_UDID" ]; then
+  echo " Simulator UDID:$ALLOCATED_SIMULATOR_UDID"
+fi
+echo " Registry:      $REGISTRY_FILE"
 echo ""
 echo " To start development:"
 echo "   pnpm dev"

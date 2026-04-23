@@ -24,11 +24,30 @@ scripts/create-worktree.sh <branch-name> [worktree-name]
 ```
 
 Resource allocation is determined by executable scripts, not by hardcoded markdown. Treat these as the source of truth:
-- `scripts/create-worktree.sh`
-- `scripts/setup-worktree.sh`
-- `scripts/teardown-worktree.sh`
+- `scripts/create-worktree.sh` — manual entry point (`git worktree add` + setup). Use from Claude Code, Codex, or the terminal.
+- `scripts/setup-worktree.sh` — runs inside an existing worktree. This is what Conductor invokes on workspace creation.
+- `scripts/teardown-worktree.sh` — releases resources, kills dev processes, shuts down the simulator. Conductor invokes this on archive.
+- `scripts/lib/resource-registry.sh` — shared registry helpers (not run directly).
 
-The main checkout's current `.env` values are treated as reserved when allocating worktree resources.
+Allocations live in a **global registry** at `~/.conductor/state/resources.json`, so any app repo using the same registry contract coordinates simulators and ports automatically. The main checkout's current `.env` values are also treated as reserved.
+
+### Conductor configuration
+
+Conductor stores repo settings in its own database, not in a repo-level config file. Configure once in the Conductor app (Repo settings → Scripts) with:
+
+- **Setup script:** `./scripts/setup-worktree.sh`
+- **Archive script:** `./scripts/teardown-worktree.sh`
+- **Run script:** `pnpm dev`
+
+### Cleanup
+
+`pnpm worktree:teardown` (or Conductor's archive action) runs `scripts/teardown-worktree.sh`, which:
+1. Kills any process listening on the worktree's claimed Metro/API ports (SIGTERM → SIGKILL).
+2. Shuts down the claimed iOS simulator via its recorded UDID.
+3. Removes the reservation from the global registry.
+4. Deletes the worktree's `apps/api/.env` and `apps/mobile/.env`.
+
+After teardown, run `git worktree remove <path>` if you also want the directory gone (Conductor does this automatically on archive).
 
 ### iOS Simulator
 
