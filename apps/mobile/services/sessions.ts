@@ -117,7 +117,7 @@ export async function updateSession(
 export async function finalizeSession(
   id: string,
   options?: { generateSummary?: boolean; extractMemories?: boolean }
-): Promise<{ success: boolean; name: string }> {
+): Promise<{ name: string; memoryExtractionStatus?: string }> {
   const token = await getAuthToken();
 
   const response = await fetch(createApiUrl(`/api/sessions/${id}/finalize`), {

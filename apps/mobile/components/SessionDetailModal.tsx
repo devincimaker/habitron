@@ -74,6 +74,9 @@ export function SessionDetailModal({
   });
 
   const hasMemories = session.memories && session.memories.length > 0;
+  const isProcessingInsights =
+    session.memoryExtractionStatus === 'pending' || session.memoryExtractionStatus === 'running';
+  const hasInsightFailure = session.memoryExtractionStatus === 'failed';
 
   return (
     <Modal
@@ -144,6 +147,20 @@ export function SessionDetailModal({
                   <Text style={styles.memoryContent}>{memory.content}</Text>
                 </View>
               ))
+            ) : isProcessingInsights ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="sync-outline" size={32} color={colors.textSecondary} />
+                <Text style={styles.emptyStateText}>
+                  Insights are still being processed for this session
+                </Text>
+              </View>
+            ) : hasInsightFailure ? (
+              <View style={styles.emptyState}>
+                <Ionicons name="alert-circle-outline" size={32} color={colors.textSecondary} />
+                <Text style={styles.emptyStateText}>
+                  Insight extraction did not finish for this session
+                </Text>
+              </View>
             ) : (
               <View style={styles.emptyState}>
                 <Ionicons name="bulb-outline" size={32} color={colors.textSecondary} />
