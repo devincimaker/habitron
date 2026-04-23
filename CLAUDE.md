@@ -64,8 +64,9 @@ xcrun simctl openurl "$UDID" "exp+habits-coach://expo-development-client/?url=ht
 ## Supabase Migrations
 
 When pushing database migrations:
-- If working in a git worktree (tmp/feature-*), check if there's a Supabase branch database configured in the worktree's `.env` files. If the branch database credentials fail, STOP and ask the user before proceeding.
-- If working from root directory, it's safe to push to the main database.
+- Resolve the main checkout with `git rev-parse --git-common-dir`; if the current checkout path differs from that main checkout, treat it as a git worktree regardless of directory name.
+- In a worktree, check whether there's a Supabase branch database configured in the worktree's `.env` files. If the branch database credentials fail, STOP and ask the user before proceeding.
+- If working from the main checkout, it's safe to push to the main database.
 
 ## Linear Integration
 

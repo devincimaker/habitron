@@ -27,6 +27,12 @@ If a custom directory name is needed:
 pnpm worktree:create -- "$BRANCH_NAME" "$WORKTREE_NAME"
 ```
 
+By default, new branches start from the caller's current `HEAD`. To force a different base:
+
+```bash
+pnpm worktree:create -- --base origin/master "$BRANCH_NAME"
+```
+
 The allocator logic lives in:
 - `scripts/create-worktree.sh`
 - `scripts/setup-worktree.sh`
@@ -82,6 +88,6 @@ The allocator logic lives in:
 
 ```bash
 scripts/teardown-worktree.sh
-git worktree remove <worktree-path>
+git -C <main-repo-path> worktree remove <worktree-path>
 supabase branches delete <branch-name>  # if branch db was created
 ```
