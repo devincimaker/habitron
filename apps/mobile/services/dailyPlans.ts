@@ -5,11 +5,9 @@ import type {
   DailyPlanDraftItem,
   DailyPlanItem,
   DailyPlanItemOutcome,
-  DailyPlanItemType,
   DailyPlanSource,
   DailyPlanStatus,
 } from '@habits-coach/shared';
-import { normalizeTodoScheduledTimeInput } from '../utils/todoTime';
 
 interface DbDailyPlan {
   id: string;
@@ -29,7 +27,7 @@ interface DbDailyPlanItem {
   id: string;
   plan_id: string;
   user_id: string;
-  item_type: DailyPlanItemType;
+  item_type: 'habit' | 'todo' | 'note';
   habit_id: string | null;
   todo_id: string | null;
   title_snapshot: string;
@@ -76,16 +74,6 @@ function mapDbPlanToPlan(plan: DbDailyPlan, items: DbDailyPlanItem[]): DailyPlan
       .sort((a, b) => a.position - b.position)
       .map(mapDbPlanItemToPlanItem),
   };
-}
-
-function serializePlannedScheduledTime(time: string): string {
-  const normalizedTime = normalizeTodoScheduledTimeInput(time);
-
-  if (!normalizedTime) {
-    throw new Error('Invalid planned scheduled time');
-  }
-
-  return normalizedTime;
 }
 
 async function getCurrentUserId(): Promise<string> {
@@ -199,16 +187,17 @@ export async function saveAcceptedDailyPlan(
 
   const itemRows = draft.items.map((item, index) => {
     const resolved = resolveDraftItemReference(item, resolvedRefs);
+    const persistedItemType = resolvePersistedItemType(item, resolved);
 
     return {
       plan_id: planData.id,
       user_id: userId,
-      item_type: item.itemType,
-      habit_id: resolved.habitId,
-      todo_id: resolved.todoId,
+      item_type: persistedItemType,
+      habit_id: persistedItemType === 'habit' ? resolved.habitId : null,
+      todo_id: persistedItemType === 'todo' ? resolved.todoId : null,
       title_snapshot: item.title,
       notes_snapshot: item.notes ?? null,
-      scheduled_time: serializePlannedScheduledTime(item.scheduledTime),
+      scheduled_time: item.scheduledTime,
       estimate_minutes_snapshot: item.estimateMinutes ?? null,
       is_optional: item.isOptional ?? false,
       position: index,
@@ -260,6 +249,21 @@ function resolveDraftItemReference(
   }
 
   return { habitId: null, todoId: null };
+}
+
+function resolvePersistedItemType(
+  item: DailyPlanDraftItem,
+  resolved: { habitId: string | null; todoId: string | null }
+): DbDailyPlanItem['item_type'] {
+  if (item.itemType === 'habit' && resolved.habitId) {
+    return 'habit';
+  }
+
+  if (item.itemType === 'todo' && resolved.todoId) {
+    return 'todo';
+  }
+
+  return 'note';
 }
 
 export async function updateDailyPlanItemOutcome(

@@ -4,9 +4,24 @@ import type {
   ChatRequest,
   ChatResponse,
   CoachAction,
-  CoachDebugErrorStage,
-  JsonValue,
+  DailyPlanDraft,
+  DailyPlanDraftItem,
+  DailyPlanDraftItemRef,
 } from '@habits-coach/shared';
+import { getCoachSkillDefinition } from '../coach/registry.js';
+import { inferCoachSkillId } from '../coach/router.js';
+import {
+  resolveCoachRuntimeContext,
+  syncCoachRuntimeAfterResponse,
+  type CoachRuntimeContext,
+} from '../coach/runtime.js';
+import {
+  executeCoachTaskToolCall,
+  getCoachTaskOverview,
+  getCoachTaskToolDefinitions,
+  resolveCoachTaskMap,
+  type CoachTaskOverview,
+} from './coachTaskTools.js';
 
 const client = new OpenAI({
   apiKey: config.openai.apiKey,
@@ -20,248 +35,9 @@ export function getTokenLimitParam(limit: number): { max_tokens: number } | { ma
   return { max_tokens: limit };
 }
 
-function assertStructuredOutputsSupported(model: string): void {
-  if (!/^(gpt-4o|gpt-4\.1|gpt-5|o[1-9]|o3|o4)/.test(model)) {
-    throw new Error(
-      `Coach chat requires a model with structured outputs support. Configured model "${model}" is not supported.`
-    );
-  }
-}
+const COACH_ORCHESTRATOR_PROMPT = `You are Habitron, a warm, thoughtful coach for personal planning and behavior change.
 
-const PRIORITY_VALUES = [1, 2, 3, 4] as const;
-const GOAL_STATUS_VALUES = ['active', 'paused', 'completed', 'archived'] as const;
-const HABIT_FREQUENCY_VALUES = ['daily', 'weekly'] as const;
-const HABIT_TIME_OF_DAY_VALUES = ['morning', 'afternoon', 'evening', 'anytime'] as const;
-const HABIT_WEEKDAY_VALUES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-const DAILY_PLAN_ITEM_TYPE_VALUES = ['habit', 'todo', 'note'] as const;
-
-type JsonSchema = Record<string, unknown>;
-
-const NULL_SCHEMA = { type: 'null' } as const;
-const STRING_SCHEMA = { type: 'string' } as const;
-const INTEGER_SCHEMA = { type: 'integer' } as const;
-const BOOLEAN_SCHEMA = { type: 'boolean' } as const;
-
-function enumSchema<T extends readonly (string | number)[]>(values: T): JsonSchema {
-  return {
-    type: typeof values[0] === 'number' ? 'integer' : 'string',
-    enum: [...values],
-  };
-}
-
-function arraySchema(items: JsonSchema): JsonSchema {
-  return {
-    type: 'array',
-    items,
-  };
-}
-
-function nullableSchema(schema: JsonSchema): JsonSchema {
-  return {
-    anyOf: [schema, NULL_SCHEMA],
-  };
-}
-
-function strictObjectSchema(properties: Record<string, JsonSchema>): JsonSchema {
-  return {
-    type: 'object',
-    properties,
-    required: Object.keys(properties),
-    additionalProperties: false,
-  };
-}
-
-const goalDraftAddSchema = strictObjectSchema({
-  title: STRING_SCHEMA,
-  description: nullableSchema(STRING_SCHEMA),
-  status: nullableSchema(enumSchema(GOAL_STATUS_VALUES)),
-  priority: nullableSchema(enumSchema(PRIORITY_VALUES)),
-  targetDate: nullableSchema(STRING_SCHEMA),
-});
-
-const goalDraftChangesSchema = strictObjectSchema({
-  title: nullableSchema(STRING_SCHEMA),
-  description: nullableSchema(STRING_SCHEMA),
-  status: nullableSchema(enumSchema(GOAL_STATUS_VALUES)),
-  priority: nullableSchema(enumSchema(PRIORITY_VALUES)),
-  targetDate: nullableSchema(STRING_SCHEMA),
-});
-
-const habitDraftCreateSchema = strictObjectSchema({
-  name: STRING_SCHEMA,
-  frequency: enumSchema(HABIT_FREQUENCY_VALUES),
-  weeklyDays: nullableSchema(arraySchema(enumSchema(HABIT_WEEKDAY_VALUES))),
-  weeklyCount: nullableSchema(INTEGER_SCHEMA),
-  timeOfDay: nullableSchema(enumSchema(HABIT_TIME_OF_DAY_VALUES)),
-  reason: nullableSchema(STRING_SCHEMA),
-  icon: nullableSchema(STRING_SCHEMA),
-});
-
-const habitDraftChangesSchema = strictObjectSchema({
-  name: nullableSchema(STRING_SCHEMA),
-  frequency: nullableSchema(enumSchema(HABIT_FREQUENCY_VALUES)),
-  weeklyDays: nullableSchema(arraySchema(enumSchema(HABIT_WEEKDAY_VALUES))),
-  weeklyCount: nullableSchema(INTEGER_SCHEMA),
-  timeOfDay: nullableSchema(enumSchema(HABIT_TIME_OF_DAY_VALUES)),
-  reason: nullableSchema(STRING_SCHEMA),
-  icon: nullableSchema(STRING_SCHEMA),
-});
-
-const todoDraftAddSchema = strictObjectSchema({
-  title: STRING_SCHEMA,
-  notes: nullableSchema(STRING_SCHEMA),
-  priority: nullableSchema(enumSchema(PRIORITY_VALUES)),
-  dueDate: nullableSchema(STRING_SCHEMA),
-  scheduledDate: nullableSchema(STRING_SCHEMA),
-  scheduledTime: nullableSchema(STRING_SCHEMA),
-  estimateMinutes: nullableSchema(INTEGER_SCHEMA),
-  listId: nullableSchema(STRING_SCHEMA),
-  listName: nullableSchema(STRING_SCHEMA),
-  goalId: nullableSchema(STRING_SCHEMA),
-  tagIds: nullableSchema(arraySchema(STRING_SCHEMA)),
-  tagNames: nullableSchema(arraySchema(STRING_SCHEMA)),
-});
-
-const todoDraftChangesSchema = strictObjectSchema({
-  title: nullableSchema(STRING_SCHEMA),
-  notes: nullableSchema(STRING_SCHEMA),
-  priority: nullableSchema(enumSchema(PRIORITY_VALUES)),
-  dueDate: nullableSchema(STRING_SCHEMA),
-  scheduledDate: nullableSchema(STRING_SCHEMA),
-  scheduledTime: nullableSchema(STRING_SCHEMA),
-  estimateMinutes: nullableSchema(INTEGER_SCHEMA),
-  listId: nullableSchema(STRING_SCHEMA),
-  listName: nullableSchema(STRING_SCHEMA),
-  goalId: nullableSchema(STRING_SCHEMA),
-  tagIds: nullableSchema(arraySchema(STRING_SCHEMA)),
-  tagNames: nullableSchema(arraySchema(STRING_SCHEMA)),
-});
-
-const dailyPlanItemRefSchema = {
-  anyOf: [
-    strictObjectSchema({
-      kind: enumSchema(['habit'] as const),
-      id: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      kind: enumSchema(['todo'] as const),
-      id: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      kind: enumSchema(['action'] as const),
-      clientKey: STRING_SCHEMA,
-    }),
-  ],
-} as const;
-
-const dailyPlanDraftItemSchema = strictObjectSchema({
-  itemType: enumSchema(DAILY_PLAN_ITEM_TYPE_VALUES),
-  ref: nullableSchema(dailyPlanItemRefSchema),
-  title: STRING_SCHEMA,
-  notes: nullableSchema(STRING_SCHEMA),
-  scheduledTime: STRING_SCHEMA,
-  estimateMinutes: nullableSchema(INTEGER_SCHEMA),
-  isOptional: nullableSchema(BOOLEAN_SCHEMA),
-});
-
-const dailyPlanDraftSchema = strictObjectSchema({
-  date: STRING_SCHEMA,
-  rationale: nullableSchema(STRING_SCHEMA),
-  items: arraySchema(dailyPlanDraftItemSchema),
-});
-
-const coachActionSchema = {
-  anyOf: [
-    strictObjectSchema({
-      entity: enumSchema(['goal'] as const),
-      operation: enumSchema(['add'] as const),
-      clientKey: nullableSchema(STRING_SCHEMA),
-      goal: goalDraftAddSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['goal'] as const),
-      operation: enumSchema(['edit'] as const),
-      goalId: STRING_SCHEMA,
-      changes: goalDraftChangesSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['goal'] as const),
-      operation: enumSchema(['archive'] as const),
-      goalId: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['habit'] as const),
-      operation: enumSchema(['create'] as const),
-      clientKey: nullableSchema(STRING_SCHEMA),
-      habit: habitDraftCreateSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['habit'] as const),
-      operation: enumSchema(['expand', 'contract'] as const),
-      habitId: STRING_SCHEMA,
-      changes: habitDraftChangesSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['habit'] as const),
-      operation: enumSchema(['archive'] as const),
-      habitId: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['todo'] as const),
-      operation: enumSchema(['add'] as const),
-      clientKey: nullableSchema(STRING_SCHEMA),
-      todo: todoDraftAddSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['todo'] as const),
-      operation: enumSchema(['edit'] as const),
-      todoId: STRING_SCHEMA,
-      changes: todoDraftChangesSchema,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['todo'] as const),
-      operation: enumSchema(['schedule'] as const),
-      todoId: STRING_SCHEMA,
-      scheduledDate: STRING_SCHEMA,
-      scheduledTime: nullableSchema(STRING_SCHEMA),
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['todo'] as const),
-      operation: enumSchema(['unschedule'] as const),
-      todoId: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['todo'] as const),
-      operation: enumSchema(['complete', 'cancel', 'reopen', 'remove'] as const),
-      todoId: STRING_SCHEMA,
-    }),
-  ],
-} as const;
-
-const chatProposalSchema = strictObjectSchema({
-  actions: arraySchema(coachActionSchema),
-  dailyPlanDraft: nullableSchema(dailyPlanDraftSchema),
-});
-
-const chatResponseSchema = strictObjectSchema({
-  message: STRING_SCHEMA,
-  proposal: nullableSchema(chatProposalSchema),
-});
-
-function getChatResponseFormat() {
-  assertStructuredOutputsSupported(config.openai.model);
-
-  return {
-    type: 'json_schema',
-    json_schema: {
-      name: 'coach_chat_response',
-      strict: true,
-      schema: chatResponseSchema,
-    },
-  } as const;
-}
-
-const SYSTEM_PROMPT = `You are Habitron, a warm, thoughtful coach for personal planning and behavior change.
+You operate through specialized coaching skills. For every turn, follow the active skill instructions as the primary behavior policy.
 
 You reason over five domains:
 1. Goals
@@ -273,48 +49,28 @@ You reason over five domains:
 ## Style
 - Be warm, specific, and honest.
 - Ask clarifying questions when context is thin.
-- Do not assume the user's first instinct is automatically the right intervention.
-- When the user explicitly asks for planning, you may propose concrete actions and a daily plan.
-- Keep plans realistic. Prefer a focused day over an overloaded one.
-- Use journal context, recent commitments, and current workload to infer capacity.
+- Keep suggestions realistic. Prefer clarity and grounded tradeoffs over hype.
+- Treat the user like a person living a real day, not a productivity game.
 
 ## What You Can Propose
 - Goal changes: add, edit, archive
-- Habit changes: create, expand, contract, archive
+- Habit changes: add, edit, archive
 - Task changes: add, edit, schedule, unschedule, complete, cancel, reopen, remove
 - Journal capture: create
-- Daily plan draft with concrete scheduled times
+- Daily plan draft with explicit scheduled times
 
 ## Proposal Rules
 - Only include a proposal when you have enough context to justify it.
 - Batch related changes inside a single proposal.
-- If the user gives an explicit operational instruction such as "archive this habit", "make it three times a week", or "add this task", you may propose the matching change immediately.
-- If the user is expressing uncertainty, frustration, resistance, doubt, or a vague desire to stop/change something, do not jump straight to an operation. Ask one brief diagnostic follow-up first and keep \`proposal\` as null.
-- That first follow-up should be diagnostic, not a menu of operations. Try to learn what changed, what friction exists, whether the underlying goal still matters, and whether the issue is temporary or structural.
-- After that diagnostic turn, propose the intervention you think is best. It may support, soften, redirect, or challenge the user's first instinct.
-- Do not ask the user to choose between operations like create / contract / archive before you understand the situation.
+- When live task tools are available, use them to inspect the current task system instead of guessing from stale transcript context.
 - If a daily plan draft includes a brand-new task or habit created in the same proposal, give the create action a unique \`clientKey\` and reference it from the plan item using \`{ "kind": "action", "clientKey": "..." }\`.
-- Use existing entity IDs whenever you are editing, expanding, contracting, or archiving something that already exists.
+- Every \`dailyPlanDraft\` item with \`itemType: "todo"\` or \`itemType: "habit"\` must point to a real existing entity via \`ref\`, or to a matching add action via \`clientKey\`. If it is just guidance text, use \`itemType: "note"\`.
+- Use existing entity IDs whenever you are editing or removing something that already exists.
 - Do not fabricate IDs.
-- Do not include multiple actions against the same existing entity in a single proposal.
-- Treat habit management as a distinct skill:
-  - Use \`create\` to propose a brand-new habit.
-  - Use \`expand\` to make an existing habit larger, more ambitious, or more frequent when it is going well.
-  - Use \`contract\` to make an existing habit smaller, easier, or narrower when the current version is not sticking.
-  - Use \`archive\` to deactivate a habit that is no longer useful right now.
-- When the user is asking to start, add, or set up a habit, use \`create\` unless they are clearly modifying an existing habit.
-- Never use \`archive\` unless the user is clearly asking to stop, remove, drop, or deactivate an existing habit.
-- If the user says something like "I don't want to do this anymore" or "this isn't working" without giving an explicit instruction, treat that as a coaching signal to understand first, not an automatic archive command.
-- For \`expand\` and \`contract\`, use \`habitId\` plus \`changes\` and only include fields that should change.
-- Do not create journal entries or memory-capture side effects as part of a habit-management proposal.
-- The conversational message must match the structured proposal you return.
-- Never invent alternate field names. Follow the app schema exactly.
-- For habit creation, the habit payload uses \`name\`, \`frequency\`, optional \`timeOfDay\`, optional \`reason\`, optional \`icon\`.
-- Do not use \`title\`, \`time\`, or \`notes\` inside a habit payload.
+- If the active skill is still gathering context, keep \`proposal\` as \`null\`.
 - A daily plan should usually contain 3-8 items total and at least one focus item.
 - Mark clearly non-essential items as \`isOptional: true\`.
 - For task \`scheduledTime\`, use a 24-hour \`HH:MM\` string like \`09:30\`.
-- For \`dailyPlanDraft.items[].scheduledTime\`, use a 24-hour \`HH:MM\` string like \`09:30\`.
 
 ## Response Format
 Always return valid JSON in this exact shape:
@@ -328,17 +84,6 @@ Or with changes:
   "message": "Your conversational response",
   "proposal": {
     "actions": [
-      {
-        "entity": "habit",
-        "operation": "create",
-        "clientKey": "habit-creatine",
-        "habit": {
-          "name": "Take creatine",
-          "frequency": "daily",
-          "timeOfDay": "anytime",
-          "reason": "Support your 90kg strength and body composition goal"
-        }
-      },
       {
         "entity": "todo",
         "operation": "add",
@@ -472,6 +217,79 @@ function buildDailyPlanContext(plan?: ChatRequest['dailyPlan'] | null): string {
   return `## Active Daily Plan\n- Date: ${plan.planDate}\n- Status: ${plan.status}\n${itemLines.join('\n')}`;
 }
 
+function buildGoalsSummaryContext(goals: NonNullable<ChatRequest['goals']>): string {
+  const activeGoals = goals.filter((goal) => goal.status === 'active').length;
+  return `## Goals Summary\n- Total goals: ${goals.length}\n- Active goals: ${activeGoals}`;
+}
+
+function buildHabitsSummaryContext(habits: ChatRequest['habits']): string {
+  const activeHabits = habits.filter((habit) => habit.active).length;
+  return `## Habits Summary\n- Total habits: ${habits.length}\n- Active habits: ${activeHabits}`;
+}
+
+function formatCoachTaskLine(task: CoachTaskOverview['sampleOpenTasks'][number]): string {
+  const details = [
+    `id ${task.id}`,
+    task.priority ? `priority ${task.priority}` : null,
+    task.dueDate ? `due ${task.dueDate}` : null,
+    task.scheduledDate ? `scheduled ${task.scheduledDate}` : null,
+    task.scheduledTime ? `at ${task.scheduledTime}` : null,
+    task.estimateMinutes ? `${task.estimateMinutes}m` : null,
+  ]
+    .filter(Boolean)
+    .join(', ');
+
+  return `- "${task.title}"${details ? ` (${details})` : ''}`;
+}
+
+function buildTaskOverviewContext(taskOverview?: CoachTaskOverview | null): string {
+  if (!taskOverview) {
+    return '## Task Overview Snapshot\n- Live task tools are not available in this turn.';
+  }
+
+  const sampleTaskLines = taskOverview.sampleOpenTasks.length > 0
+    ? taskOverview.sampleOpenTasks.map(formatCoachTaskLine)
+    : ['- No open task samples available.'];
+
+  return [
+    '## Task Overview Snapshot',
+    `- Total tasks: ${taskOverview.totalTasks}`,
+    `- Open tasks: ${taskOverview.openTasks}`,
+    `- Completed tasks: ${taskOverview.completedTasks}`,
+    `- Canceled tasks: ${taskOverview.canceledTasks}`,
+    `- Scheduled today: ${taskOverview.scheduledTodayOpenTasks}`,
+    `- Unscheduled open tasks: ${taskOverview.unscheduledOpenTasks}`,
+    `- Overdue open tasks: ${taskOverview.overdueOpenTasks}`,
+    `- Duplicate open-title groups: ${taskOverview.duplicateOpenTitleGroups}`,
+    '',
+    '### Sample Open Tasks',
+    ...sampleTaskLines,
+  ].join('\n');
+}
+
+function buildTaskToolingContext(
+  leadSkillId: CoachRuntimeContext['leadSkillId'],
+  taskToolsEnabled: boolean
+): string {
+  if (!taskToolsEnabled) {
+    return '## Task Tools\n- Live task query tools are not available in this turn.';
+  }
+
+  const leadInstruction =
+    leadSkillId === 'task-management'
+      ? '- Before proposing edits, removals, or duplicate cleanup for existing tasks, inspect the exact current tasks with tools in this turn.'
+      : leadSkillId === 'habit-design'
+        ? '- Use task tools to gauge current load before proposing a new or bigger habit. Do not drift into task cleanup unless the user asks for it.'
+      : '- Use task tools to inspect likely task candidates before drafting or revising the day.';
+
+  return [
+    '## Task Tools',
+    '- Live task query tools are available in this conversation.',
+    '- Prefer task tools over long remembered task lists when you need specifics.',
+    leadInstruction,
+  ].join('\n');
+}
+
 function buildMemoryContext(memories?: ChatRequest['memories']): string {
   if (!memories || memories.length === 0) {
     return '';
@@ -480,6 +298,199 @@ function buildMemoryContext(memories?: ChatRequest['memories']): string {
   const memoryList = memories.map((m) => `- [${m.category}] ${m.content}`).join('\n');
 
   return `\n\n## What you know about this user (from previous sessions):\n${memoryList}\n\nUse this context to personalize your coaching naturally. Don't explicitly say "I remember" - just incorporate what you know into your responses.`;
+}
+
+function buildActiveSkillContext(skillId: CoachRuntimeContext['leadSkillId']): string {
+  const skill = getCoachSkillDefinition(skillId);
+
+  return [
+    '## Active Coaching Skill',
+    `- id: ${skill.id}`,
+    `- label: ${skill.label}`,
+    `- description: ${skill.description}`,
+    '',
+    skill.instructions,
+  ].join('\n');
+}
+
+function formatSkillStateValue(value: unknown): string {
+  if (value === null || value === undefined) {
+    return 'null';
+  }
+
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+
+  return JSON.stringify(value);
+}
+
+function buildSessionSkillStateContext(runtimeContext: CoachRuntimeContext): string {
+  if (runtimeContext.activeSkills.length === 0) {
+    return '## Session Skill State\n- No persisted specialist skills are active in this session.';
+  }
+
+  const activeSkillLines = runtimeContext.activeSkills.map((skill) => {
+    const details = [
+      skill.status,
+      skill.phase ? `phase ${skill.phase}` : null,
+      skill.isLead ? 'lead' : null,
+    ]
+      .filter(Boolean)
+      .join(', ');
+
+    return `- ${skill.skillId}${details ? ` (${details})` : ''}`;
+  });
+
+  const leadStateLines = Object.entries(runtimeContext.leadSkill?.state ?? {})
+    .slice(0, 6)
+    .map(([key, value]) => `- ${key}: ${formatSkillStateValue(value)}`);
+
+  return [
+    '## Session Skill State',
+    `- Runtime source: ${runtimeContext.source}`,
+    `- Lead skill: ${runtimeContext.leadSkillId}`,
+    '',
+    '### Active Skills',
+    ...activeSkillLines,
+    ...(leadStateLines.length > 0
+      ? ['', '### Lead Skill Working State', ...leadStateLines]
+      : []),
+  ].join('\n');
+}
+
+function buildPlanningPacketContext(
+  request: ChatRequest,
+  taskOverview?: CoachTaskOverview | null
+): string {
+  const recentJournalEntries = (request.journalEntries ?? []).slice(0, 3);
+  const activeHabits = request.habits.filter((habit) => habit.active);
+
+  const candidateLines = !taskOverview || taskOverview.sampleOpenTasks.length === 0
+    ? ['- No open task candidates yet.']
+    : taskOverview.sampleOpenTasks.map(formatCoachTaskLine);
+
+  const journalLines = recentJournalEntries.length === 0
+    ? ['- No recent journal signal.']
+    : recentJournalEntries.map((entry) =>
+        `- ${entry.entryDate}${entry.mood ? ` (${entry.mood})` : ''}: ${entry.content}`
+      );
+
+  return [
+    '## Planning Packet',
+    `- Open tasks: ${taskOverview?.openTasks ?? 0}`,
+    `- Overdue tasks: ${taskOverview?.overdueOpenTasks ?? 0}`,
+    `- Tasks already scheduled for today: ${taskOverview?.scheduledTodayOpenTasks ?? 0}`,
+    `- Active habits: ${activeHabits.length}`,
+    request.dailyPlan
+      ? `- Existing daily plan: ${request.dailyPlan.status} for ${request.dailyPlan.planDate}`
+      : '- Existing daily plan: none',
+    '',
+    '### Candidate Tasks',
+    ...candidateLines,
+    '',
+    '### Recent Journal Signal',
+    ...journalLines,
+  ].join('\n');
+}
+
+function normalizeTaskTitleForGrouping(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/\s*\(duplicate\)\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function buildTaskManagementPacketContext(request: ChatRequest): string {
+  const todos = request.todos ?? [];
+  const today = request.today;
+  const openTodos = todos.filter((todo) => todo.status === 'open');
+  const scheduledTodayTodos = today
+    ? openTodos.filter((todo) => todo.scheduledDate === today)
+    : [];
+  const unscheduledTodos = openTodos.filter((todo) => !todo.scheduledDate);
+  const overdueTodos = today
+    ? openTodos.filter((todo) => !!todo.dueDate && todo.dueDate < today)
+    : [];
+
+  const duplicateGroups = Array.from(
+    openTodos.reduce((groups, todo) => {
+      const key = normalizeTaskTitleForGrouping(todo.title);
+      const existing = groups.get(key) ?? [];
+      existing.push(todo);
+      groups.set(key, existing);
+      return groups;
+    }, new Map<string, NonNullable<ChatRequest['todos']>[number][]>()).entries()
+  )
+    .filter(([, groupedTodos]) => groupedTodos.length > 1)
+    .sort((left, right) => right[1].length - left[1].length)
+    .slice(0, 6);
+
+  const candidateTodos = [...openTodos]
+    .sort((left, right) => {
+      const leftScheduledToday = Number(left.scheduledDate === today);
+      const rightScheduledToday = Number(right.scheduledDate === today);
+      if (rightScheduledToday !== leftScheduledToday) {
+        return rightScheduledToday - leftScheduledToday;
+      }
+
+      const leftOverdue = Number(!!today && !!left.dueDate && left.dueDate < today);
+      const rightOverdue = Number(!!today && !!right.dueDate && right.dueDate < today);
+      if (rightOverdue !== leftOverdue) {
+        return rightOverdue - leftOverdue;
+      }
+
+      const leftPriority = left.priority ?? 5;
+      const rightPriority = right.priority ?? 5;
+      if (leftPriority !== rightPriority) {
+        return leftPriority - rightPriority;
+      }
+
+      return left.sortOrder - right.sortOrder;
+    })
+    .slice(0, 14);
+
+  const candidateLines = candidateTodos.length === 0
+    ? ['- No open tasks.']
+    : candidateTodos.map((todo) => {
+        const details = [
+          `id ${todo.id}`,
+          todo.priority ? `priority ${todo.priority}` : null,
+          todo.dueDate ? `due ${todo.dueDate}` : null,
+          todo.scheduledDate ? `scheduled ${todo.scheduledDate}` : null,
+          todo.scheduledTime ? `at ${todo.scheduledTime}` : null,
+          todo.estimateMinutes ? `${todo.estimateMinutes}m` : null,
+        ]
+          .filter(Boolean)
+          .join(', ');
+
+        return `- "${todo.title}" (${details})`;
+      });
+
+  const duplicateLines = duplicateGroups.length === 0
+    ? ['- No duplicate-title groups detected among open tasks.']
+    : duplicateGroups.map(([title, groupedTodos]) =>
+        `- "${title}": ${groupedTodos.map((todo) => `[id: ${todo.id}]`).join(', ')}`
+      );
+
+  return [
+    '## Task Management Packet',
+    `- Total tasks: ${todos.length}`,
+    `- Open tasks: ${openTodos.length}`,
+    `- Scheduled today: ${scheduledTodayTodos.length}`,
+    `- Unscheduled open tasks: ${unscheduledTodos.length}`,
+    `- Overdue tasks: ${overdueTodos.length}`,
+    request.dailyPlan
+      ? `- Existing daily plan: ${request.dailyPlan.status} for ${request.dailyPlan.planDate}`
+      : '- Existing daily plan: none',
+    '',
+    '### Duplicate Candidates',
+    ...duplicateLines,
+    '',
+    '### Task Catalog',
+    ...candidateLines,
+  ].join('\n');
 }
 
 function buildConversationContext(
@@ -492,23 +503,76 @@ function buildConversationContext(
 - Use your judgment to determine if you understand their situation well enough to propose a useful next step or a realistic plan.`;
 }
 
+function buildStructuredDomainContext(
+  request: ChatRequest,
+  leadSkillId: CoachRuntimeContext['leadSkillId'],
+  taskOverview?: CoachTaskOverview | null
+): string {
+  if (leadSkillId === 'task-management') {
+    return [
+      buildGoalsSummaryContext(request.goals ?? []),
+      buildHabitsSummaryContext(request.habits),
+      buildTaskOverviewContext(taskOverview),
+      buildDailyPlanContext(request.dailyPlan),
+    ].join('\n\n');
+  }
+
+  if (leadSkillId === 'day-planning') {
+    return [
+      buildGoalsContext(request.goals ?? []),
+      buildHabitsContext(request.habits),
+      buildTaskOverviewContext(taskOverview),
+      buildJournalContext(request.journalEntries ?? []),
+      buildDailyPlanContext(request.dailyPlan),
+    ].join('\n\n');
+  }
+
+  return [
+    buildGoalsContext(request.goals ?? []),
+    buildHabitsContext(request.habits),
+    buildTaskOverviewContext(taskOverview),
+    buildJournalContext(request.journalEntries ?? []),
+    buildDailyPlanContext(request.dailyPlan),
+  ].join('\n\n');
+}
+
 function buildMessages(
-  request: ChatRequest
+  request: ChatRequest,
+  runtimeContext: CoachRuntimeContext,
+  options?: {
+    taskOverview?: CoachTaskOverview | null;
+    taskToolsEnabled?: boolean;
+  }
 ): OpenAI.ChatCompletionMessageParam[] {
   const memoryContext = buildMemoryContext(request.memories);
   const messages: OpenAI.ChatCompletionMessageParam[] = [
-    { role: 'system', content: SYSTEM_PROMPT + memoryContext },
+    { role: 'system', content: COACH_ORCHESTRATOR_PROMPT + memoryContext },
+    { role: 'system', content: buildActiveSkillContext(runtimeContext.leadSkillId) },
+    { role: 'system', content: buildSessionSkillStateContext(runtimeContext) },
     { role: 'system', content: buildUserContext(request) },
     {
       role: 'system',
-      content: [
-        buildGoalsContext(request.goals ?? []),
-        buildHabitsContext(request.habits),
-        buildTodosContext(request.todos ?? []),
-        buildJournalContext(request.journalEntries ?? []),
-        buildDailyPlanContext(request.dailyPlan),
-      ].join('\n\n'),
+      content: buildTaskToolingContext(
+        runtimeContext.leadSkillId,
+        Boolean(options?.taskToolsEnabled)
+      ),
     },
+    {
+      role: 'system',
+      content: buildStructuredDomainContext(
+        request,
+        runtimeContext.leadSkillId,
+        options?.taskOverview
+      ),
+    },
+    ...(runtimeContext.leadSkillId === 'day-planning'
+      ? [
+          {
+            role: 'system' as const,
+            content: buildPlanningPacketContext(request, options?.taskOverview),
+          },
+        ]
+      : []),
     { role: 'system', content: buildConversationContext(request.messages) },
   ];
 
@@ -522,394 +586,619 @@ function buildMessages(
   return messages;
 }
 
-export interface GeneratedChatResponse {
-  rawContent: string;
-  rawResponse: JsonValue;
-  response: ChatResponse;
+function supportsTaskTools(
+  leadSkillId: CoachRuntimeContext['leadSkillId'],
+  request: ChatRequest,
+  userId?: string
+): boolean {
+  return (
+    (
+      leadSkillId === 'day-planning'
+      || leadSkillId === 'task-management'
+      || leadSkillId === 'habit-design'
+    ) &&
+    Boolean(userId || request.todos)
+  );
 }
 
-export class CoachChatError extends Error {
-  constructor(
-    message: string,
-    public stage: Extract<
-      CoachDebugErrorStage,
-      'chat_generation' | 'chat_response_parse' | 'chat_response_validation'
-    >,
-    public code?: string,
-    public metadata?: JsonValue
-  ) {
-    super(message);
-    this.name = 'CoachChatError';
-  }
-}
+async function runCompletionLoop(args: {
+  request: ChatRequest;
+  messages: OpenAI.ChatCompletionMessageParam[];
+  userId?: string;
+  taskToolsEnabled: boolean;
+}): Promise<string> {
+  const tools = args.taskToolsEnabled ? getCoachTaskToolDefinitions() : undefined;
+  const workingMessages = [...args.messages];
 
-export async function generateChatResponse(
-  request: ChatRequest
-): Promise<GeneratedChatResponse> {
-  const messages = buildMessages(request);
-
-  let response: OpenAI.Chat.Completions.ChatCompletion;
-  try {
-    response = await client.chat.completions.create({
+  for (let iteration = 0; iteration < 6; iteration += 1) {
+    const response = await client.chat.completions.create({
       model: config.openai.model,
-      messages,
-      response_format: getChatResponseFormat(),
+      messages: workingMessages,
+      response_format: { type: 'json_object' },
       temperature: 0.7,
+      ...(tools
+        ? {
+            tools,
+            tool_choice: 'auto' as const,
+            parallel_tool_calls: false,
+          }
+        : {}),
       ...getTokenLimitParam(500),
     });
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : 'Failed to generate AI response';
-    throw new CoachChatError(message, 'chat_generation');
-  }
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    throw new CoachChatError('No response from AI', 'chat_generation', 'empty_response');
-  }
-
-  let rawResponse: JsonValue;
-  try {
-    rawResponse = JSON.parse(content) as JsonValue;
-  } catch {
-    throw new CoachChatError(
-      'Failed to parse AI response',
-      'chat_response_parse',
-      undefined,
-      { rawContent: content }
-    );
-  }
-
-  const parsed = rawResponse as unknown as ChatResponse;
-
-  // Validate the response structure
-  if (typeof parsed.message !== 'string') {
-    throw new CoachChatError(
-      'Invalid response format: missing message',
-      'chat_response_validation',
-      undefined,
-      { rawContent: content, rawResponse }
-    );
-  }
-
-  let normalizedProposal: ChatResponse['proposal'];
-  try {
-    normalizedProposal = normalizeProposal(parsed.proposal, request, parsed.message);
-  } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : 'Invalid response format: failed to normalize proposal';
-    throw new CoachChatError(
-      message,
-      'chat_response_validation',
-      undefined,
-      { rawContent: content, rawResponse }
-    );
-  }
-
-  return {
-    rawContent: content,
-    rawResponse,
-    response: {
-      ...parsed,
-      proposal: normalizedProposal,
-    },
-  };
-}
-
-export async function sendMessage(
-  request: ChatRequest
-): Promise<ChatResponse> {
-  const generated = await generateChatResponse(request);
-  return generated.response;
-}
-
-function isJsonObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function stripNullProperties<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripNullProperties(item)) as T;
-  }
-
-  if (isJsonObject(value)) {
-    const entries = Object.entries(value)
-      .filter(([, entryValue]) => entryValue !== null)
-      .map(([key, entryValue]) => [key, stripNullProperties(entryValue)]);
-
-    return Object.fromEntries(entries) as T;
-  }
-
-  return value;
-}
-
-function isNonEmptyString(value: unknown): value is string {
-  return typeof value === 'string' && value.trim().length > 0;
-}
-
-function isHabitFrequency(value: unknown): value is 'daily' | 'weekly' {
-  return value === 'daily' || value === 'weekly';
-}
-
-function validateCoachAction(action: unknown): CoachAction {
-  const normalizedAction = stripNullProperties(action);
-
-  if (!isJsonObject(normalizedAction)) {
-    throw new Error('Invalid response format: action must be an object');
-  }
-
-  if (!isNonEmptyString(normalizedAction.entity) || !isNonEmptyString(normalizedAction.operation)) {
-    throw new Error('Invalid response format: action must include entity and operation');
-  }
-
-  const isSupportedAction =
-    (normalizedAction.entity === 'goal' &&
-      ['add', 'edit', 'archive'].includes(normalizedAction.operation)) ||
-    (normalizedAction.entity === 'habit' &&
-      ['create', 'expand', 'contract', 'archive'].includes(normalizedAction.operation)) ||
-    (normalizedAction.entity === 'todo' &&
-      ['add', 'edit', 'schedule', 'unschedule', 'complete', 'cancel', 'reopen', 'remove'].includes(
-        normalizedAction.operation
-      ));
-
-  if (!isSupportedAction) {
-    throw new Error(
-      `Invalid response format: unsupported action ${normalizedAction.entity}:${normalizedAction.operation}`
-    );
-  }
-
-  if (normalizedAction.entity === 'goal' && normalizedAction.operation === 'add') {
-    if (!isJsonObject(normalizedAction.goal) || !isNonEmptyString(normalizedAction.goal.title)) {
-      throw new Error('Invalid response format: goal add action must include a title');
+    const message = response.choices[0]?.message;
+    if (!message) {
+      throw new Error('No response from AI');
     }
-  }
 
-  if (
-    normalizedAction.entity === 'goal' &&
-    (normalizedAction.operation === 'edit' || normalizedAction.operation === 'archive') &&
-    !isNonEmptyString(normalizedAction.goalId)
-  ) {
-    throw new Error(`Invalid response format: goal ${normalizedAction.operation} action must include a goalId`);
-  }
+    if (message.tool_calls && message.tool_calls.length > 0) {
+      workingMessages.push({
+        role: 'assistant',
+        content: message.content ?? '',
+        tool_calls: message.tool_calls,
+      });
 
-  if (normalizedAction.entity === 'habit') {
-    if (normalizedAction.operation === 'create') {
-      if (!isJsonObject(normalizedAction.habit)) {
-        throw new Error('Invalid response format: habit create action must include a habit payload');
+      for (const toolCall of message.tool_calls) {
+        const result = await executeCoachTaskToolCall({
+          toolName: toolCall.function.name,
+          rawArguments: toolCall.function.arguments,
+          source: {
+            userId: args.userId,
+            todos: args.request.todos,
+          },
+          today: args.request.today,
+        });
+
+        workingMessages.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: JSON.stringify(result),
+        });
       }
 
-      if (!isNonEmptyString(normalizedAction.habit.name)) {
-        throw new Error('Invalid response format: habit create action must include a name');
-      }
-
-      if (!isHabitFrequency(normalizedAction.habit.frequency)) {
-        throw new Error('Invalid response format: habit create action must include a valid frequency');
-      }
-    }
-
-    if (
-      (normalizedAction.operation === 'expand' ||
-        normalizedAction.operation === 'contract' ||
-        normalizedAction.operation === 'archive') &&
-      !isNonEmptyString(normalizedAction.habitId)
-    ) {
-      throw new Error(`Invalid response format: habit ${normalizedAction.operation} action must include a habitId`);
-    }
-  }
-
-  if (normalizedAction.entity === 'todo') {
-    if (normalizedAction.operation === 'add') {
-      if (!isJsonObject(normalizedAction.todo) || !isNonEmptyString(normalizedAction.todo.title)) {
-        throw new Error('Invalid response format: task add action must include a title');
-      }
-    }
-
-    if (
-      (normalizedAction.operation === 'edit' ||
-        normalizedAction.operation === 'schedule' ||
-        normalizedAction.operation === 'unschedule' ||
-        normalizedAction.operation === 'complete' ||
-        normalizedAction.operation === 'cancel' ||
-        normalizedAction.operation === 'reopen' ||
-        normalizedAction.operation === 'remove') &&
-      !isNonEmptyString(normalizedAction.todoId)
-    ) {
-      throw new Error(`Invalid response format: task ${normalizedAction.operation} action must include a todoId`);
-    }
-  }
-
-  return normalizedAction as CoachAction;
-}
-
-function assertEntityIdsExist(
-  proposal: NonNullable<ChatResponse['proposal']>,
-  request: ChatRequest
-): NonNullable<ChatResponse['proposal']> {
-  const goalIds = new Set((request.goals ?? []).map((goal) => goal.id));
-  const habitIds = new Set(request.habits.map((habit) => habit.id));
-  const todoIds = new Set((request.todos ?? []).map((todo) => todo.id));
-
-  for (const action of proposal.actions) {
-    if (
-      action.entity === 'goal' &&
-      (action.operation === 'edit' || action.operation === 'archive') &&
-      !goalIds.has(action.goalId)
-    ) {
-      throw new Error(`Invalid response format: goal ${action.operation} action references an unknown goalId`);
-    }
-
-    if (
-      action.entity === 'habit' &&
-      (action.operation === 'expand' ||
-        action.operation === 'contract' ||
-        action.operation === 'archive') &&
-      !habitIds.has(action.habitId)
-    ) {
-      throw new Error(`Invalid response format: habit ${action.operation} action references an unknown habitId`);
-    }
-
-    if (
-      action.entity === 'todo' &&
-      action.operation !== 'add' &&
-      !todoIds.has(action.todoId)
-    ) {
-      throw new Error(`Invalid response format: task ${action.operation} action references an unknown todoId`);
-    }
-  }
-
-  return proposal;
-}
-
-function assertNoDuplicateEntityActions(
-  proposal: NonNullable<ChatResponse['proposal']>
-): NonNullable<ChatResponse['proposal']> {
-  const seenClientKeys = new Set<string>();
-  const seenTargets = new Set<string>();
-
-  for (const action of proposal.actions) {
-    const clientKey = 'clientKey' in action ? action.clientKey : undefined;
-
-    if (clientKey) {
-      if (seenClientKeys.has(clientKey)) {
-        throw new Error('Invalid response format: proposal reuses a clientKey');
-      }
-
-      seenClientKeys.add(clientKey);
-    }
-
-    let targetKey: string | null = null;
-
-    if (action.entity === 'goal' && action.operation !== 'add') {
-      targetKey = `goal:${action.goalId}`;
-    }
-
-    if (action.entity === 'habit' && action.operation !== 'create') {
-      targetKey = `habit:${action.habitId}`;
-    }
-
-    if (action.entity === 'todo' && action.operation !== 'add') {
-      targetKey = `todo:${action.todoId}`;
-    }
-
-    if (!targetKey) {
       continue;
     }
 
-    if (seenTargets.has(targetKey)) {
-      throw new Error(`Invalid response format: proposal includes multiple changes for ${targetKey}`);
+    if (!message.content) {
+      throw new Error('No response from AI');
     }
 
-    seenTargets.add(targetKey);
+    return message.content;
   }
 
-  return proposal;
+  throw new Error('Exceeded task tool loop limit');
 }
 
-function mentionsCreateHabit(message: string): boolean {
-  return /\b(create|add|start|set up)\b(?:\s+\w+){0,6}\s+\bhabit\b/i.test(message)
-    || /\bhabit\b(?:\s+\w+){0,6}\s+\b(create|add|start|set up)\b/i.test(message);
+function parseChatResponseContent(content: string): ChatResponse {
+  try {
+    return JSON.parse(content) as ChatResponse;
+  } catch {
+    const fencedMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fencedMatch?.[1]
+      ?? (() => {
+        const firstBrace = content.indexOf('{');
+        const lastBrace = content.lastIndexOf('}');
+        return firstBrace >= 0 && lastBrace > firstBrace
+          ? content.slice(firstBrace, lastBrace + 1)
+          : null;
+      })();
+
+    if (!candidate) {
+      throw new SyntaxError('Failed to parse AI response');
+    }
+
+    return JSON.parse(candidate) as ChatResponse;
+  }
 }
 
-function mentionsArchiveHabit(message: string): boolean {
-  return /\b(archive|stop|remove|drop|deactivate)\b(?:\s+\w+){0,6}\s+\bhabit\b/i.test(message)
-    || /\bhabit\b(?:\s+\w+){0,6}\s+\b(archive|stop|remove|drop|deactivate)\b/i.test(message);
+interface ProposalGroundingContext {
+  validGoalIds: Set<string>;
+  validHabitIds: Set<string>;
+  validTodoIds: Set<string>;
 }
 
-function assertProposalMatchesMessage(
-  message: string,
-  proposal: NonNullable<ChatResponse['proposal']>
-): NonNullable<ChatResponse['proposal']> {
-  if (proposal.actions.length !== 1) {
-    return proposal;
+function collectReferencedTodoIds(
+  proposal: ChatResponse['proposal']
+): string[] {
+  if (!proposal || typeof proposal !== 'object') {
+    return [];
   }
 
-  const [action] = proposal.actions;
-  if (action.entity !== 'habit') {
-    return proposal;
+  const ids = new Set<string>();
+  const rawProposal = proposal as unknown as Record<string, unknown>;
+
+  const rawActions = Array.isArray(rawProposal.actions)
+    ? rawProposal.actions
+    : rawProposal.actions
+      ? [rawProposal.actions]
+      : [];
+
+  for (const action of rawActions) {
+    if (!isRecord(action) || action.entity !== 'todo') {
+      continue;
+    }
+
+    if (typeof action.todoId === 'string') {
+      ids.add(action.todoId);
+    }
   }
 
-  if (action.operation === 'archive' && mentionsCreateHabit(message)) {
-    throw new Error(
-      'Invalid response format: assistant message describes creating a habit but proposal archives one'
-    );
+  if (isRecord(rawProposal.dailyPlanDraft) && Array.isArray(rawProposal.dailyPlanDraft.items)) {
+    for (const item of rawProposal.dailyPlanDraft.items) {
+      if (!isRecord(item) || !isRecord(item.ref)) {
+        continue;
+      }
+
+      if (item.ref.kind === 'todo' && typeof item.ref.id === 'string') {
+        ids.add(item.ref.id);
+      }
+    }
   }
 
-  if (action.operation === 'create' && mentionsArchiveHabit(message)) {
-    throw new Error(
-      'Invalid response format: assistant message describes archiving a habit but proposal creates one'
-    );
+  return Array.from(ids);
+}
+
+export async function sendMessage(
+  request: ChatRequest,
+  options?: { userId?: string }
+): Promise<ChatResponse> {
+  let runtimeContext: CoachRuntimeContext;
+  try {
+    runtimeContext = await resolveCoachRuntimeContext(options?.userId, request);
+  } catch (error) {
+    console.error('Failed to resolve coach runtime context:', error);
+    runtimeContext = {
+      leadSkillId: inferCoachSkillId(request),
+      leadSkill: null,
+      activeSkills: [],
+      source: 'inferred',
+    };
   }
 
-  return proposal;
+  const taskToolsEnabled = supportsTaskTools(
+    runtimeContext.leadSkillId,
+    request,
+    options?.userId
+  );
+  const taskOverview = taskToolsEnabled
+    ? await getCoachTaskOverview({
+        userId: options?.userId,
+        todos: request.todos,
+        today: request.today,
+      })
+    : null;
+  const messages = buildMessages(request, runtimeContext, {
+    taskOverview,
+    taskToolsEnabled,
+  });
+  const content = await runCompletionLoop({
+    request,
+    messages,
+    userId: options?.userId,
+    taskToolsEnabled,
+  });
+
+  const parsed = parseChatResponseContent(content);
+  const referencedTodoIds = collectReferencedTodoIds(parsed.proposal);
+  const validTodoMap = await resolveCoachTaskMap({
+    userId: options?.userId,
+    todos: request.todos,
+    ids: referencedTodoIds,
+  });
+  const normalizedProposal = normalizeProposal(parsed.proposal, {
+    validGoalIds: new Set((request.goals ?? []).map((goal) => goal.id)),
+    validHabitIds: new Set(request.habits.map((habit) => habit.id)),
+    validTodoIds: new Set(validTodoMap.keys()),
+  });
+
+  // Validate the response structure
+  if (typeof parsed.message !== 'string') {
+    throw new Error('Invalid response format: missing message');
+  }
+
+  const normalizedResponse: ChatResponse = {
+    ...parsed,
+    proposal: normalizedProposal,
+    leadSkillId: runtimeContext.leadSkillId,
+    activeSkillIds:
+      runtimeContext.activeSkills.length > 0
+        ? runtimeContext.activeSkills.map((skill) => skill.skillId)
+        : runtimeContext.leadSkillId === 'general-coach'
+          ? []
+          : [runtimeContext.leadSkillId],
+    skillPhase: runtimeContext.leadSkill?.phase ?? null,
+  };
+
+  try {
+    await syncCoachRuntimeAfterResponse({
+      userId: options?.userId,
+      request,
+      response: normalizedResponse,
+      runtimeContext,
+    });
+  } catch (error) {
+    console.error('Failed to sync coach runtime after response:', error);
+  }
+
+  return normalizedResponse;
 }
 
 function normalizeProposal(
   proposal: ChatResponse['proposal'],
-  request: ChatRequest,
-  message: string
+  grounding: ProposalGroundingContext
 ): ChatResponse['proposal'] {
   if (proposal === undefined || proposal === null) {
     return proposal;
   }
 
-  const normalizedProposal = stripNullProperties(proposal);
-
-  if (!isJsonObject(normalizedProposal)) {
+  if (typeof proposal !== 'object') {
     throw new Error('Invalid response format: proposal must be an object');
   }
 
-  const rawActions = normalizedProposal.actions;
-
-  if (rawActions === undefined || rawActions === null) {
-    return {
-      ...normalizedProposal,
-      actions: [],
-    } as NonNullable<ChatResponse['proposal']>;
-  }
-
-  if (Array.isArray(rawActions)) {
-    return assertProposalMatchesMessage(
-      message,
-      assertNoDuplicateEntityActions(
-        assertEntityIdsExist({
-          ...normalizedProposal,
-          actions: rawActions.map(validateCoachAction),
-        } as NonNullable<ChatResponse['proposal']>, request)
-      )
-    );
-  }
-
-  return assertProposalMatchesMessage(
-    message,
-    assertNoDuplicateEntityActions(
-      assertEntityIdsExist({
-        ...normalizedProposal,
-        actions: [validateCoachAction(rawActions)],
-      } as NonNullable<ChatResponse['proposal']>, request)
+  const rawProposal = proposal as unknown as Record<string, unknown>;
+  const rawActions = rawProposal.actions;
+  const actionList = Array.isArray(rawActions) ? rawActions : [rawActions];
+  const normalizedActions = actionList
+    .map((action) => normalizeProposalAction(action, grounding))
+    .filter((action): action is CoachAction => action !== null);
+  const validActionClientKeys = new Set(
+    normalizedActions.flatMap((action) =>
+      'clientKey' in action && typeof action.clientKey === 'string'
+        ? [action.clientKey]
+        : []
     )
   );
+  const normalizedDailyPlanDraft = normalizeDailyPlanDraft(
+    rawProposal.dailyPlanDraft,
+    grounding,
+    validActionClientKeys
+  );
+
+  if (normalizedActions.length === 0 && !normalizedDailyPlanDraft) {
+    return null;
+  }
+
+  return {
+    ...rawProposal,
+    actions: normalizedActions,
+    dailyPlanDraft: normalizedDailyPlanDraft,
+  } as NonNullable<ChatResponse['proposal']>;
+}
+
+function normalizeProposalAction(
+  action: unknown,
+  grounding: ProposalGroundingContext
+): CoachAction | null {
+  if (!isRecord(action)) {
+    return null;
+  }
+
+  if (action.entity === 'goal') {
+    if (action.operation === 'add' && isRecord(action.goal) && typeof action.goal.title === 'string') {
+      return action as CoachAction;
+    }
+
+    if (
+      action.operation === 'edit' &&
+      typeof action.goalId === 'string' &&
+      grounding.validGoalIds.has(action.goalId) &&
+      isRecord(action.changes)
+    ) {
+      return action as CoachAction;
+    }
+
+    if (
+      action.operation === 'archive' &&
+      typeof action.goalId === 'string' &&
+      grounding.validGoalIds.has(action.goalId)
+    ) {
+      return action as CoachAction;
+    }
+
+    return null;
+  }
+
+  if (action.entity === 'habit') {
+    if (
+      action.operation === 'add' &&
+      isRecord(action.habit) &&
+      typeof action.habit.name === 'string'
+    ) {
+      return action as CoachAction;
+    }
+
+    if (
+      action.operation === 'edit' &&
+      typeof action.habitId === 'string' &&
+      grounding.validHabitIds.has(action.habitId) &&
+      isRecord(action.changes)
+    ) {
+      return action as CoachAction;
+    }
+
+    if (
+      (action.operation === 'archive' || action.operation === 'remove') &&
+      typeof action.habitId === 'string' &&
+      grounding.validHabitIds.has(action.habitId)
+    ) {
+      return action as CoachAction;
+    }
+
+    return null;
+  }
+
+  if (action.entity === 'journal' || action.entity === 'diary') {
+    return action.operation === 'create' && isRecord(action.entry)
+      ? (action as CoachAction)
+      : null;
+  }
+
+  if (action.operation === 'add' && isRecord(action.todo)) {
+    if (typeof action.todo.title !== 'string') {
+      return null;
+    }
+
+    return {
+      ...action,
+      todo: normalizeTodoMutation(action.todo),
+    } as unknown as CoachAction;
+  }
+
+  if (
+    action.operation === 'edit' &&
+    typeof action.todoId === 'string' &&
+    grounding.validTodoIds.has(action.todoId) &&
+    isRecord(action.changes)
+  ) {
+    return {
+      ...action,
+      changes: normalizeTodoMutation(action.changes),
+    } as unknown as CoachAction;
+  }
+
+  if (
+    action.operation === 'schedule' &&
+    typeof action.todoId === 'string' &&
+    grounding.validTodoIds.has(action.todoId) &&
+    typeof action.scheduledDate === 'string'
+  ) {
+    const { scheduledBlock, ...rest } = action;
+    const normalizedScheduledTime = normalizeScheduledTimeMutation(action);
+
+    return {
+      ...rest,
+      scheduledTime: normalizedScheduledTime,
+    } as unknown as CoachAction;
+  }
+
+  if (
+    action.operation === 'unschedule' &&
+    typeof action.todoId === 'string' &&
+    grounding.validTodoIds.has(action.todoId)
+  ) {
+    return action as CoachAction;
+  }
+
+  if (
+    (action.operation === 'complete' ||
+      action.operation === 'cancel' ||
+      action.operation === 'reopen' ||
+      action.operation === 'remove') &&
+    typeof action.todoId === 'string' &&
+    grounding.validTodoIds.has(action.todoId)
+  ) {
+    return action as CoachAction;
+  }
+
+  return null;
+}
+
+function normalizeTodoMutation(
+  mutation: Record<string, unknown>
+): Record<string, unknown> {
+  const { scheduledBlock, ...rest } = mutation;
+  const scheduledTime = normalizeScheduledTimeMutation(mutation);
+
+  return scheduledTime !== undefined
+    ? {
+        ...rest,
+        scheduledTime,
+      }
+    : rest;
+}
+
+function normalizeDailyPlanDraft(
+  draft: unknown,
+  grounding: ProposalGroundingContext,
+  validActionClientKeys: Set<string>
+): DailyPlanDraft | null | undefined {
+  if (draft === undefined || draft === null) {
+    return draft;
+  }
+
+  if (!isRecord(draft) || typeof draft.date !== 'string') {
+    return null;
+  }
+
+  const items = Array.isArray(draft.items)
+    ? draft.items
+        .map((item) => normalizeDailyPlanDraftItem(item, grounding, validActionClientKeys))
+        .filter((item): item is DailyPlanDraftItem => item !== null)
+    : [];
+
+  if (items.length === 0) {
+    return null;
+  }
+
+  return {
+    date: draft.date,
+    rationale: typeof draft.rationale === 'string' ? draft.rationale : undefined,
+    items,
+  };
+}
+
+function normalizeDailyPlanDraftItem(
+  item: unknown,
+  grounding: ProposalGroundingContext,
+  validActionClientKeys: Set<string>
+): DailyPlanDraftItem | null {
+  if (!isRecord(item) || typeof item.title !== 'string') {
+    return null;
+  }
+
+  const scheduledTime = normalizeScheduledTimeMutation(item);
+  if (!scheduledTime) {
+    return null;
+  }
+
+  const itemType = normalizeDailyPlanItemType(item.itemType);
+  const rawRef = isRecord(item.ref) ? item.ref : undefined;
+  const ref = normalizeDailyPlanDraftItemRef(rawRef, grounding, validActionClientKeys);
+
+  const normalized: DailyPlanDraftItem = {
+    itemType,
+    title: item.title,
+    scheduledTime,
+  };
+
+  if (ref) {
+    normalized.ref = ref;
+  } else if (itemType === 'habit' || (itemType === 'todo' && rawRef)) {
+    normalized.itemType = 'note';
+  }
+
+  if (typeof item.notes === 'string') {
+    normalized.notes = item.notes;
+  }
+
+  if (typeof item.estimateMinutes === 'number' && Number.isFinite(item.estimateMinutes)) {
+    normalized.estimateMinutes = item.estimateMinutes;
+  }
+
+  if (typeof item.isOptional === 'boolean') {
+    normalized.isOptional = item.isOptional;
+  }
+
+  return normalized;
+}
+
+function normalizeDailyPlanItemType(value: unknown): DailyPlanDraftItem['itemType'] {
+  if (value === 'habit' || value === 'todo' || value === 'note') {
+    return value;
+  }
+
+  return 'note';
+}
+
+function normalizeDailyPlanDraftItemRef(
+  ref: unknown,
+  grounding: ProposalGroundingContext,
+  validActionClientKeys: Set<string>
+): DailyPlanDraftItemRef | undefined {
+  if (!isRecord(ref) || typeof ref.kind !== 'string') {
+    return undefined;
+  }
+
+  if (
+    ref.kind === 'habit' &&
+    typeof ref.id === 'string' &&
+    grounding.validHabitIds.has(ref.id)
+  ) {
+    return { kind: ref.kind, id: ref.id };
+  }
+
+  if (
+    ref.kind === 'todo' &&
+    typeof ref.id === 'string' &&
+    grounding.validTodoIds.has(ref.id)
+  ) {
+    return { kind: ref.kind, id: ref.id };
+  }
+
+  if (
+    ref.kind === 'action' &&
+    typeof ref.clientKey === 'string' &&
+    validActionClientKeys.has(ref.clientKey)
+  ) {
+    return { kind: 'action', clientKey: ref.clientKey };
+  }
+
+  return undefined;
+}
+
+function normalizeScheduledTimeValue(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const alias = normalizeScheduledTimeAlias(trimmed);
+  if (alias) {
+    return alias;
+  }
+
+  const colonMatch = trimmed.match(/^(\d{1,2}):(\d{2})$/);
+  if (colonMatch) {
+    const hour = Number.parseInt(colonMatch[1], 10);
+    const minute = Number.parseInt(colonMatch[2], 10);
+
+    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+      return undefined;
+    }
+
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+  }
+
+  if (!/^\d{1,4}$/.test(trimmed)) {
+    return undefined;
+  }
+
+  const digits = trimmed.padStart(trimmed.length <= 2 ? 2 : 4, '0');
+  const hour = trimmed.length <= 2
+    ? Number.parseInt(digits, 10)
+    : Number.parseInt(digits.slice(0, digits.length - 2), 10);
+  const minute = trimmed.length <= 2
+    ? 0
+    : Number.parseInt(digits.slice(-2), 10);
+
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return undefined;
+  }
+
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
+function normalizeScheduledTimeMutation(
+  mutation: Record<string, unknown>
+): string | undefined {
+  return normalizeScheduledTimeValue(mutation.scheduledTime)
+    ?? normalizeScheduledTimeValue(mutation.scheduledBlock);
+}
+
+function normalizeScheduledTimeAlias(value: string): string | undefined {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const aliases: Record<string, string> = {
+    morning: '09:00',
+    afternoon: '13:00',
+    'late afternoon': '13:00',
+    evening: '18:00',
+    tonight: '18:00',
+  };
+
+  return aliases[normalized];
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 export async function transcribeAudio(audioBuffer: Buffer, mimeType: string): Promise<string> {

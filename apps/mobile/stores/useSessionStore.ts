@@ -1,9 +1,5 @@
 import { create } from 'zustand';
-import {
-  ChatMessage,
-  CoachDebugErrorStage,
-  CoachingSessionMessage,
-} from '@habits-coach/shared';
+import { ChatMessage } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
 
@@ -22,7 +18,11 @@ interface SessionState {
   // Actions
   startSession: () => Promise<void>;
   endSession: () => Promise<void>;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<ChatMessage>;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string | null>;
+  updateMessage: (
+    messageId: string,
+    changes: Partial<Pick<ChatMessage, 'content' | 'proposal' | 'proposalStatus'>>
+  ) => void;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
   checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
@@ -38,24 +38,6 @@ function toMessagePayload(messages: ChatMessage[]) {
     content: m.content,
     timestamp: m.timestamp,
   }));
-}
-
-async function logSessionDebugEvent(
-  sessionId: string,
-  stage: Extract<CoachDebugErrorStage, 'session_sync' | 'session_finalize'>,
-  error: unknown,
-  metadata: Record<string, string | number | boolean | null>
-): Promise<void> {
-  try {
-    await sessionsService.createSessionDebugEvent(sessionId, {
-      eventType: 'session_sync_failed',
-      errorMessage: error instanceof Error ? error.message : 'Unknown session sync failure',
-      errorStage: stage,
-      metadata,
-    });
-  } catch (debugError) {
-    console.warn('Failed to create session debug event:', debugError);
-  }
 }
 
 const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
@@ -121,51 +103,62 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         // Use warn to avoid red screen - session is ended locally regardless
         console.warn('Failed to finalize session:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
-        await logSessionDebugEvent(sessionId, 'session_finalize', error, {
-          messageCount: messages.length,
-        });
       }
     }
   },
 
   addMessage: async (messageData) => {
+    // Create backend session on first user message before we mutate local chat state.
+    // If this fails, callers should treat the send as rejected rather than showing
+    // a fake local-only conversation that cannot be persisted or orchestrated.
+    if (messageData.role === 'user' && !get().sessionId) {
+      if (get().isCreatingSession) {
+        throw new Error('Session creation already in progress');
+      }
+
+      set({ isCreatingSession: true });
+      try {
+        const { id } = await sessionsService.createSession();
+        set({ sessionId: id });
+      } catch (error) {
+        console.warn('Failed to create session in backend:', error);
+        Sentry.captureException(error, { tags: { feature: 'session' } });
+        throw error;
+      } finally {
+        set({ isCreatingSession: false });
+      }
+    }
+
     const message: ChatMessage = {
       ...messageData,
       id: generateId(),
       timestamp: Date.now(),
     };
 
-    // Add to local state first (optimistic)
     set((state) => ({
       messages: [...state.messages, message],
       lastActiveAt: Date.now(),
     }));
 
-    // Create backend session on first user message (lazy creation)
-    // This ensures we only persist sessions that have actual user engagement
-    // Guard prevents duplicate sessions from rapid messages
-    if (messageData.role === 'user' && !get().sessionId && !get().isCreatingSession) {
-      set({ isCreatingSession: true });
-      try {
-        const { id } = await sessionsService.createSession();
-        set({ sessionId: id });
-      } catch (error) {
-        // Use warn to avoid red screen - continue with local-only mode
-        console.warn('Failed to create session in backend:', error);
-        Sentry.captureException(error, { tags: { feature: 'session' } });
-        // Continue with local-only, will retry on next message
-        return message;
-      } finally {
-        set({ isCreatingSession: false });
-      }
-    }
-
     // Sync to backend (only if we have a sessionId)
     if (get().sessionId) {
-      void get().syncMessages();
+      await get().syncMessages();
     }
 
-    return message;
+    return get().sessionId;
+  },
+
+  updateMessage: (messageId, changes) => {
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId
+          ? {
+              ...message,
+              ...changes,
+            }
+          : message
+      ),
+    }));
   },
 
   syncMessages: async () => {
@@ -182,9 +175,6 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Use warn to avoid red screen - messages are stored locally
       console.warn('Failed to sync messages:', error);
       Sentry.captureException(error, { tags: { feature: 'session' } });
-      await logSessionDebugEvent(sessionId, 'session_sync', error, {
-        messageCount: messages.length,
-      });
     } finally {
       set({ isSyncing: false });
     }
@@ -212,14 +202,12 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       // Recover session - within 10 minute window
-      const messages: ChatMessage[] = activeSession.messages.map(
-        (m: CoachingSessionMessage, i: number) => ({
-          id: `recovered-${i}-${m.timestamp}`,
-          role: m.role,
-          content: m.content,
-          timestamp: m.timestamp,
-        })
-      );
+      const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
+        id: `recovered-${i}-${m.timestamp}`,
+        role: m.role,
+        content: m.content,
+        timestamp: m.timestamp,
+      }));
 
       set({
         isActive: true,

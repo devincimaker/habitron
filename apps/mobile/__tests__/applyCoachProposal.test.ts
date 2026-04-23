@@ -1,130 +1,143 @@
-import type { CoachProposal } from '@habits-coach/shared';
 import { applyCoachProposal } from '../utils/applyCoachProposal';
+import type { CoachProposal, Goal, Habit, JournalEntry, Todo } from '@habits-coach/shared';
 
-type ApplyCoachProposalDeps = Parameters<typeof applyCoachProposal>[1];
-
-function createDeps(): jest.Mocked<ApplyCoachProposalDeps> {
+function createGoal(id: string): Goal {
   return {
-    addGoal: jest.fn(),
-    updateGoal: jest.fn(),
-    archiveGoal: jest.fn(),
-    addHabit: jest.fn(),
-    updateHabit: jest.fn(),
-    archiveHabit: jest.fn(),
-    addTodo: jest.fn(),
-    updateTodo: jest.fn(),
-    setTodoStatus: jest.fn(),
-    removeTodo: jest.fn(),
-    saveAcceptedPlan: jest.fn(),
-    existingPlanId: undefined,
+    id,
+    title: 'Goal',
+    status: 'active',
+    createdAt: 0,
+    updatedAt: 0,
   };
 }
 
-describe('applyCoachProposal habit management', () => {
-  it('creates a habit and resolves its client key', async () => {
-    const deps = createDeps();
-    deps.addHabit.mockResolvedValue({
-      id: 'habit-1',
-      name: 'Walk after lunch',
-      frequency: 'daily',
-      active: true,
-      createdAt: Date.now(),
-    });
+function createHabit(id: string): Habit {
+  return {
+    id,
+    name: 'Habit',
+    frequency: 'daily',
+    active: true,
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+function createTodo(id: string, title = 'Todo'): Todo {
+  return {
+    id,
+    title,
+    status: 'open',
+    tags: [],
+    sortOrder: 0,
+    listId: 'inbox',
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+function createJournalEntry(id: string): JournalEntry {
+  return {
+    id,
+    entryDate: '2026-04-13',
+    content: 'Entry',
+    source: 'coach',
+    createdAt: 0,
+    updatedAt: 0,
+  };
+}
+
+describe('applyCoachProposal', () => {
+  it('creates backing todos for plan items that are missing refs', async () => {
+    const addTodo = jest.fn(async (todo) => createTodo('todo-1', todo.title));
+    const saveAcceptedPlan = jest.fn(async () => ({}));
 
     const proposal: CoachProposal = {
-      actions: [
-        {
-          entity: 'habit',
-          operation: 'create',
-          clientKey: 'habit-new',
-          habit: {
-            name: 'Walk after lunch',
-            frequency: 'daily',
+      actions: [],
+      dailyPlanDraft: {
+        date: '2026-04-13',
+        items: [
+          {
+            itemType: 'todo',
+            title: 'Buy groceries',
+            scheduledTime: '13:00',
+            estimateMinutes: 45,
           },
-        },
-      ],
+        ],
+      },
     };
 
-    const resolvedRefs = await applyCoachProposal(proposal, deps);
-
-    expect(deps.addHabit).toHaveBeenCalledWith({
-      name: 'Walk after lunch',
-      frequency: 'daily',
+    await applyCoachProposal(proposal, {
+      addGoal: async () => createGoal('goal-1'),
+      updateGoal: async () => createGoal('goal-1'),
+      archiveGoal: async () => createGoal('goal-1'),
+      addHabit: async () => createHabit('habit-1'),
+      updateHabit: async () => createHabit('habit-1'),
+      archiveHabit: async () => ({ ...createHabit('habit-1'), active: false }),
+      removeHabit: async () => {},
+      addTodo,
+      updateTodo: async () => createTodo('todo-1'),
+      setTodoStatus: async () => createTodo('todo-1'),
+      removeTodo: async () => {},
+      addJournalEntry: async () => createJournalEntry('journal-1'),
+      saveAcceptedPlan,
+      existingPlanId: undefined,
     });
-    expect(resolvedRefs.get('habit-new')).toBe('habit-1');
-  });
 
-  it('uses updateHabit for expand and contract actions', async () => {
-    const deps = createDeps();
-
-    const proposal: CoachProposal = {
-      actions: [
-        {
-          entity: 'habit',
-          operation: 'expand',
-          habitId: 'habit-1',
-          changes: {
-            weeklyCount: 4,
-          },
-        },
-        {
-          entity: 'habit',
-          operation: 'contract',
-          habitId: 'habit-2',
-          changes: {
-            weeklyCount: 2,
-            reason: 'Make it easier to sustain',
-          },
-        },
-      ],
-    };
-
-    await applyCoachProposal(proposal, deps);
-
-    expect(deps.updateHabit).toHaveBeenNthCalledWith(1, 'habit-1', {
-      weeklyCount: 4,
-    });
-    expect(deps.updateHabit).toHaveBeenNthCalledWith(2, 'habit-2', {
-      weeklyCount: 2,
-      reason: 'Make it easier to sustain',
-    });
-    expect(deps.archiveHabit).not.toHaveBeenCalled();
-  });
-
-  it('archives habits instead of deleting them', async () => {
-    const deps = createDeps();
-
-    const proposal: CoachProposal = {
-      actions: [
-        {
-          entity: 'habit',
-          operation: 'archive',
-          habitId: 'habit-3',
-        },
-      ],
-    };
-
-    await applyCoachProposal(proposal, deps);
-
-    expect(deps.archiveHabit).toHaveBeenCalledWith('habit-3');
-  });
-
-  it('rejects malformed habit archive actions before touching persistence', async () => {
-    const deps = createDeps();
-
-    const proposal = {
-      actions: [
-        {
-          entity: 'habit',
-          operation: 'archive',
-          habitId: undefined,
-        },
-      ],
-    } as unknown as CoachProposal;
-
-    await expect(applyCoachProposal(proposal, deps)).rejects.toThrow(
-      'Habit archive actions must include a habitId.'
+    expect(addTodo).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: 'Buy groceries',
+        scheduledDate: '2026-04-13',
+        scheduledTime: '13:00',
+        estimateMinutes: 45,
+      })
     );
-    expect(deps.archiveHabit).not.toHaveBeenCalled();
+
+    expect(saveAcceptedPlan).toHaveBeenCalledWith(
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            itemType: 'todo',
+            ref: { kind: 'action', clientKey: 'daily-plan-todo-0' },
+          }),
+        ],
+      }),
+      expect.any(Map),
+      undefined
+    );
+  });
+
+  it('archives habits without deleting them', async () => {
+    const archiveHabit = jest.fn(async () => ({ ...createHabit('habit-1'), active: false }));
+    const removeHabit = jest.fn(async () => {});
+
+    const proposal: CoachProposal = {
+      actions: [
+        {
+          entity: 'habit',
+          operation: 'archive',
+          habitId: 'habit-1',
+        },
+      ],
+    };
+
+    await applyCoachProposal(proposal, {
+      addGoal: async () => createGoal('goal-1'),
+      updateGoal: async () => createGoal('goal-1'),
+      archiveGoal: async () => createGoal('goal-1'),
+      addHabit: async () => createHabit('habit-1'),
+      updateHabit: async () => createHabit('habit-1'),
+      archiveHabit,
+      removeHabit,
+      addTodo: async () => createTodo('todo-1'),
+      updateTodo: async () => createTodo('todo-1'),
+      setTodoStatus: async () => createTodo('todo-1'),
+      removeTodo: async () => {},
+      addJournalEntry: async () => createJournalEntry('journal-1'),
+      saveAcceptedPlan: async () => ({}),
+      existingPlanId: undefined,
+    });
+
+    expect(archiveHabit).toHaveBeenCalledWith('habit-1');
+    expect(removeHabit).not.toHaveBeenCalled();
   });
 });

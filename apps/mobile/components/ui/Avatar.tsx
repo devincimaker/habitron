@@ -5,7 +5,7 @@ import { useColors } from '../../hooks/useColors';
 type AvatarSize = 'sm' | 'md' | 'lg';
 
 interface AvatarProps {
-  text: string;
+  text?: string | null;
   size?: AvatarSize;
   backgroundColor?: string;
   textColor?: string;
@@ -21,6 +21,10 @@ export function Avatar({
 }: AvatarProps) {
   const colors = useColors();
   const sizeConfig = AVATAR_SIZES[size];
+  const avatarText =
+    typeof text === 'string' && text.trim().length > 0
+      ? text.trim().charAt(0).toUpperCase()
+      : '?';
 
   return (
     <View
@@ -44,7 +48,7 @@ export function Avatar({
           },
         ]}
       >
-        {text.charAt(0).toUpperCase()}
+        {avatarText}
       </Text>
     </View>
   );

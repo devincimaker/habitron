@@ -18,7 +18,7 @@ describe('getPendingCoachProposal', () => {
         id: 'assistant-1',
         role: 'assistant',
         content: 'First idea',
-        proposal: { actions: [{ entity: 'habit', operation: 'create', habit: { name: 'Walk', frequency: 'daily' } }] },
+        proposal: { actions: [{ entity: 'habit', operation: 'add', habit: { name: 'Walk', frequency: 'daily' } }] },
       }),
       createMessage({
         id: 'assistant-2',
@@ -43,7 +43,7 @@ describe('getPendingCoachProposal', () => {
         id: 'assistant-1',
         role: 'assistant',
         content: 'Only idea',
-        proposal: { actions: [{ entity: 'habit', operation: 'create', habit: { name: 'Creatine', frequency: 'daily' } }] },
+        proposal: { actions: [{ entity: 'habit', operation: 'add', habit: { name: 'Creatine', frequency: 'daily' } }] },
       }),
     ];
 
@@ -78,7 +78,7 @@ describe('getPendingCoachProposal', () => {
         id: 'assistant-2',
         role: 'assistant',
         content: 'Good proposal',
-        proposal: { actions: [{ entity: 'habit', operation: 'create', habit: { name: 'Creatine', frequency: 'daily' } }] },
+        proposal: { actions: [{ entity: 'habit', operation: 'add', habit: { name: 'Creatine', frequency: 'daily' } }] },
       }),
     ];
 
@@ -97,7 +97,7 @@ describe('getLatestCoachProposal', () => {
         content: 'First idea',
         proposal: {
           actions: [
-            { entity: 'habit', operation: 'create', habit: { name: 'Walk', frequency: 'daily' } },
+            { entity: 'habit', operation: 'add', habit: { name: 'Walk', frequency: 'daily' } },
           ],
         },
       }),
@@ -130,7 +130,7 @@ describe('getLatestCoachProposal', () => {
           actions: [
             {
               entity: 'habit',
-              operation: 'create',
+              operation: 'add',
               habit: { name: 'Creatine', frequency: 'daily' },
             },
           ],
@@ -151,7 +151,7 @@ describe('getLatestCoachProposal', () => {
     expect(result?.messageId).toBe('assistant-1');
     expect(result?.proposal.actions[0]).toMatchObject({
       entity: 'habit',
-      operation: 'create',
+      operation: 'add',
     });
   });
 });

@@ -24,9 +24,13 @@ vi.mock('openai', () => {
 // Mock the config
 vi.mock('../config.js', () => ({
   config: {
+    supabase: {
+      url: 'https://example.supabase.co',
+      serviceRoleKey: 'test-service-role-key',
+    },
     openai: {
       apiKey: 'test-api-key',
-      model: 'gpt-4o-mini',
+      model: 'gpt-4',
     },
   },
 }));
@@ -38,6 +42,261 @@ describe('sendMessage', () => {
     vi.clearAllMocks();
     mockChatCompletionsCreate.mockReset();
     mockTranscriptionsCreate.mockReset();
+  });
+
+  it('routes explicit planning requests through the day-planning skill', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'Before I draft anything, what matters most today and how much energy do you have?',
+              proposal: null,
+            }),
+          },
+        },
+      ],
+    });
+
+    await sendMessage({
+      messages: [{ role: 'user', content: 'Plan my day.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+      timezone: 'America/Argentina/Buenos_Aires',
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    const systemPrompt = call.messages
+      .filter((message: { role: string }) => message.role === 'system')
+      .map((message: { content: string }) => message.content)
+      .join('\n\n');
+
+    expect(systemPrompt).toContain('id: day-planning');
+    expect(systemPrompt).toContain('This is not a one-shot planner generator.');
+    expect(systemPrompt).toContain('## Planning Packet');
+  });
+
+  it('keeps non-planning requests on the general coach skill', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'Let’s talk about that habit friction first.',
+              proposal: null,
+            }),
+          },
+        },
+      ],
+    });
+
+    await sendMessage({
+      messages: [{ role: 'user', content: 'Why do I keep dropping this habit after three days?' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    const systemPrompt = call.messages
+      .filter((message: { role: string }) => message.role === 'system')
+      .map((message: { content: string }) => message.content)
+      .join('\n\n');
+
+    expect(systemPrompt).toContain('id: general-coach');
+    expect(systemPrompt).not.toContain('## Planning Packet');
+    expect(call.tools).toBeUndefined();
+    expect(call.tool_choice).toBeUndefined();
+    expect(call.parallel_tool_calls).toBeUndefined();
+  });
+
+  it('routes task-management turns through task tools instead of a raw task dump', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'I can help clean these up.',
+              proposal: null,
+            }),
+          },
+        },
+      ],
+    });
+
+    await sendMessage({
+      messages: [{ role: 'user', content: 'Please prune the duplicate tasks.' }],
+      habits: [],
+      goals: [],
+      todos: [
+        {
+          id: 'todo-1',
+          title: 'Buy groceries',
+          status: 'open',
+          tags: [],
+          sortOrder: 1,
+          listId: 'list-1',
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+    });
+
+    const call = mockChatCompletionsCreate.mock.calls[0][0];
+    const systemPrompt = call.messages
+      .filter((message: { role: string }) => message.role === 'system')
+      .map((message: { content: string }) => message.content)
+      .join('\n\n');
+
+    expect(systemPrompt).toContain('id: task-management');
+    expect(systemPrompt).toContain('## Task Overview Snapshot');
+    expect(systemPrompt).toContain('## Task Tools');
+    expect(systemPrompt).not.toContain('## Tasks\n- "Buy groceries"');
+    expect(call.tools).toHaveLength(4);
+  });
+
+  it('can use task tools before returning a grounded duplicate-cleanup proposal', async () => {
+    mockChatCompletionsCreate
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: null,
+              tool_calls: [
+                {
+                  id: 'tool-call-1',
+                  type: 'function',
+                  function: {
+                    name: 'find_duplicate_tasks',
+                    arguments: JSON.stringify({ limit: 4 }),
+                  },
+                },
+              ],
+            },
+          },
+        ],
+      })
+      .mockResolvedValueOnce({
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                message: 'I found the duplicate tasks and kept the freshest copy.',
+                proposal: {
+                  actions: [
+                    {
+                      entity: 'todo',
+                      operation: 'remove',
+                      todoId: 'todo-2',
+                    },
+                    {
+                      entity: 'todo',
+                      operation: 'remove',
+                      todoId: 'todo-3',
+                    },
+                  ],
+                },
+              }),
+            },
+          },
+        ],
+      });
+
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Please prune the duplicate tasks.' }],
+      habits: [],
+      goals: [],
+      todos: [
+        {
+          id: 'todo-1',
+          title: 'Buy groceries',
+          status: 'open',
+          tags: [],
+          sortOrder: 1,
+          listId: 'list-1',
+          createdAt: 1,
+          updatedAt: 10,
+        },
+        {
+          id: 'todo-2',
+          title: 'Buy groceries',
+          status: 'open',
+          tags: [],
+          sortOrder: 2,
+          listId: 'list-1',
+          createdAt: 2,
+          updatedAt: 9,
+        },
+        {
+          id: 'todo-3',
+          title: 'Buy groceries',
+          status: 'open',
+          tags: [],
+          sortOrder: 3,
+          listId: 'list-1',
+          createdAt: 3,
+          updatedAt: 8,
+        },
+      ],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+    });
+
+    expect(mockChatCompletionsCreate).toHaveBeenCalledTimes(2);
+    expect(result.proposal?.actions).toEqual([
+      { entity: 'todo', operation: 'remove', todoId: 'todo-2' },
+      { entity: 'todo', operation: 'remove', todoId: 'todo-3' },
+    ]);
+  });
+
+  it('drops unresolved destructive task actions before they reach the client', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'I pruned the duplicate tasks.',
+              proposal: {
+                actions: [
+                  {
+                    entity: 'todo',
+                    operation: 'remove',
+                    todoId: 'missing-task',
+                  },
+                ],
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Please prune the duplicate tasks.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+    });
+
+    expect(result.proposal).toBeNull();
   });
 
   it('normalizes proposals without actions to an empty array', async () => {
@@ -55,7 +314,7 @@ describe('sendMessage', () => {
                     {
                       itemType: 'note',
                       title: 'Deep work block',
-                      scheduledTime: '09:00',
+                      scheduledBlock: 'morning',
                     },
                   ],
                 },
@@ -70,7 +329,18 @@ describe('sendMessage', () => {
       messages: [{ role: 'user', content: 'Plan my day.' }],
       habits: [],
       goals: [],
-      todos: [],
+      todos: [
+        {
+          id: 'todo-1',
+          title: 'Existing task',
+          status: 'open',
+          tags: [],
+          sortOrder: 1,
+          listId: 'list-1',
+          createdAt: 0,
+          updatedAt: 0,
+        },
+      ],
       journalEntries: [],
       dailyPlan: null,
       memories: [],
@@ -121,98 +391,40 @@ describe('sendMessage', () => {
     });
   });
 
-  it('requests structured json schema for supported chat models', async () => {
+  it('normalizes time block variants in task actions and daily plan items', async () => {
     mockChatCompletionsCreate.mockResolvedValue({
       choices: [
         {
           message: {
             content: JSON.stringify({
-              message: 'I can help with that.',
-              proposal: null,
-            }),
-          },
-        },
-      ],
-    });
-
-    await sendMessage({
-      messages: [{ role: 'user', content: 'Help me build a habit.' }],
-      habits: [],
-      goals: [],
-      todos: [],
-      journalEntries: [],
-      dailyPlan: null,
-      memories: [],
-    });
-
-    const params = mockChatCompletionsCreate.mock.calls[0][0];
-    expect(params.response_format).toMatchObject({
-      type: 'json_schema',
-      json_schema: {
-        name: 'coach_chat_response',
-        strict: true,
-      },
-    });
-
-    const schemaText = JSON.stringify(params.response_format.json_schema.schema);
-    expect(schemaText).toContain('"name"');
-    expect(schemaText).toContain('"timeOfDay"');
-    expect(schemaText).toContain('"required":["title","description","status","priority","targetDate"]');
-    expect(schemaText).toContain('"required":["name","frequency","weeklyDays","weeklyCount","timeOfDay","reason","icon"]');
-    expect(schemaText).not.toContain('"journal"');
-    expect(schemaText).not.toContain('"diary"');
-  });
-
-  it('instructs the coach to diagnose ambiguous habit resistance before proposing a change', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'What is making you want to stop that right now?',
-              proposal: null,
-            }),
-          },
-        },
-      ],
-    });
-
-    await sendMessage({
-      messages: [{ role: 'user', content: "I don't want to take creatine anymore." }],
-      habits: [],
-      goals: [],
-      todos: [],
-      journalEntries: [],
-      dailyPlan: null,
-      memories: [],
-    });
-
-    const params = mockChatCompletionsCreate.mock.calls[0][0];
-    const systemPrompt = params.messages[0].content;
-
-    expect(systemPrompt).toContain('do not jump straight to an operation');
-    expect(systemPrompt).toContain('Ask one brief diagnostic follow-up first and keep `proposal` as null');
-    expect(systemPrompt).toContain('Do not ask the user to choose between operations like create / contract / archive');
-    expect(systemPrompt).toContain('not an automatic archive command');
-  });
-
-  it('accepts valid habit create actions that use the app schema', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I will create that habit for you.',
+              message: 'Here is a draft.',
               proposal: {
-                actions: {
-                  entity: 'habit',
-                  operation: 'create',
-                  habit: {
-                    name: 'Take creatine',
-                    frequency: 'daily',
-                    timeOfDay: 'anytime',
-                    reason: 'Support your strength goal.',
+                actions: [
+                  {
+                    entity: 'todo',
+                    operation: 'add',
+                    todo: {
+                      title: 'Buy groceries',
+                      scheduledBlock: 'Late Afternoon',
+                    },
                   },
+                  {
+                    entity: 'todo',
+                    operation: 'schedule',
+                    todoId: 'todo-1',
+                    scheduledDate: '2026-03-24',
+                    scheduledBlock: 'Tonight',
+                  },
+                ],
+                dailyPlanDraft: {
+                  date: '2026-03-24',
+                  items: [
+                    {
+                      itemType: 'todo',
+                      title: 'Buy groceries',
+                      scheduledBlock: 'Late Afternoon',
+                    },
+                  ],
                 },
               },
             }),
@@ -222,299 +434,72 @@ describe('sendMessage', () => {
     });
 
     const result = await sendMessage({
-      messages: [{ role: 'user', content: 'Make creatine a habit.' }],
+      messages: [{ role: 'user', content: 'Plan my day.' }],
       habits: [],
       goals: [],
-      todos: [],
-      journalEntries: [],
-      dailyPlan: null,
-      memories: [],
-    });
-
-    expect(result.proposal?.actions).toHaveLength(1);
-    expect(result.proposal?.actions[0]).toMatchObject({
-      entity: 'habit',
-      operation: 'create',
-      habit: {
-        name: 'Take creatine',
-        frequency: 'daily',
-        timeOfDay: 'anytime',
-      },
-    });
-  });
-
-  it('accepts goal add actions with nullable optional fields and strips nulls', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
+      todos: [
         {
-          message: {
-            content: JSON.stringify({
-              message: 'I added that goal.',
-              proposal: {
-                actions: {
-                  entity: 'goal',
-                  operation: 'add',
-                  goal: {
-                    title: 'Reach 90kg',
-                    description: null,
-                    status: null,
-                    priority: null,
-                    targetDate: null,
-                  },
-                },
-              },
-            }),
-          },
+          id: 'todo-1',
+          title: 'Existing task',
+          status: 'open',
+          tags: [],
+          sortOrder: 1,
+          listId: 'list-1',
+          createdAt: 0,
+          updatedAt: 0,
         },
       ],
-    });
-
-    const result = await sendMessage({
-      messages: [{ role: 'user', content: 'Add a new goal.' }],
-      habits: [],
-      goals: [],
-      todos: [],
       journalEntries: [],
       dailyPlan: null,
       memories: [],
-    });
-
-    expect(result.proposal?.actions[0]).toMatchObject({
-      entity: 'goal',
-      operation: 'add',
-      goal: {
-        title: 'Reach 90kg',
-      },
-    });
-    expect((result.proposal?.actions[0] as Extract<typeof result.proposal.actions[number], { entity: 'goal' }>).goal)
-      .not.toHaveProperty('description');
-  });
-
-  it('accepts todo add actions with nullable optional fields and strips nulls', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I added the task.',
-              proposal: {
-                actions: {
-                  entity: 'todo',
-                  operation: 'add',
-                  todo: {
-                    title: 'Send invoice',
-                    notes: null,
-                    priority: null,
-                    dueDate: null,
-                    scheduledDate: null,
-                    scheduledTime: null,
-                    estimateMinutes: null,
-                    listId: null,
-                    listName: null,
-                    goalId: null,
-                    tagIds: null,
-                    tagNames: null,
-                  },
-                },
-              },
-            }),
-          },
-        },
-      ],
-    });
-
-    const result = await sendMessage({
-      messages: [{ role: 'user', content: 'Add a task.' }],
-      habits: [],
-      goals: [],
-      todos: [],
-      journalEntries: [],
-      dailyPlan: null,
-      memories: [],
+      today: '2026-03-24',
+      timezone: 'America/Argentina/Buenos_Aires',
     });
 
     expect(result.proposal?.actions[0]).toMatchObject({
       entity: 'todo',
       operation: 'add',
-      todo: {
-        title: 'Send invoice',
-      },
+      todo: expect.objectContaining({
+        scheduledTime: '13:00',
+      }),
     });
-    expect((result.proposal?.actions[0] as Extract<typeof result.proposal.actions[number], { entity: 'todo' }>).todo)
-      .not.toHaveProperty('notes');
+    expect(result.proposal?.actions[1]).toMatchObject({
+      entity: 'todo',
+      operation: 'schedule',
+      scheduledTime: '18:00',
+    });
+    expect(result.proposal?.dailyPlanDraft?.items[0]).toMatchObject({
+      scheduledTime: '13:00',
+    });
   });
 
-  it('rejects malformed habit create actions without a name', async () => {
+  it('strips invalid time blocks before they reach the client', async () => {
     mockChatCompletionsCreate.mockResolvedValue({
       choices: [
         {
           message: {
             content: JSON.stringify({
-              message: 'Let’s make that a habit.',
-              proposal: {
-                actions: {
-                  entity: 'habit',
-                  operation: 'create',
-                  habit: {
-                    frequency: 'daily',
-                  },
-                },
-              },
-            }),
-          },
-        },
-      ],
-    });
-
-    await expect(
-      sendMessage({
-        messages: [{ role: 'user', content: 'Make creatine a habit.' }],
-        habits: [],
-        goals: [],
-        todos: [],
-        journalEntries: [],
-        dailyPlan: null,
-        memories: [],
-      })
-    ).rejects.toThrow('habit create action must include a name');
-  });
-
-  it('rejects journal write actions even if the model returns one', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I saved that as a journal entry.',
-              proposal: {
-                actions: {
-                  entity: 'journal',
-                  operation: 'create',
-                  entry: {
-                    content: 'I felt good today.',
-                  },
-                },
-              },
-            }),
-          },
-        },
-      ],
-    });
-
-    await expect(
-      sendMessage({
-        messages: [{ role: 'user', content: 'Remember that I felt good today.' }],
-        habits: [],
-        goals: [],
-        todos: [],
-        journalEntries: [],
-        dailyPlan: null,
-        memories: [],
-      })
-    ).rejects.toThrow('unsupported action journal:create');
-  });
-
-  it('rejects habit archive actions that reference unknown habits', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I can archive that habit for you.',
-              proposal: {
-                actions: {
-                  entity: 'habit',
-                  operation: 'archive',
-                  habitId: 'habit-missing',
-                },
-              },
-            }),
-          },
-        },
-      ],
-    });
-
-    await expect(
-      sendMessage({
-        messages: [{ role: 'user', content: 'Archive that habit.' }],
-        habits: [
-          {
-            id: 'habit-1',
-            name: 'Take creatine',
-            frequency: 'daily',
-            active: true,
-            createdAt: Date.now(),
-          },
-        ],
-        goals: [],
-        todos: [],
-        journalEntries: [],
-        dailyPlan: null,
-        memories: [],
-      })
-    ).rejects.toThrow('habit archive action references an unknown habitId');
-  });
-
-  it('rejects proposals that apply multiple changes to the same habit', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I can deactivate that habit.',
+              message: 'Here is a draft.',
               proposal: {
                 actions: [
                   {
-                    entity: 'habit',
-                    operation: 'archive',
-                    habitId: 'habit-1',
-                  },
-                  {
-                    entity: 'habit',
-                    operation: 'archive',
-                    habitId: 'habit-1',
+                    entity: 'todo',
+                    operation: 'add',
+                    todo: {
+                      title: 'Clean kitchen',
+                      scheduledBlock: 'whenever works',
+                    },
                   },
                 ],
-              },
-            }),
-          },
-        },
-      ],
-    });
-
-    await expect(
-      sendMessage({
-        messages: [{ role: 'user', content: 'Archive that habit.' }],
-        habits: [
-          {
-            id: 'habit-1',
-            name: 'Take creatine',
-            frequency: 'daily',
-            active: true,
-            createdAt: Date.now(),
-          },
-        ],
-        goals: [],
-        todos: [],
-        journalEntries: [],
-        dailyPlan: null,
-        memories: [],
-      })
-    ).rejects.toThrow('proposal includes multiple changes for habit:habit-1');
-  });
-
-  it('rejects habit proposals that contradict the assistant message', async () => {
-    mockChatCompletionsCreate.mockResolvedValue({
-      choices: [
-        {
-          message: {
-            content: JSON.stringify({
-              message: 'I will go ahead and create a habit for taking creatine daily.',
-              proposal: {
-                actions: {
-                  entity: 'habit',
-                  operation: 'archive',
-                  habitId: 'habit-1',
+                dailyPlanDraft: {
+                  date: '2026-03-24',
+                  items: [
+                    {
+                      itemType: 'todo',
+                      title: 'Clean kitchen',
+                      scheduledBlock: 'whenever works',
+                    },
+                  ],
                 },
               },
             }),
@@ -523,25 +508,51 @@ describe('sendMessage', () => {
       ],
     });
 
-    await expect(
-      sendMessage({
-        messages: [{ role: 'user', content: 'Can you add that habit?' }],
-        habits: [
-          {
-            id: 'habit-1',
-            name: 'Old habit',
-            frequency: 'daily',
-            active: true,
-            createdAt: Date.now(),
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Plan my day.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+      today: '2026-03-24',
+      timezone: 'America/Argentina/Buenos_Aires',
+    });
+
+    expect(result.proposal?.actions[0]).toMatchObject({
+      entity: 'todo',
+      operation: 'add',
+      todo: expect.not.objectContaining({
+        scheduledTime: expect.anything(),
+      }),
+    });
+    expect(result.proposal?.dailyPlanDraft).toBeNull();
+  });
+
+  it('parses markdown-wrapped JSON responses defensively', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: '```json\n{"message":"Okay","proposal":null}\n```',
           },
-        ],
-        goals: [],
-        todos: [],
-        journalEntries: [],
-        dailyPlan: null,
-        memories: [],
-      })
-    ).rejects.toThrow('assistant message describes creating a habit but proposal archives one');
+        },
+      ],
+    });
+
+    const result = await sendMessage({
+      messages: [{ role: 'user', content: 'Help me think.' }],
+      habits: [],
+      goals: [],
+      todos: [],
+      journalEntries: [],
+      dailyPlan: null,
+      memories: [],
+    });
+
+    expect(result.message).toBe('Okay');
+    expect(result.proposal).toBeNull();
   });
 });
 
