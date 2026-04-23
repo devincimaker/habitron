@@ -2,7 +2,8 @@ import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BodyMedium } from './ui';
-import { BORDER_RADIUS, COLORS, SHADOWS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
+import { useColors } from '../hooks/useColors';
 
 interface UndoSnackbarProps {
   message: string;
@@ -17,6 +18,7 @@ export function UndoSnackbar({
   onDismiss,
   duration = 5000,
 }: UndoSnackbarProps) {
+  const colors = useColors();
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(100) as Animated.Value).current;
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -59,11 +61,11 @@ export function UndoSnackbar({
       ]}
     >
       <View style={styles.content}>
-        <BodyMedium color={COLORS.white} style={styles.message} numberOfLines={1}>
+        <BodyMedium color={colors.white} style={styles.message} numberOfLines={1}>
           {message}
         </BodyMedium>
         <Pressable onPress={handleUndo} hitSlop={8}>
-          <BodyMedium color={COLORS.primaryLight} style={styles.undoButton}>
+          <BodyMedium color={colors.primaryLight} style={styles.undoButton}>
             UNDO
           </BodyMedium>
         </Pressable>
