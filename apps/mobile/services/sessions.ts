@@ -1,78 +1,60 @@
-import { supabase } from './supabase';
 import type {
+  ActiveSession,
+  CoachDebugEvent,
   CoachingSessionSummary,
   CoachingSessionDetail,
-  CoachingSessionMessage,
+  CreateCoachDebugEventRequest,
+  CreateCoachDebugEventResponse,
+  CreateSessionResponse,
+  FinalizeSessionRequest,
+  FinalizeSessionResponse,
+  GetCoachDebugEventsResponse,
+  GetActiveSessionResponse,
+  GetSessionResponse,
+  GetSessionsResponse,
+  UpdateSessionRequest,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
-import { createApiUrl } from './apiUrl';
-
-async function getAuthToken(): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession();
-  if (!session?.access_token) {
-    throw new Error('Not authenticated');
-  }
-  return session.access_token;
-}
+import { fetchApi } from './apiClient';
 
 export async function getSessions(): Promise<CoachingSessionSummary[]> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl('/api/sessions'), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetchApi('/api/sessions');
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch sessions');
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as GetSessionsResponse;
   return data.sessions;
 }
 
-export async function getActiveSession(): Promise<{
-  id: string;
-  startedAt: number;
-  messages: CoachingSessionMessage[];
-  updatedAt: number;
-} | null> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl('/api/sessions/active'), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+export async function getActiveSession(): Promise<ActiveSession | null> {
+  const response = await fetchApi('/api/sessions/active');
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch active session');
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as GetActiveSessionResponse;
   return data.session;
 }
 
 export async function getSession(id: string): Promise<CoachingSessionDetail> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+  const response = await fetchApi(`/api/sessions/${id}`);
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to fetch session');
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as GetSessionResponse;
   return data.session;
 }
 
-export async function createSession(): Promise<{ id: string; startedAt: number }> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl('/api/sessions'), {
+export async function createSession(): Promise<CreateSessionResponse['session']> {
+  const response = await fetchApi('/api/sessions', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
   });
 
@@ -80,25 +62,18 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
     await handleFetchError(response, 'Failed to create session');
   }
 
-  const data = await response.json();
+  const data = (await response.json()) as CreateSessionResponse;
   return data.session;
 }
 
 export async function updateSession(
   id: string,
-  updates: {
-    messages?: CoachingSessionMessage[];
-    name?: string;
-    endedAt?: number;
-  }
+  updates: UpdateSessionRequest
 ): Promise<void> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
+  const response = await fetchApi(`/api/sessions/${id}`, {
     method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(updates),
   });
@@ -110,15 +85,12 @@ export async function updateSession(
 
 export async function finalizeSession(
   id: string,
-  options?: { generateSummary?: boolean; extractMemories?: boolean }
-): Promise<{ name: string }> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${id}/finalize`), {
+  options?: FinalizeSessionRequest
+): Promise<FinalizeSessionResponse> {
+  const response = await fetchApi(`/api/sessions/${id}/finalize`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(options || {}),
   });
@@ -127,18 +99,46 @@ export async function finalizeSession(
     await handleFetchError(response, 'Failed to finalize session');
   }
 
-  return response.json();
+  return (await response.json()) as FinalizeSessionResponse;
 }
 
 export async function deleteSession(id: string): Promise<void> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${id}`), {
+  const response = await fetchApi(`/api/sessions/${id}`, {
     method: 'DELETE',
-    headers: { Authorization: `Bearer ${token}` },
   });
 
   if (!response.ok) {
     await handleFetchError(response, 'Failed to delete session');
   }
+}
+
+export async function getSessionDebugEvents(id: string): Promise<CoachDebugEvent[]> {
+  const response = await fetchApi(`/api/sessions/${id}/debug-events`);
+
+  if (!response.ok) {
+    await handleFetchError(response, 'Failed to fetch session debug events');
+  }
+
+  const data = (await response.json()) as GetCoachDebugEventsResponse;
+  return data.events;
+}
+
+export async function createSessionDebugEvent(
+  id: string,
+  event: CreateCoachDebugEventRequest['event']
+): Promise<CreateCoachDebugEventResponse['event']> {
+  const response = await fetchApi(`/api/sessions/${id}/debug-events`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ event } satisfies CreateCoachDebugEventRequest),
+  });
+
+  if (!response.ok) {
+    await handleFetchError(response, 'Failed to create session debug event');
+  }
+
+  const data = (await response.json()) as CreateCoachDebugEventResponse;
+  return data.event;
 }

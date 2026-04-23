@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ChatMessage } from '@habits-coach/shared';
+import { ChatMessage, CoachDebugErrorStage } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
 
@@ -18,7 +18,7 @@ interface SessionState {
   // Actions
   startSession: () => Promise<void>;
   endSession: () => Promise<void>;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<void>;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<ChatMessage>;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
   checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
@@ -34,6 +34,24 @@ function toMessagePayload(messages: ChatMessage[]) {
     content: m.content,
     timestamp: m.timestamp,
   }));
+}
+
+async function logSessionDebugEvent(
+  sessionId: string,
+  stage: Extract<CoachDebugErrorStage, 'session_sync' | 'session_finalize'>,
+  error: unknown,
+  metadata: Record<string, string | number | boolean | null>
+): Promise<void> {
+  try {
+    await sessionsService.createSessionDebugEvent(sessionId, {
+      eventType: 'session_sync_failed',
+      errorMessage: error instanceof Error ? error.message : 'Unknown session sync failure',
+      errorStage: stage,
+      metadata,
+    });
+  } catch (debugError) {
+    console.warn('Failed to create session debug event:', debugError);
+  }
 }
 
 const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
@@ -99,6 +117,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         // Use warn to avoid red screen - session is ended locally regardless
         console.warn('Failed to finalize session:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
+        await logSessionDebugEvent(sessionId, 'session_finalize', error, {
+          messageCount: messages.length,
+        });
       }
     }
   },
@@ -129,7 +150,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         console.warn('Failed to create session in backend:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
         // Continue with local-only, will retry on next message
-        return;
+        return message;
       } finally {
         set({ isCreatingSession: false });
       }
@@ -137,8 +158,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     // Sync to backend (only if we have a sessionId)
     if (get().sessionId) {
-      get().syncMessages();
+      void get().syncMessages();
     }
+
+    return message;
   },
 
   syncMessages: async () => {
@@ -155,6 +178,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       // Use warn to avoid red screen - messages are stored locally
       console.warn('Failed to sync messages:', error);
       Sentry.captureException(error, { tags: { feature: 'session' } });
+      await logSessionDebugEvent(sessionId, 'session_sync', error, {
+        messageCount: messages.length,
+      });
     } finally {
       set({ isSyncing: false });
     }

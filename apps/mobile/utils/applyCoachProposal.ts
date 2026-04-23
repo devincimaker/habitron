@@ -1,28 +1,40 @@
 import type {
+  CoachAction,
   CoachProposal,
+  DailyPlan,
   Goal,
   Habit,
+  HabitDraft,
   JournalEntry,
   Todo,
 } from '@habits-coach/shared';
+import { assertExecutableCoachProposal } from './coachProposal';
+
+type GoalInput = Extract<CoachAction, { entity: 'goal'; operation: 'add' }>['goal'];
+type GoalChanges = Extract<CoachAction, { entity: 'goal'; operation: 'edit' }>['changes'];
+type HabitInput = Extract<CoachAction, { entity: 'habit'; operation: 'create' }>['habit'];
+type HabitChanges = Partial<HabitDraft>;
+type TodoInput = Extract<CoachAction, { entity: 'todo'; operation: 'add' }>['todo'];
+type TodoChanges = Extract<CoachAction, { entity: 'todo'; operation: 'edit' }>['changes'];
+type JournalEntryInput = Extract<CoachAction, { entity: 'journal'; operation: 'create' }>['entry'];
 
 interface ApplyCoachProposalDependencies {
-  addGoal: (goal: any) => Promise<Goal>;
-  updateGoal: (goalId: string, changes: any) => Promise<Goal>;
+  addGoal: (goal: GoalInput) => Promise<Goal>;
+  updateGoal: (goalId: string, changes: GoalChanges) => Promise<Goal>;
   archiveGoal: (goalId: string) => Promise<Goal>;
-  addHabit: (habit: any) => Promise<Habit>;
-  updateHabit: (habitId: string, changes: any) => Promise<Habit>;
-  removeHabit: (habitId: string) => Promise<void>;
-  addTodo: (todo: any) => Promise<Todo>;
-  updateTodo: (todoId: string, changes: any) => Promise<Todo>;
+  addHabit: (habit: HabitInput) => Promise<Habit>;
+  updateHabit: (habitId: string, changes: HabitChanges) => Promise<Habit>;
+  archiveHabit: (habitId: string) => Promise<Habit>;
+  addTodo: (todo: TodoInput) => Promise<Todo>;
+  updateTodo: (todoId: string, changes: TodoChanges) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: Todo['status']) => Promise<Todo>;
   removeTodo: (todoId: string) => Promise<void>;
-  addJournalEntry: (entry: any) => Promise<JournalEntry>;
+  addJournalEntry: (entry: JournalEntryInput) => Promise<JournalEntry>;
   saveAcceptedPlan: (
     draft: NonNullable<CoachProposal['dailyPlanDraft']>,
     resolvedRefs: Map<string, string>,
     parentPlanId?: string
-  ) => Promise<unknown>;
+  ) => Promise<DailyPlan>;
   existingPlanId?: string;
 }
 
@@ -30,6 +42,8 @@ export async function applyCoachProposal(
   proposal: CoachProposal,
   deps: ApplyCoachProposalDependencies
 ): Promise<Map<string, string>> {
+  assertExecutableCoachProposal(proposal);
+
   const resolvedRefs = new Map<string, string>();
 
   for (const action of proposal.actions) {
@@ -46,13 +60,13 @@ export async function applyCoachProposal(
         break;
 
       case 'habit':
-        if (action.operation === 'add') {
+        if (action.operation === 'create') {
           const habit = await deps.addHabit(action.habit);
           if (action.clientKey) resolvedRefs.set(action.clientKey, habit.id);
-        } else if (action.operation === 'edit') {
+        } else if (action.operation === 'expand' || action.operation === 'contract') {
           await deps.updateHabit(action.habitId, action.changes);
         } else {
-          await deps.removeHabit(action.habitId);
+          await deps.archiveHabit(action.habitId);
         }
         break;
 
@@ -85,7 +99,6 @@ export async function applyCoachProposal(
         }
         break;
 
-      case 'diary':
       case 'journal':
         await deps.addJournalEntry(action.entry);
         break;

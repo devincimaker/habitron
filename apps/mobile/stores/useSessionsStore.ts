@@ -28,7 +28,7 @@ export const useSessionsStore = create<SessionsState>((set) => ({
       const sessions = await sessionsService.getSessions();
       set({ sessions, isLoading: false });
     } catch (error) {
-      console.error('Failed to load sessions:', error);
+      console.warn('Failed to load sessions:', error);
       set({ isLoading: false });
     }
   },
@@ -39,7 +39,7 @@ export const useSessionsStore = create<SessionsState>((set) => ({
       const session = await sessionsService.getSession(id);
       set({ selectedSession: session, isLoadingDetail: false });
     } catch (error) {
-      console.error('Failed to load session detail:', error);
+      console.warn('Failed to load session detail:', error);
       set({ isLoadingDetail: false });
     }
   },
@@ -52,7 +52,7 @@ export const useSessionsStore = create<SessionsState>((set) => ({
         selectedSession: state.selectedSession?.id === id ? null : state.selectedSession,
       }));
     } catch (error) {
-      console.error('Failed to delete session:', error);
+      console.warn('Failed to delete session:', error);
       throw error;
     }
   },

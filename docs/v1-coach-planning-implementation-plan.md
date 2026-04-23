@@ -67,7 +67,7 @@ The main missing pieces are:
 
 ### What the plan layer is responsible for
 
-- grouping the day into blocks
+- storing concrete scheduled times for the plan
 - storing rationale
 - marking tasks or habits as optional vs core
 - storing accepted versions of the day
@@ -147,8 +147,8 @@ Suggested fields:
 - `to_status TEXT NULL`
 - `from_scheduled_date DATE NULL`
 - `to_scheduled_date DATE NULL`
-- `from_scheduled_block TEXT NULL`
-- `to_scheduled_block TEXT NULL`
+- `from_scheduled_time TEXT NULL`
+- `to_scheduled_time TEXT NULL`
 - `reason_code TEXT NULL`
 - `reason_note TEXT NULL`
 - `created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`
@@ -203,7 +203,7 @@ Before generating a plan, the coach should receive a compact planning packet ins
 - how many were deferred
 - how many were canceled
 - how many new tasks were manually added to today
-- what time blocks tend to succeed or fail
+- what scheduled times tend to succeed or fail
 
 The coach should not ingest the full raw event log every time.
 
@@ -217,7 +217,7 @@ The accepted daily plan should stay lightweight.
 - task items tied to real `todo` records
 - habit items tied to real `habit` records
 - optional note items only when helpful
-- morning / afternoon / evening grouping is acceptable for v1
+- concrete `scheduledTime` values for every planned item
 - clear optional vs non-optional distinction
 
 ### Important invariant
@@ -470,4 +470,3 @@ We should consider the first version successful if:
 - users can reshape the day from the UI without confusing the coach
 - the system logs enough behavior to improve future planning
 - the visible product still feels like a simple tasks + habits + journal app
-

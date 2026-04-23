@@ -7,9 +7,11 @@ export interface UserProfile {
   updatedAt: number;
 }
 
+export type JsonPrimitive = string | number | boolean | null;
+export type JsonValue = JsonPrimitive | { [key: string]: JsonValue } | JsonValue[];
+
 export type HabitFrequency = 'daily' | 'weekly';
 export type HabitTimeOfDay = 'morning' | 'afternoon' | 'evening' | 'anytime';
-export type TimeBlock = 'morning' | 'afternoon' | 'evening';
 export type Priority = 1 | 2 | 3 | 4;
 export const HABIT_WEEKDAYS = [
   'Sun',
@@ -175,7 +177,7 @@ export interface DailyPlanItem {
   todoId?: string;
   titleSnapshot: string;
   notesSnapshot?: string;
-  scheduledBlock: TimeBlock;
+  scheduledTime: string;
   estimateMinutesSnapshot?: number;
   isOptional: boolean;
   position: number;
@@ -207,7 +209,7 @@ export interface DailyPlanDraftItem {
   ref?: DailyPlanDraftItemRef;
   title: string;
   notes?: string;
-  scheduledBlock: TimeBlock;
+  scheduledTime: string;
   estimateMinutes?: number;
   isOptional?: boolean;
 }
@@ -239,19 +241,19 @@ export type CoachAction =
     }
   | {
       entity: 'habit';
-      operation: 'add';
+      operation: 'create';
       clientKey?: string;
       habit: HabitDraft;
     }
   | {
       entity: 'habit';
-      operation: 'edit';
+      operation: 'expand' | 'contract';
       habitId: string;
       changes: Partial<HabitDraft>;
     }
   | {
       entity: 'habit';
-      operation: 'remove';
+      operation: 'archive';
       habitId: string;
     }
   | {
@@ -341,6 +343,7 @@ export interface ChatRequest {
   userName?: string;
   today?: string;
   timezone?: string;
+  sessionId?: string;
 }
 
 export interface ChatResponse {
@@ -433,3 +436,54 @@ export interface GetSessionResponse {
 }
 
 export type HabitAction = Extract<CoachAction, { entity: 'habit' }>;
+
+export type CoachDebugEventType =
+  | 'chat_request_sent'
+  | 'chat_response_received'
+  | 'chat_response_rejected'
+  | 'proposal_received'
+  | 'proposal_apply_started'
+  | 'proposal_apply_succeeded'
+  | 'proposal_apply_failed'
+  | 'session_sync_failed';
+
+export type CoachDebugErrorStage =
+  | 'chat_generation'
+  | 'chat_response_parse'
+  | 'chat_response_validation'
+  | 'proposal_validation'
+  | 'proposal_apply'
+  | 'session_sync'
+  | 'session_finalize'
+  | 'unknown';
+
+export interface CoachDebugEventInput {
+  eventType: CoachDebugEventType;
+  turnIndex?: number;
+  requestPayload?: JsonValue | null;
+  responsePayload?: JsonValue | null;
+  proposalPayload?: CoachProposal | null;
+  errorMessage?: string | null;
+  errorCode?: string | null;
+  errorStage?: CoachDebugErrorStage | null;
+  metadata?: JsonValue | null;
+}
+
+export interface CoachDebugEvent extends CoachDebugEventInput {
+  id: string;
+  sessionId: string;
+  userId: string;
+  createdAt: number;
+}
+
+export interface CreateCoachDebugEventRequest {
+  event: CoachDebugEventInput;
+}
+
+export interface CreateCoachDebugEventResponse {
+  event: CoachDebugEvent;
+}
+
+export interface GetCoachDebugEventsResponse {
+  events: CoachDebugEvent[];
+}
