@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { config } from '../config.js';
+import { extractBearerToken } from './authHeader.js';
 
 // Create Supabase client with service role key for verification
 const supabase = createClient(
@@ -25,14 +26,11 @@ export async function authMiddleware(
   res: Response,
   next: NextFunction
 ): Promise<void> {
-  const authHeader = req.headers.authorization;
-
-  if (!authHeader?.startsWith('Bearer ')) {
-    res.status(401).json({ error: 'Missing authorization header' });
+  const token = extractBearerToken(req.headers.authorization);
+  if (!token) {
+    res.status(401).json({ error: 'Missing or malformed authorization header' });
     return;
   }
-
-  const token = authHeader.substring(7);
 
   try {
     const {

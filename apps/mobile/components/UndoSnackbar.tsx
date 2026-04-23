@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BodyMedium } from './ui';
-import { BORDER_RADIUS, COLORS, SHADOWS, SPACING } from '../constants/theme';
+import { BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
 
 interface UndoSnackbarProps {
   message: string;
@@ -10,6 +10,10 @@ interface UndoSnackbarProps {
   onDismiss: () => void;
   duration?: number;
 }
+
+const SNACKBAR_BACKGROUND = '#333333';
+const SNACKBAR_TEXT_COLOR = '#FFFFFF';
+const SNACKBAR_ACTION_COLOR = '#FFD180';
 
 export function UndoSnackbar({
   message,
@@ -59,11 +63,11 @@ export function UndoSnackbar({
       ]}
     >
       <View style={styles.content}>
-        <BodyMedium color={COLORS.white} style={styles.message} numberOfLines={1}>
+        <BodyMedium color={SNACKBAR_TEXT_COLOR} style={styles.message} numberOfLines={1}>
           {message}
         </BodyMedium>
         <Pressable onPress={handleUndo} hitSlop={8}>
-          <BodyMedium color={COLORS.primaryLight} style={styles.undoButton}>
+          <BodyMedium color={SNACKBAR_ACTION_COLOR} style={styles.undoButton}>
             UNDO
           </BodyMedium>
         </Pressable>
@@ -82,7 +86,7 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#333333',
+    backgroundColor: SNACKBAR_BACKGROUND,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,

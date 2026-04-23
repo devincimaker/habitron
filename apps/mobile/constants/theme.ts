@@ -52,9 +52,6 @@ export const COLORS_DARK: Colors = {
 
 export type Colors = { [K in keyof typeof COLORS_LIGHT]: string };
 
-/** @deprecated Use useColors() hook for dark mode support */
-export const COLORS = COLORS_LIGHT;
-
 export const SPACING = {
   xs: 4,
   sm: 8,
