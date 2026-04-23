@@ -1,8 +1,9 @@
 export function extractBearerToken(authHeader: string | undefined): string | null {
-  if (!authHeader?.startsWith('Bearer ')) {
+  const match = authHeader?.match(/^Bearer\s+(.+)$/i);
+  if (!match) {
     return null;
   }
 
-  const token = authHeader.slice('Bearer '.length).trim();
+  const token = match[1].trim();
   return token.length > 0 ? token : null;
 }

@@ -3,7 +3,6 @@ import { Animated, Pressable, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BodyMedium } from './ui';
 import { BORDER_RADIUS, SHADOWS, SPACING } from '../constants/theme';
-import { useColors } from '../hooks/useColors';
 
 interface UndoSnackbarProps {
   message: string;
@@ -13,6 +12,7 @@ interface UndoSnackbarProps {
 }
 
 const SNACKBAR_BACKGROUND = '#333333';
+const SNACKBAR_TEXT_COLOR = '#FFFFFF';
 const SNACKBAR_ACTION_COLOR = '#FFD180';
 
 export function UndoSnackbar({
@@ -21,7 +21,6 @@ export function UndoSnackbar({
   onDismiss,
   duration = 5000,
 }: UndoSnackbarProps) {
-  const colors = useColors();
   const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(100) as Animated.Value).current;
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -64,7 +63,7 @@ export function UndoSnackbar({
       ]}
     >
       <View style={styles.content}>
-        <BodyMedium color={colors.white} style={styles.message} numberOfLines={1}>
+        <BodyMedium color={SNACKBAR_TEXT_COLOR} style={styles.message} numberOfLines={1}>
           {message}
         </BodyMedium>
         <Pressable onPress={handleUndo} hitSlop={8}>
