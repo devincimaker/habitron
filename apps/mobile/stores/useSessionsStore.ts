@@ -5,6 +5,7 @@ import * as sessionsService from '../services/sessions';
 interface SessionsState {
   sessions: CoachingSessionSummary[];
   isLoading: boolean;
+  hasLoaded: boolean;
   selectedSession: CoachingSessionDetail | null;
   isLoadingDetail: boolean;
 
@@ -16,17 +17,20 @@ interface SessionsState {
   clearSessions: () => void;
 }
 
-export const useSessionsStore = create<SessionsState>((set) => ({
+export const useSessionsStore = create<SessionsState>((set, get) => ({
   sessions: [],
   isLoading: false,
+  hasLoaded: false,
   selectedSession: null,
   isLoadingDetail: false,
 
   loadSessions: async () => {
-    set({ isLoading: true });
+    if (!get().hasLoaded) {
+      set({ isLoading: true });
+    }
     try {
       const sessions = await sessionsService.getSessions();
-      set({ sessions, isLoading: false });
+      set({ sessions, isLoading: false, hasLoaded: true });
     } catch (error) {
       console.warn('Failed to load sessions:', error);
       set({ isLoading: false });
@@ -62,6 +66,6 @@ export const useSessionsStore = create<SessionsState>((set) => ({
   },
 
   clearSessions: () => {
-    set({ sessions: [], selectedSession: null });
+    set({ sessions: [], selectedSession: null, hasLoaded: false });
   },
 }));
