@@ -90,9 +90,8 @@ export function calculateStreak(
       streak++;
     } else {
       // Break streak on skip, pending, or no entry
-      // But if today is not yet marked, check if we have a streak from yesterday
-      if (dateStr === today && streak === 0) {
-        // Today not marked, continue checking from yesterday
+      // But if today has no log entry yet, carry over yesterday's streak
+      if (dateStr === today && status === undefined && streak === 0) {
         currentDate.setDate(currentDate.getDate() - 1);
         continue;
       }

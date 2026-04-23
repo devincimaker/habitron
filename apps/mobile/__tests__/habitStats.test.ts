@@ -159,6 +159,17 @@ describe('calculateStreak', () => {
     expect(calculateStreak(logs, habitCreated)).toBe(0);
   });
 
+  it('breaks streak when today is explicitly skipped', () => {
+    const logs = new Map<string, HabitStatus>([
+      [today, 'skipped'],
+      [yesterday, 'completed'],
+      [twoDaysAgo, 'completed'],
+    ]);
+
+    const habitCreated = Date.now() - 10 * 24 * 60 * 60 * 1000;
+    expect(calculateStreak(logs, habitCreated)).toBe(0);
+  });
+
   it('does not count days before habit creation', () => {
     const logs = new Map<string, HabitStatus>([
       [today, 'completed'],
