@@ -1,21 +1,4 @@
--- Session skill state and async memory extraction metadata
-
-ALTER TABLE coaching_sessions
-  ADD COLUMN IF NOT EXISTS conversation_summary TEXT,
-  ADD COLUMN IF NOT EXISTS last_compacted_at TIMESTAMPTZ,
-  ADD COLUMN IF NOT EXISTS memory_extraction_status TEXT NOT NULL DEFAULT 'not_requested',
-  ADD COLUMN IF NOT EXISTS memory_extraction_error TEXT,
-  ADD COLUMN IF NOT EXISTS memory_extracted_at TIMESTAMPTZ;
-
-ALTER TABLE coaching_sessions
-  DROP CONSTRAINT IF EXISTS coaching_sessions_memory_extraction_status_check;
-
-ALTER TABLE coaching_sessions
-  ADD CONSTRAINT coaching_sessions_memory_extraction_status_check
-  CHECK (memory_extraction_status IN ('not_requested', 'pending', 'running', 'completed', 'failed'));
-
-CREATE INDEX IF NOT EXISTS idx_coaching_sessions_memory_extraction_status
-  ON coaching_sessions(memory_extraction_status);
+-- Session skill state
 
 CREATE TABLE IF NOT EXISTS coaching_skill_instances (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

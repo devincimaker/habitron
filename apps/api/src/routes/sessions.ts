@@ -3,22 +3,28 @@ import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
-import { queueSessionMemoryExtraction } from '../services/sessionMemoryExtraction.js';
-import { sessionBelongsToUser } from '../services/coachDebugEvents.js';
+import { extractMemories } from '../services/memories.js';
+import {
+  listCoachDebugEvents,
+  logCoachDebugEvent,
+  sessionBelongsToUser,
+} from '../services/coachDebugEvents.js';
 import {
   getSessionSkillInstances,
   updateSessionSkillInstance,
 } from '../coach/runtime.js';
 import type {
   CoachSkillId,
+  CreateCoachDebugEventRequest,
+  CreateCoachDebugEventResponse,
   CoachingSessionMessage,
   CoachingSessionSummary,
   CreateSessionRequest,
   UpdateSessionRequest,
   FinalizeSessionRequest,
   ErrorResponse,
+  GetCoachDebugEventsResponse,
   MemoryCategory,
-  SessionMemoryExtractionStatus,
   UpdateSessionSkillRequest,
 } from '@habits-coach/shared';
 
@@ -33,8 +39,6 @@ interface DbSession {
   started_at: string;
   ended_at: string | null;
   is_processed: boolean;
-  conversation_summary: string | null;
-  memory_extraction_status: SessionMemoryExtractionStatus;
   created_at: string;
   updated_at: string;
 }
@@ -87,7 +91,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
   try {
     const { data: sessions, error } = await supabase
       .from('coaching_sessions')
-      .select('id, name, messages, started_at, ended_at, memory_extraction_status')
+      .select('id, name, messages, started_at, ended_at')
       .eq('user_id', req.user!.id)
       .order('started_at', { ascending: false })
       .limit(50);
@@ -96,7 +100,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
 
     const sessionRows = (sessions ?? []) as Pick<
       DbSession,
-      'id' | 'name' | 'messages' | 'started_at' | 'ended_at' | 'memory_extraction_status'
+      'id' | 'name' | 'messages' | 'started_at' | 'ended_at'
     >[];
     const sessionIds = sessionRows.map((session) => session.id);
 
@@ -148,7 +152,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       messageCount: session.messages?.length || 0,
       memoryCount: memoryCountMap.get(session.id) || 0,
       leadSkillId: leadSkillMap.get(session.id) ?? null,
-      memoryExtractionStatus: session.memory_extraction_status,
     }));
 
     res.json({ sessions: result });
@@ -192,12 +195,56 @@ router.get('/active', authMiddleware, async (req: Request, res: Response): Promi
         messages: session.messages || [],
         updatedAt: new Date(session.updated_at).getTime(),
         leadSkillId: leadSkill?.skillId ?? null,
-        memoryExtractionStatus: session.memory_extraction_status,
       },
     });
   } catch (error) {
     console.error('Get active session error:', error);
     res.status(500).json({ error: 'Failed to fetch active session' } satisfies ErrorResponse);
+  }
+});
+
+// GET /api/sessions/:id/debug-events - List session debug events
+router.get('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
+      return;
+    }
+
+    const events = await listCoachDebugEvents(id, req.user!.id);
+    res.json({ events } satisfies GetCoachDebugEventsResponse);
+  } catch (error) {
+    console.error('Get session debug events error:', error);
+    res.status(500).json({ error: 'Failed to fetch session debug events' } satisfies ErrorResponse);
+  }
+});
+
+// POST /api/sessions/:id/debug-events - Create a session debug event
+router.post('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { event } = req.body as CreateCoachDebugEventRequest;
+
+    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
+      return;
+    }
+
+    if (!event || typeof event.eventType !== 'string') {
+      res.status(400).json({ error: 'Invalid request: eventType is required' } satisfies ErrorResponse);
+      return;
+    }
+
+    const createdEvent = await logCoachDebugEvent({
+      sessionId: id,
+      userId: req.user!.id,
+      event,
+    });
+
+    res.json({ event: createdEvent } satisfies CreateCoachDebugEventResponse);
+  } catch (error) {
+    console.error('Create session debug event error:', error);
+    res.status(500).json({ error: 'Failed to create session debug event' } satisfies ErrorResponse);
   }
 });
 
@@ -252,10 +299,8 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
           createdAt: new Date(memory.created_at).getTime(),
           updatedAt: new Date(memory.updated_at).getTime(),
         })),
-        conversationSummary: s.conversation_summary,
         activeSkills,
         leadSkillId: leadSkill?.skillId ?? null,
-        memoryExtractionStatus: s.memory_extraction_status,
       },
     });
   } catch (error) {
@@ -349,7 +394,7 @@ router.put('/:id/skills/:skillId', authMiddleware, async (req: Request, res: Res
   }
 });
 
-// POST /api/sessions/:id/finalize - Archive session and queue memory extraction
+// POST /api/sessions/:id/finalize - End session with summary and memory extraction
 router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -388,8 +433,33 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
       sessionName = `Session on ${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
     }
 
-    const memoryExtractionStatus: SessionMemoryExtractionStatus =
-      shouldExtract && messages.length > 2 ? 'pending' : 'not_requested';
+    if (shouldExtract && messages.length > 2) {
+      try {
+        const { data: existingMemories } = await supabase
+          .from('memories')
+          .select('content, category')
+          .eq('user_id', req.user!.id);
+
+        const { memories: extractedMemories } = await extractMemories(
+          messages.map((message) => ({ role: message.role, content: message.content })),
+          existingMemories || []
+        );
+
+        if (extractedMemories.length > 0) {
+          const memoriesData = extractedMemories.map((memory) => ({
+            user_id: req.user!.id,
+            content: memory.content,
+            category: memory.category,
+            session_id: id,
+            source_session_at: s.started_at,
+          }));
+
+          await supabase.from('memories').insert(memoriesData);
+        }
+      } catch (err) {
+        console.error('Failed to extract memories:', err);
+      }
+    }
 
     const { error: updateError } = await supabase
       .from('coaching_sessions')
@@ -397,25 +467,15 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
         name: sessionName,
         ended_at: new Date().toISOString(),
         is_processed: true,
-        memory_extraction_status: memoryExtractionStatus,
-        memory_extraction_error: null,
       })
       .eq('id', id)
       .eq('user_id', req.user!.id);
 
     if (updateError) throw updateError;
 
-    if (memoryExtractionStatus === 'pending') {
-      queueSessionMemoryExtraction({
-        sessionId: id,
-        userId: req.user!.id,
-      });
-    }
-
     res.json({
       success: true,
       name: sessionName,
-      memoryExtractionStatus,
     });
   } catch (error) {
     console.error('Finalize session error:', error);

@@ -35,8 +35,6 @@ export function SessionListItem({
     hour: 'numeric',
     minute: '2-digit',
   });
-  const isProcessingInsights =
-    session.memoryExtractionStatus === 'pending' || session.memoryExtractionStatus === 'running';
 
   const handleDelete = () => onDelete?.(session);
   const handlePress = () => onPress(session.id);
@@ -87,7 +85,6 @@ export function SessionListItem({
             <Text style={styles.meta}>
               {dateStr} at {timeStr} · {session.messageCount} messages
               {session.memoryCount ? ` · ${session.memoryCount} memories` : ''}
-              {isProcessingInsights ? ' · processing insights' : ''}
             </Text>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />

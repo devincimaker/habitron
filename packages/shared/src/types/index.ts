@@ -308,12 +308,6 @@ export type CoachSkillId =
   | 'task-management'
   | 'habit-design';
 export type CoachingSkillStatus = 'active' | 'paused' | 'completed';
-export type SessionMemoryExtractionStatus =
-  | 'not_requested'
-  | 'pending'
-  | 'running'
-  | 'completed'
-  | 'failed';
 
 export interface CoachingSkillInstance {
   id: string;
@@ -432,13 +426,11 @@ export interface CoachingSessionSummary {
   messageCount: number;
   memoryCount?: number;
   leadSkillId?: CoachSkillId | null;
-  memoryExtractionStatus?: SessionMemoryExtractionStatus;
 }
 
 export interface CoachingSessionDetail extends CoachingSessionSummary {
   messages: CoachingSessionMessage[];
   memories: Memory[];
-  conversationSummary?: string | null;
   activeSkills?: CoachingSkillInstance[];
 }
 
