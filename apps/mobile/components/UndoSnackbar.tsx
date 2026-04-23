@@ -12,6 +12,9 @@ interface UndoSnackbarProps {
   duration?: number;
 }
 
+const SNACKBAR_BACKGROUND = '#333333';
+const SNACKBAR_ACTION_COLOR = '#FFD180';
+
 export function UndoSnackbar({
   message,
   onUndo,
@@ -65,7 +68,7 @@ export function UndoSnackbar({
           {message}
         </BodyMedium>
         <Pressable onPress={handleUndo} hitSlop={8}>
-          <BodyMedium color={colors.primaryLight} style={styles.undoButton}>
+          <BodyMedium color={SNACKBAR_ACTION_COLOR} style={styles.undoButton}>
             UNDO
           </BodyMedium>
         </Pressable>
@@ -84,7 +87,7 @@ const styles = StyleSheet.create({
   content: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#333333',
+    backgroundColor: SNACKBAR_BACKGROUND,
     borderRadius: BORDER_RADIUS.md,
     paddingHorizontal: SPACING.md,
     paddingVertical: 14,
