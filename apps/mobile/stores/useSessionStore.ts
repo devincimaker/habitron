@@ -18,7 +18,7 @@ interface SessionState {
   // Actions
   startSession: () => Promise<void>;
   endSession: () => Promise<void>;
-  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string | null>;
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string>;
   updateMessage: (
     messageId: string,
     changes: Partial<Pick<ChatMessage, 'content' | 'proposal' | 'proposalStatus'>>
@@ -147,7 +147,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       await get().syncMessages();
     }
 
-    return get().sessionId;
+    return message.id;
   },
 
   updateMessage: (messageId, changes) => {

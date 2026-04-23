@@ -235,4 +235,26 @@ describe('useSessionStore - Lazy Session Creation', () => {
         .find((message) => message.id === proposalMessage!.id)?.proposalStatus
     ).toBe('applied');
   });
+
+  it('returns the created message id from addMessage', async () => {
+    await useSessionStore.getState().startSession();
+
+    const messageId = await useSessionStore.getState().addMessage({
+      role: 'assistant',
+      content: 'Here is a plan.',
+    });
+
+    expect(
+      useSessionStore
+        .getState()
+        .messages
+        .find((message) => message.id === messageId)
+    ).toEqual(
+      expect.objectContaining({
+        id: messageId,
+        role: 'assistant',
+        content: 'Here is a plan.',
+      })
+    );
+  });
 });

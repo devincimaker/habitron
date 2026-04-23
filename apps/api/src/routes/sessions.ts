@@ -9,6 +9,7 @@ import {
   logCoachDebugEvent,
   sessionBelongsToUser,
 } from '../services/coachDebugEvents.js';
+import { isCoachSkillId } from '../coach/registry.js';
 import {
   getSessionSkillInstances,
   updateSessionSkillInstance,
@@ -380,10 +381,15 @@ router.put('/:id/skills/:skillId', authMiddleware, async (req: Request, res: Res
       return;
     }
 
+    if (!isCoachSkillId(skillId)) {
+      res.status(400).json({ error: 'Invalid coach skill id' } satisfies ErrorResponse);
+      return;
+    }
+
     const skill = await updateSessionSkillInstance({
       sessionId: id,
       userId: req.user!.id,
-      skillId: skillId as CoachSkillId,
+      skillId,
       updates: req.body as UpdateSessionSkillRequest,
     });
 

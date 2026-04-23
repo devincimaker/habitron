@@ -25,6 +25,17 @@ Handle broad coaching conversation when no specialized skill is a better fit.
 
 You may discuss goals, habits, tasks, journal context, and daily plans, but you are not required to force the conversation into planning unless the user is actually asking for planning help.`;
 
+export const COACH_SKILL_IDS: CoachSkillId[] = [
+  'general-coach',
+  'day-planning',
+  'task-management',
+  'habit-design',
+];
+
+export function isCoachSkillId(value: string): value is CoachSkillId {
+  return COACH_SKILL_IDS.includes(value as CoachSkillId);
+}
+
 export function getCoachSkillDefinition(skillId: CoachSkillId): CoachSkillDefinition {
   if (skillId === 'day-planning') {
     return {

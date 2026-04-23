@@ -151,26 +151,26 @@ function sortTasksForCoach(tasks: CoachTaskRecord[], today?: string): CoachTaskR
 }
 
 async function fetchCoachTasks(source: TaskToolInputSource): Promise<CoachTaskRecord[]> {
+  if (source.userId) {
+    const { data, error } = await supabase
+      .from('todos')
+      .select(
+        'id, user_id, goal_id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, completed_at, canceled_at, sort_order, created_at, updated_at'
+      )
+      .eq('user_id', source.userId);
+
+    if (error) {
+      throw error;
+    }
+
+    return ((data ?? []) as DbTodoRow[]).map(mapDbTodoToCoachTask);
+  }
+
   if (source.todos) {
     return source.todos.map(mapTodoToCoachTask);
   }
 
-  if (!source.userId) {
-    return [];
-  }
-
-  const { data, error } = await supabase
-    .from('todos')
-    .select(
-      'id, user_id, goal_id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, completed_at, canceled_at, sort_order, created_at, updated_at'
-    )
-    .eq('user_id', source.userId);
-
-  if (error) {
-    throw error;
-  }
-
-  return ((data ?? []) as DbTodoRow[]).map(mapDbTodoToCoachTask);
+  return [];
 }
 
 function filterTasks(tasks: CoachTaskRecord[], args: ListTaskArgs): CoachTaskRecord[] {
