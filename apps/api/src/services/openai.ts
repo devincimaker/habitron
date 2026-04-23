@@ -33,8 +33,6 @@ const GOAL_STATUS_VALUES = ['active', 'paused', 'completed', 'archived'] as cons
 const HABIT_FREQUENCY_VALUES = ['daily', 'weekly'] as const;
 const HABIT_TIME_OF_DAY_VALUES = ['morning', 'afternoon', 'evening', 'anytime'] as const;
 const HABIT_WEEKDAY_VALUES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
-const JOURNAL_MOOD_VALUES = ['great', 'good', 'neutral', 'bad', 'terrible'] as const;
-const JOURNAL_SOURCE_VALUES = ['manual', 'coach'] as const;
 const DAILY_PLAN_ITEM_TYPE_VALUES = ['habit', 'todo', 'note'] as const;
 
 type JsonSchema = Record<string, unknown>;
@@ -139,13 +137,6 @@ const todoDraftChangesSchema = strictObjectSchema({
   tagNames: nullableSchema(arraySchema(STRING_SCHEMA)),
 });
 
-const journalEntryDraftSchema = strictObjectSchema({
-  entryDate: nullableSchema(STRING_SCHEMA),
-  content: STRING_SCHEMA,
-  mood: nullableSchema(enumSchema(JOURNAL_MOOD_VALUES)),
-  source: nullableSchema(enumSchema(JOURNAL_SOURCE_VALUES)),
-});
-
 const dailyPlanItemRefSchema = {
   anyOf: [
     strictObjectSchema({
@@ -243,12 +234,6 @@ const coachActionSchema = {
       entity: enumSchema(['todo'] as const),
       operation: enumSchema(['complete', 'cancel', 'reopen', 'remove'] as const),
       todoId: STRING_SCHEMA,
-    }),
-    strictObjectSchema({
-      entity: enumSchema(['journal'] as const),
-      operation: enumSchema(['create'] as const),
-      clientKey: nullableSchema(STRING_SCHEMA),
-      entry: journalEntryDraftSchema,
     }),
   ],
 } as const;
@@ -679,10 +664,34 @@ function validateCoachAction(action: unknown): CoachAction {
     throw new Error('Invalid response format: action must include entity and operation');
   }
 
+  const isSupportedAction =
+    (normalizedAction.entity === 'goal' &&
+      ['add', 'edit', 'archive'].includes(normalizedAction.operation)) ||
+    (normalizedAction.entity === 'habit' &&
+      ['create', 'expand', 'contract', 'archive'].includes(normalizedAction.operation)) ||
+    (normalizedAction.entity === 'todo' &&
+      ['add', 'edit', 'schedule', 'unschedule', 'complete', 'cancel', 'reopen', 'remove'].includes(
+        normalizedAction.operation
+      ));
+
+  if (!isSupportedAction) {
+    throw new Error(
+      `Invalid response format: unsupported action ${normalizedAction.entity}:${normalizedAction.operation}`
+    );
+  }
+
   if (normalizedAction.entity === 'goal' && normalizedAction.operation === 'add') {
     if (!isJsonObject(normalizedAction.goal) || !isNonEmptyString(normalizedAction.goal.title)) {
       throw new Error('Invalid response format: goal add action must include a title');
     }
+  }
+
+  if (
+    normalizedAction.entity === 'goal' &&
+    (normalizedAction.operation === 'edit' || normalizedAction.operation === 'archive') &&
+    !isNonEmptyString(normalizedAction.goalId)
+  ) {
+    throw new Error(`Invalid response format: goal ${normalizedAction.operation} action must include a goalId`);
   }
 
   if (normalizedAction.entity === 'habit') {
@@ -728,12 +737,6 @@ function validateCoachAction(action: unknown): CoachAction {
       !isNonEmptyString(normalizedAction.todoId)
     ) {
       throw new Error(`Invalid response format: task ${normalizedAction.operation} action must include a todoId`);
-    }
-  }
-
-  if (normalizedAction.entity === 'journal' && normalizedAction.operation === 'create') {
-    if (!isJsonObject(normalizedAction.entry) || !isNonEmptyString(normalizedAction.entry.content)) {
-      throw new Error('Invalid response format: journal create action must include content');
     }
   }
 

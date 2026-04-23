@@ -284,12 +284,6 @@ export type CoachAction =
       entity: 'todo';
       operation: 'complete' | 'cancel' | 'reopen' | 'remove';
       todoId: string;
-    }
-  | {
-      entity: 'journal' | 'diary';
-      operation: 'create';
-      clientKey?: string;
-      entry: JournalEntryDraft;
     };
 
 export interface CoachProposal {
@@ -404,6 +398,11 @@ export interface CoachingSessionDetail extends CoachingSessionSummary {
   memories: Memory[];
 }
 
+export interface ActiveSession extends CoachingSessionSummary {
+  messages: CoachingSessionMessage[];
+  updatedAt: number;
+}
+
 export interface CreateSessionRequest {
   startedAt?: number;  // Optional, defaults to now
 }
@@ -431,8 +430,17 @@ export interface GetSessionsResponse {
   sessions: CoachingSessionSummary[];
 }
 
+export interface GetActiveSessionResponse {
+  session: ActiveSession | null;
+}
+
 export interface GetSessionResponse {
   session: CoachingSessionDetail;
+}
+
+export interface FinalizeSessionResponse {
+  success: boolean;
+  name: string;
 }
 
 export type HabitAction = Extract<CoachAction, { entity: 'habit' }>;

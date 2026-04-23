@@ -130,7 +130,7 @@ export function CoachSessionScreen({
     setTodoStatus,
     removeTodo,
   } = useTodosStore();
-  const { entries: journalEntries, loadEntries, addEntry } = useJournalStore();
+  const { entries: journalEntries, loadEntries } = useJournalStore();
   const { plansByDate, loadPlan, saveAcceptedPlan } = useDailyPlansStore();
   const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
   const { name: userName } = useProfileStore();
@@ -440,7 +440,6 @@ export function CoachSessionScreen({
         updateTodo,
         setTodoStatus,
         removeTodo,
-        addJournalEntry: addEntry,
         saveAcceptedPlan,
         existingPlanId:
           proposal.dailyPlanDraft?.date === today ? todayPlan?.id : undefined,
@@ -522,7 +521,6 @@ export function CoachSessionScreen({
       });
     }
   }, [
-    addEntry,
     addGoal,
     addHabit,
     addMessage,

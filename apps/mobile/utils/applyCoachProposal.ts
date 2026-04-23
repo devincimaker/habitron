@@ -5,7 +5,6 @@ import type {
   Goal,
   Habit,
   HabitDraft,
-  JournalEntry,
   Todo,
 } from '@habits-coach/shared';
 import { assertExecutableCoachProposal } from './coachProposal';
@@ -16,7 +15,6 @@ type HabitInput = Extract<CoachAction, { entity: 'habit'; operation: 'create' }>
 type HabitChanges = Partial<HabitDraft>;
 type TodoInput = Extract<CoachAction, { entity: 'todo'; operation: 'add' }>['todo'];
 type TodoChanges = Extract<CoachAction, { entity: 'todo'; operation: 'edit' }>['changes'];
-type JournalEntryInput = Extract<CoachAction, { entity: 'journal'; operation: 'create' }>['entry'];
 
 interface ApplyCoachProposalDependencies {
   addGoal: (goal: GoalInput) => Promise<Goal>;
@@ -29,7 +27,6 @@ interface ApplyCoachProposalDependencies {
   updateTodo: (todoId: string, changes: TodoChanges) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: Todo['status']) => Promise<Todo>;
   removeTodo: (todoId: string) => Promise<void>;
-  addJournalEntry: (entry: JournalEntryInput) => Promise<JournalEntry>;
   saveAcceptedPlan: (
     draft: NonNullable<CoachProposal['dailyPlanDraft']>,
     resolvedRefs: Map<string, string>,
@@ -97,10 +94,6 @@ export async function applyCoachProposal(
                 : 'open';
           await deps.setTodoStatus(action.todoId, status);
         }
-        break;
-
-      case 'journal':
-        await deps.addJournalEntry(action.entry);
         break;
     }
   }

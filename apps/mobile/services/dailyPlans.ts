@@ -9,7 +9,6 @@ import type {
   DailyPlanSource,
   DailyPlanStatus,
 } from '@habits-coach/shared';
-import { getCurrentUserId } from './auth';
 import { normalizeTodoScheduledTimeInput } from '../utils/todoTime';
 
 interface DbDailyPlan {
@@ -87,6 +86,18 @@ function serializePlannedScheduledTime(time: string): string {
   }
 
   return normalizedTime;
+}
+
+async function getCurrentUserId(): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
+  return user.id;
 }
 
 async function getLatestPlanVersion(userId: string, date: string): Promise<number> {

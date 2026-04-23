@@ -14,8 +14,34 @@ import type {
   GetSessionsResponse,
   UpdateSessionRequest,
 } from '@habits-coach/shared';
+import { supabase } from './supabase';
 import { handleFetchError } from './fetchErrorHandler';
-import { fetchApi } from './apiClient';
+import { createApiUrl } from './apiUrl';
+
+async function getAuthToken(): Promise<string> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+
+  if (!session?.access_token) {
+    throw new Error('Not authenticated');
+  }
+
+  return session.access_token;
+}
+
+async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await getAuthToken();
+  const headers = {
+    ...(init.headers as Record<string, string> | undefined),
+    Authorization: `Bearer ${token}`,
+  };
+
+  return fetch(createApiUrl(path), {
+    ...init,
+    headers,
+  });
+}
 
 export async function getSessions(): Promise<CoachingSessionSummary[]> {
   const response = await fetchApi('/api/sessions');

@@ -15,7 +15,6 @@ function createDeps(): jest.Mocked<ApplyCoachProposalDeps> {
     updateTodo: jest.fn(),
     setTodoStatus: jest.fn(),
     removeTodo: jest.fn(),
-    addJournalEntry: jest.fn(),
     saveAcceptedPlan: jest.fn(),
     existingPlanId: undefined,
   };
@@ -108,7 +107,6 @@ describe('applyCoachProposal habit management', () => {
     await applyCoachProposal(proposal, deps);
 
     expect(deps.archiveHabit).toHaveBeenCalledWith('habit-3');
-    expect(deps.addJournalEntry).not.toHaveBeenCalled();
   });
 
   it('rejects malformed habit archive actions before touching persistence', async () => {

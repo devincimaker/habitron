@@ -26,6 +26,10 @@ function isHabitFrequency(value: unknown): value is 'daily' | 'weekly' {
   return value === 'daily' || value === 'weekly';
 }
 
+function assertNever(value: never): never {
+  throw new Error(`Unsupported coach action: ${JSON.stringify(value)}`);
+}
+
 function getCoachActionValidationError(action: CoachAction): string | null {
   switch (action.entity) {
     case 'goal':
@@ -63,12 +67,9 @@ function getCoachActionValidationError(action: CoachAction): string | null {
       return isNonEmptyString(action.todoId)
         ? null
         : `Task ${action.operation} actions must include a todoId.`;
-
-    case 'journal':
-      return isNonEmptyString(action.entry.content)
-        ? null
-        : 'Journal create actions must include content.';
   }
+
+  return assertNever(action);
 }
 
 function getNonEmptyLabel(value: unknown): string | null {
@@ -217,11 +218,9 @@ export function describeCoachAction(
         const taskTitle = getTodoLabel(action.todoId, context);
         return taskTitle ? `Remove task: ${taskTitle}` : 'Remove task';
       }
-    case 'journal':
-      return getNonEmptyLabel(action.entry.content)
-        ? 'Save journal entry'
-        : 'Save note';
   }
+
+  return assertNever(action);
 }
 
 export function getProposalSummary(proposal: CoachProposal): string {

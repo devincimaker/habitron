@@ -159,6 +159,8 @@ describe('sendMessage', () => {
     expect(schemaText).toContain('"timeOfDay"');
     expect(schemaText).toContain('"required":["title","description","status","priority","targetDate"]');
     expect(schemaText).toContain('"required":["name","frequency","weeklyDays","weeklyCount","timeOfDay","reason","icon"]');
+    expect(schemaText).not.toContain('"journal"');
+    expect(schemaText).not.toContain('"diary"');
   });
 
   it('instructs the coach to diagnose ambiguous habit resistance before proposing a change', async () => {
@@ -375,6 +377,41 @@ describe('sendMessage', () => {
         memories: [],
       })
     ).rejects.toThrow('habit create action must include a name');
+  });
+
+  it('rejects journal write actions even if the model returns one', async () => {
+    mockChatCompletionsCreate.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              message: 'I saved that as a journal entry.',
+              proposal: {
+                actions: {
+                  entity: 'journal',
+                  operation: 'create',
+                  entry: {
+                    content: 'I felt good today.',
+                  },
+                },
+              },
+            }),
+          },
+        },
+      ],
+    });
+
+    await expect(
+      sendMessage({
+        messages: [{ role: 'user', content: 'Remember that I felt good today.' }],
+        habits: [],
+        goals: [],
+        todos: [],
+        journalEntries: [],
+        dailyPlan: null,
+        memories: [],
+      })
+    ).rejects.toThrow('unsupported action journal:create');
   });
 
   it('rejects habit archive actions that reference unknown habits', async () => {

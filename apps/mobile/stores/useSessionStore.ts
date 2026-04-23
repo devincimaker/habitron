@@ -1,5 +1,9 @@
 import { create } from 'zustand';
-import { ChatMessage, CoachDebugErrorStage } from '@habits-coach/shared';
+import {
+  ChatMessage,
+  CoachDebugErrorStage,
+  CoachingSessionMessage,
+} from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
 
@@ -208,12 +212,14 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       }
 
       // Recover session - within 10 minute window
-      const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
-        id: `recovered-${i}-${m.timestamp}`,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-      }));
+      const messages: ChatMessage[] = activeSession.messages.map(
+        (m: CoachingSessionMessage, i: number) => ({
+          id: `recovered-${i}-${m.timestamp}`,
+          role: m.role,
+          content: m.content,
+          timestamp: m.timestamp,
+        })
+      );
 
       set({
         isActive: true,
