@@ -150,7 +150,9 @@ describe('useSessionStore - Lazy Session Creation', () => {
     await useSessionStore.getState().addMessage({ role: 'user', content: 'User message' });
     await useSessionStore.getState().endSession();
 
-    expect(mockFinalizeSession).toHaveBeenCalledWith('test-session-id');
+    expect(mockFinalizeSession).toHaveBeenCalledWith('test-session-id', {
+      extractMemories: false,
+    });
   });
 
   /**

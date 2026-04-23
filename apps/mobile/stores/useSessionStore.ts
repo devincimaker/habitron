@@ -98,7 +98,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         await sessionsService.updateSession(sessionId, {
           messages: toMessagePayload(messages),
         });
-        await sessionsService.finalizeSession(sessionId);
+        await sessionsService.finalizeSession(sessionId, {
+          extractMemories: false,
+        });
       } catch (error) {
         // Use warn to avoid red screen - session is ended locally regardless
         console.warn('Failed to finalize session:', error);
@@ -197,7 +199,9 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
       // Finalize orphaned session - outside 10 minute window
       if (elapsed >= SESSION_RECOVERY_WINDOW_MS) {
-        await sessionsService.finalizeSession(activeSession.id);
+        await sessionsService.finalizeSession(activeSession.id, {
+          extractMemories: false,
+        });
         return 'finalized';
       }
 
