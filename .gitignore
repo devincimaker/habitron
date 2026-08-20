@@ -55,3 +55,4 @@ yarn-error.*
 tmp/
 .claude/settings.local.json
 .claude/settings.local.json
+.supabase-db-password

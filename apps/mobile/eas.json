@@ -14,16 +14,16 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://onnoazbtexmlflqpjnrg.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_zU8Pl4foJFxg24Ul67YPwg_t4B3ssXX"
+        "EXPO_PUBLIC_API_URL": "https://thrive-api-un4s.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fitklsshlhjwddbxhhdi.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_u1kMXJLGyBpIbwFm-v2eTA_cCvtzBjr"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://fioris-api.onrender.com",
-        "EXPO_PUBLIC_SUPABASE_URL": "https://onnoazbtexmlflqpjnrg.supabase.co",
-        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_zU8Pl4foJFxg24Ul67YPwg_t4B3ssXX"
+        "EXPO_PUBLIC_API_URL": "https://thrive-api-un4s.onrender.com",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://fitklsshlhjwddbxhhdi.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_u1kMXJLGyBpIbwFm-v2eTA_cCvtzBjr"
       }
     }
   },
