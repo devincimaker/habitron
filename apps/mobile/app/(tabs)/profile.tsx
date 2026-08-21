@@ -16,7 +16,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { memories, loadMemories } = useMemoriesStore();
-  const { name, dailyReminderEnabled, updateName, updateDailyReminder, isLoading: isProfileLoading } = useProfileStore();
+  const { name, dailyReminderEnabled, updateName, updateDailyReminder, isSaving: isProfileSaving } = useProfileStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -180,7 +180,7 @@ export default function ProfileScreen() {
               <Button
                 title="Save"
                 onPress={handleSaveName}
-                loading={isProfileLoading}
+                loading={isProfileSaving}
                 size="md"
               />
             </View>

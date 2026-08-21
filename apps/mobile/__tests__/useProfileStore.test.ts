@@ -2,23 +2,25 @@
  * Profile Store Tests
  *
  * These tests verify the user profile store behavior:
- * - Loading profile data from Supabase
- * - Updating the user's name
+ * - Loading profile data from Supabase, with a load status that
+ *   distinguishes "new user, no profile row" from "fetch failed"
+ * - Updating the user's name and daily reminder
  * - Proper state management and error handling
+ *
+ * Regression (2026-08-21): a failed profile fetch used to be reported
+ * as an initialized profile with name=null, which routed existing
+ * users back into onboarding. A failure must surface as
+ * loadStatus='error' and preserve any previously loaded name.
  */
 
 // Mock Supabase before importing the store
-const mockGetUser = jest.fn();
 const mockSelect = jest.fn();
 const mockEq = jest.fn();
-const mockSingle = jest.fn();
+const mockMaybeSingle = jest.fn();
 const mockUpsert = jest.fn();
 
 jest.mock('../services/supabase', () => ({
   supabase: {
-    auth: {
-      getUser: () => mockGetUser(),
-    },
     from: () => ({
       select: (columns: string) => {
         mockSelect(columns);
@@ -26,7 +28,7 @@ jest.mock('../services/supabase', () => ({
           eq: (column: string, value: string) => {
             mockEq(column, value);
             return {
-              single: () => mockSingle(),
+              maybeSingle: () => mockMaybeSingle(),
             };
           },
         };
@@ -37,139 +39,141 @@ jest.mock('../services/supabase', () => ({
 }));
 
 import { useProfileStore } from '../stores/useProfileStore';
+import { useAuthStore } from '../stores/useAuthStore';
 
 describe('useProfileStore', () => {
   const mockUserId = 'user-123';
+
+  const signIn = () => {
+    useAuthStore.setState({
+      session: { user: { id: mockUserId } } as never,
+    });
+  };
+
+  const signOut = () => {
+    useAuthStore.setState({ session: null });
+  };
 
   beforeEach(() => {
     // Reset store state before each test
     useProfileStore.setState({
       name: null,
       dailyReminderEnabled: true,
-      isLoading: false,
-      isInitialized: false,
+      loadStatus: 'idle',
+      isSaving: false,
     });
+    signIn();
 
     // Clear all mocks
     jest.clearAllMocks();
   });
 
   describe('loadProfile', () => {
-    /**
-     * Test: Successfully loads profile with name
-     */
     it('should load profile name from Supabase', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
-      });
-      mockSingle.mockResolvedValue({
-        data: { name: 'John' },
+      mockMaybeSingle.mockResolvedValue({
+        data: { name: 'John', daily_reminder_enabled: false },
         error: null,
       });
 
       await useProfileStore.getState().loadProfile();
 
-      expect(mockGetUser).toHaveBeenCalled();
       expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled');
       expect(mockEq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(useProfileStore.getState().name).toBe('John');
-      expect(useProfileStore.getState().isInitialized).toBe(true);
-      expect(useProfileStore.getState().isLoading).toBe(false);
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
+      expect(useProfileStore.getState().loadStatus).toBe('ready');
     });
 
-    /**
-     * Test: New user with no profile record
-     *
-     * PGRST116 error means "no rows returned" which is expected
-     * for new users who haven't set their name yet.
-     */
-    it('should handle new user with no profile (PGRST116)', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
-      });
-      mockSingle.mockResolvedValue({
-        data: null,
-        error: { code: 'PGRST116', message: 'No rows returned' },
-      });
+    it('should treat a missing profile row as a ready profile with no name (new user)', async () => {
+      // maybeSingle returns data=null with no error when there is no row
+      mockMaybeSingle.mockResolvedValue({ data: null, error: null });
 
       await useProfileStore.getState().loadProfile();
 
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isInitialized).toBe(true);
-      expect(useProfileStore.getState().isLoading).toBe(false);
+      expect(useProfileStore.getState().loadStatus).toBe('ready');
     });
 
-    /**
-     * Test: No authenticated user
-     */
-    it('should handle no authenticated user', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: null },
-      });
+    it('should handle signed-out state without querying', async () => {
+      signOut();
 
       await useProfileStore.getState().loadProfile();
 
-      expect(mockSingle).not.toHaveBeenCalled();
+      expect(mockMaybeSingle).not.toHaveBeenCalled();
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isInitialized).toBe(true);
-      expect(useProfileStore.getState().isLoading).toBe(false);
+      expect(useProfileStore.getState().loadStatus).toBe('ready');
     });
 
     /**
-     * Test: Database error (non-PGRST116)
-     *
-     * Other errors should be logged but not crash the app.
+     * REGRESSION: a query error must NOT look like "new user".
      */
-    it('should handle database errors gracefully', async () => {
+    it('should set loadStatus=error (not ready) when the query fails', async () => {
       const consoleError = jest.spyOn(console, 'error').mockImplementation();
 
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
-      });
-      mockSingle.mockResolvedValue({
+      mockMaybeSingle.mockResolvedValue({
         data: null,
         error: { code: 'PGRST500', message: 'Database error' },
       });
 
       await useProfileStore.getState().loadProfile();
 
-      expect(consoleError).toHaveBeenCalledWith(
-        'Error loading profile:',
-        expect.objectContaining({ code: 'PGRST500' })
-      );
-      expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isInitialized).toBe(true);
+      expect(useProfileStore.getState().loadStatus).toBe('error');
+      expect(consoleError).toHaveBeenCalled();
 
       consoleError.mockRestore();
     });
 
     /**
-     * Test: Profile with null name (exists but not set)
+     * REGRESSION: a failed refresh must not wipe a previously loaded name.
      */
-    it('should handle profile with null name', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
+    it('should preserve a previously loaded name when a refresh fails', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+      useProfileStore.setState({ name: 'John', loadStatus: 'ready' });
+
+      mockMaybeSingle.mockRejectedValue(new Error('Network request failed'));
+
+      await useProfileStore.getState().loadProfile();
+
+      expect(useProfileStore.getState().name).toBe('John');
+      expect(useProfileStore.getState().loadStatus).toBe('error');
+
+      consoleError.mockRestore();
+    });
+
+    it('should recover to ready when a retry succeeds after a failure', async () => {
+      const consoleError = jest.spyOn(console, 'error').mockImplementation();
+
+      mockMaybeSingle.mockRejectedValueOnce(new Error('Network request failed'));
+      await useProfileStore.getState().loadProfile();
+      expect(useProfileStore.getState().loadStatus).toBe('error');
+
+      mockMaybeSingle.mockResolvedValueOnce({
+        data: { name: 'John', daily_reminder_enabled: true },
+        error: null,
       });
-      mockSingle.mockResolvedValue({
-        data: { name: null },
+      await useProfileStore.getState().loadProfile();
+
+      expect(useProfileStore.getState().loadStatus).toBe('ready');
+      expect(useProfileStore.getState().name).toBe('John');
+
+      consoleError.mockRestore();
+    });
+
+    it('should handle profile with null name (row exists but not set)', async () => {
+      mockMaybeSingle.mockResolvedValue({
+        data: { name: null, daily_reminder_enabled: true },
         error: null,
       });
 
       await useProfileStore.getState().loadProfile();
 
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isInitialized).toBe(true);
+      expect(useProfileStore.getState().loadStatus).toBe('ready');
     });
   });
 
   describe('updateName', () => {
-    /**
-     * Test: Successfully updates name
-     */
     it('should update name in Supabase', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
-      });
       mockUpsert.mockResolvedValue({ error: null });
 
       const result = await useProfileStore.getState().updateName('Jane');
@@ -180,16 +184,10 @@ describe('useProfileStore', () => {
       );
       expect(result.error).toBeNull();
       expect(useProfileStore.getState().name).toBe('Jane');
-      expect(useProfileStore.getState().isLoading).toBe(false);
+      expect(useProfileStore.getState().isSaving).toBe(false);
     });
 
-    /**
-     * Test: Trims whitespace from name
-     */
     it('should trim whitespace from name', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
-      });
       mockUpsert.mockResolvedValue({ error: null });
 
       await useProfileStore.getState().updateName('  Sarah  ');
@@ -201,13 +199,8 @@ describe('useProfileStore', () => {
       expect(useProfileStore.getState().name).toBe('Sarah');
     });
 
-    /**
-     * Test: No authenticated user
-     */
     it('should return error when not authenticated', async () => {
-      mockGetUser.mockResolvedValue({
-        data: { user: null },
-      });
+      signOut();
 
       const result = await useProfileStore.getState().updateName('Test');
 
@@ -215,44 +208,69 @@ describe('useProfileStore', () => {
       expect(result.error).toBeInstanceOf(Error);
       expect(result.error?.message).toBe('Not authenticated');
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isLoading).toBe(false);
     });
 
-    /**
-     * Test: Upsert error from Supabase
-     */
-    it('should return error on upsert failure', async () => {
-      const dbError = { code: 'PGRST500', message: 'Database error' };
-      mockGetUser.mockResolvedValue({
-        data: { user: { id: mockUserId } },
+    it('should return error on upsert failure and keep old name', async () => {
+      mockUpsert.mockResolvedValue({
+        error: { code: 'PGRST500', message: 'Database error' },
       });
-      mockUpsert.mockResolvedValue({ error: dbError });
 
       const result = await useProfileStore.getState().updateName('Test');
 
-      expect(result.error).toEqual(dbError);
+      expect(result.error).toBeInstanceOf(Error);
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isLoading).toBe(false);
+      expect(useProfileStore.getState().isSaving).toBe(false);
+    });
+
+    it('should return error when the upsert request throws', async () => {
+      mockUpsert.mockRejectedValue(new Error('Network request failed'));
+
+      const result = await useProfileStore.getState().updateName('Test');
+
+      expect(result.error).toBeInstanceOf(Error);
+      expect(useProfileStore.getState().isSaving).toBe(false);
+    });
+  });
+
+  describe('updateDailyReminder', () => {
+    it('should update the reminder flag in Supabase', async () => {
+      mockUpsert.mockResolvedValue({ error: null });
+
+      const result = await useProfileStore.getState().updateDailyReminder(false);
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        { user_id: mockUserId, daily_reminder_enabled: false },
+        { onConflict: 'user_id' }
+      );
+      expect(result.error).toBeNull();
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
+    });
+
+    it('should keep the old value on failure', async () => {
+      mockUpsert.mockResolvedValue({
+        error: { code: 'PGRST500', message: 'Database error' },
+      });
+
+      const result = await useProfileStore.getState().updateDailyReminder(false);
+
+      expect(result.error).toBeInstanceOf(Error);
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(true);
     });
   });
 
   describe('reset', () => {
-    /**
-     * Test: Resets all state to initial values
-     */
     it('should reset all state', () => {
-      // Set some state first
       useProfileStore.setState({
         name: 'Test User',
-        isLoading: true,
-        isInitialized: true,
+        loadStatus: 'ready',
+        isSaving: true,
       });
 
       useProfileStore.getState().reset();
 
       expect(useProfileStore.getState().name).toBeNull();
-      expect(useProfileStore.getState().isLoading).toBe(false);
-      expect(useProfileStore.getState().isInitialized).toBe(false);
+      expect(useProfileStore.getState().loadStatus).toBe('idle');
+      expect(useProfileStore.getState().isSaving).toBe(false);
     });
   });
 });

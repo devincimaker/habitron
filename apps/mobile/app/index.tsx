@@ -1,36 +1,34 @@
 import { useEffect } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useProfileStore } from '../stores/useProfileStore';
-import { FONT_SIZES, SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { resolveLaunchDecision } from '../utils/launchRoute';
+import { FONT_SIZES, SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
+import { useThemedStyles } from '../hooks/useColors';
+
+const SPLASH_DELAY_MS = 1500;
 
 export default function SplashScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
   const { session, isInitialized: authInitialized } = useAuthStore();
-  const { name, isInitialized: profileInitialized } = useProfileStore();
+  const { name, loadStatus, loadProfile } = useProfileStore();
 
-  // Navigate once auth and profile are ready
+  const decision = resolveLaunchDecision({
+    authInitialized,
+    hasSession: !!session,
+    profileStatus: loadStatus,
+    hasName: !!name,
+  });
+  const targetRoute = decision.kind === 'navigate' ? decision.route : null;
+
   useEffect(() => {
-    if (!authInitialized) return;
-
-    // No session - go to login
-    if (!session) {
-      const timer = setTimeout(() => router.replace('/(auth)/login'), 1500);
-      return () => clearTimeout(timer);
-    }
-
-    // Wait for profile to load (triggered by _layout.tsx when session exists)
-    if (!profileInitialized) return;
-
-    // Navigate based on profile state
-    const destination = name ? '/(tabs)/tasks' : '/(onboarding)/tour';
-    const timer = setTimeout(() => router.replace(destination), 1500);
+    if (!targetRoute) return;
+    const timer = setTimeout(() => router.replace(targetRoute), SPLASH_DELAY_MS);
     return () => clearTimeout(timer);
-  }, [authInitialized, session, profileInitialized, name, router]);
+  }, [targetRoute, router]);
 
   return (
     <View style={styles.container}>
@@ -41,11 +39,22 @@ export default function SplashScreen() {
         <View style={styles.content}>
           <Text style={styles.title}>Habits Coach</Text>
           <Text style={styles.subtitle}>Get started with Thrive Coach</Text>
-          <ActivityIndicator
-            color={colors.white}
-            style={styles.loader}
-            size="small"
-          />
+          {decision.kind === 'error' ? (
+            <View style={styles.errorContainer}>
+              <Text style={styles.errorText}>
+                Couldn't load your profile. Check your connection and try again.
+              </Text>
+              <TouchableOpacity style={styles.retryButton} onPress={loadProfile}>
+                <Text style={styles.retryText}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <ActivityIndicator
+              color={colors.white}
+              style={styles.loader}
+              size="small"
+            />
+          )}
         </View>
       </LinearGradient>
     </View>
@@ -77,5 +86,29 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   loader: {
     marginTop: SPACING.xl,
+  },
+  errorContainer: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  errorText: {
+    fontSize: FONT_SIZES.sm,
+    color: colors.white,
+    opacity: 0.9,
+    textAlign: 'center',
+    marginBottom: SPACING.md,
+  },
+  retryButton: {
+    borderWidth: 1,
+    borderColor: colors.white,
+    borderRadius: BORDER_RADIUS.md,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.xl,
+  },
+  retryText: {
+    fontSize: FONT_SIZES.md,
+    fontWeight: '600',
+    color: colors.white,
   },
 });
