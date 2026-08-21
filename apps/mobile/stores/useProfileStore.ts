@@ -1,11 +1,20 @@
 import { create } from 'zustand';
+import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
+import { useAuthStore } from './useAuthStore';
+
+/**
+ * 'ready' means the profile fetch completed (possibly with no row yet,
+ * for new users). 'error' means the fetch failed and the data is
+ * unknown — routing must not treat this as "new user".
+ */
+export type ProfileLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface ProfileState {
   name: string | null;
   dailyReminderEnabled: boolean;
-  isLoading: boolean;
-  isInitialized: boolean;
+  loadStatus: ProfileLoadStatus;
+  isSaving: boolean;
 
   // Actions
   loadProfile: () => Promise<void>;
@@ -14,88 +23,94 @@ interface ProfileState {
   reset: () => void;
 }
 
+/** The signed-in user's id, from the already-restored auth session (no network). */
+function sessionUserId(): string | null {
+  return useAuthStore.getState().session?.user?.id ?? null;
+}
+
+async function upsertProfile(
+  userId: string,
+  fields: { name?: string; daily_reminder_enabled?: boolean }
+): Promise<Error | null> {
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .upsert({ user_id: userId, ...fields }, { onConflict: 'user_id' });
+    return error ? new Error(error.message) : null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
+  }
+}
+
 export const useProfileStore = create<ProfileState>((set) => ({
   name: null,
   dailyReminderEnabled: true,
-  isLoading: false,
-  isInitialized: false,
+  loadStatus: 'idle',
+  isSaving: false,
 
   loadProfile: async () => {
-    set({ isLoading: true });
+    set({ loadStatus: 'loading' });
 
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ isLoading: false, isInitialized: true });
-      return;
-    }
+    try {
+      const userId = sessionUserId();
+      if (!userId) {
+        // Signed out: routing sends this to login, not onboarding.
+        set({ name: null, dailyReminderEnabled: true, loadStatus: 'ready' });
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('name, daily_reminder_enabled')
-      .eq('user_id', user.id)
-      .single();
+      // maybeSingle: 0 rows is data=null with NO error (a new user),
+      // so any error here is a real failure.
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('name, daily_reminder_enabled')
+        .eq('user_id', userId)
+        .maybeSingle();
 
-    // PGRST116 = "no rows returned" which is fine for new users
-    if (error && error.code !== 'PGRST116') {
+      if (error) {
+        throw new Error(`Failed to load profile: ${error.message}`);
+      }
+
+      set({
+        name: data?.name ?? null,
+        dailyReminderEnabled: data?.daily_reminder_enabled ?? true,
+        loadStatus: 'ready',
+      });
+    } catch (error) {
       console.error('Error loading profile:', error);
+      Sentry.captureException(error, { tags: { feature: 'profile' } });
+      // Keep any previously loaded name; only the status changes.
+      set({ loadStatus: 'error' });
     }
-
-    set({
-      name: data?.name ?? null,
-      dailyReminderEnabled: data?.daily_reminder_enabled ?? true,
-      isLoading: false,
-      isInitialized: true,
-    });
   },
 
   updateName: async (name: string) => {
-    set({ isLoading: true });
-
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      set({ isLoading: false });
+    const userId = sessionUserId();
+    if (!userId) {
       return { error: new Error('Not authenticated') };
     }
 
     const trimmedName = name.trim();
-    const { error } = await supabase
-      .from('user_profiles')
-      .upsert(
-        { user_id: user.id, name: trimmedName },
-        { onConflict: 'user_id' }
-      );
-
-    if (error) {
-      set({ isLoading: false });
-      return { error };
-    }
-
-    set({ name: trimmedName, isLoading: false });
-    return { error: null };
+    set({ isSaving: true });
+    const error = await upsertProfile(userId, { name: trimmedName });
+    set(error ? { isSaving: false } : { name: trimmedName, isSaving: false });
+    return { error };
   },
 
   updateDailyReminder: async (enabled: boolean) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
+    const userId = sessionUserId();
+    if (!userId) {
       return { error: new Error('Not authenticated') };
     }
 
-    const { error } = await supabase
-      .from('user_profiles')
-      .upsert(
-        { user_id: user.id, daily_reminder_enabled: enabled },
-        { onConflict: 'user_id' }
-      );
-
-    if (error) {
-      return { error };
+    const error = await upsertProfile(userId, { daily_reminder_enabled: enabled });
+    if (!error) {
+      set({ dailyReminderEnabled: enabled });
     }
-
-    set({ dailyReminderEnabled: enabled });
-    return { error: null };
+    return { error };
   },
 
   reset: () => {
-    set({ name: null, dailyReminderEnabled: true, isLoading: false, isInitialized: false });
+    set({ name: null, dailyReminderEnabled: true, loadStatus: 'idle', isSaving: false });
   },
 }));

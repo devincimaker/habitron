@@ -10,7 +10,7 @@ export default function NameOnboardingScreen() {
   const [styles] = useThemedStyles(createStyles);
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const { updateName, isLoading } = useProfileStore();
+  const { updateName, isSaving } = useProfileStore();
   const router = useRouter();
 
   const handleContinue = async () => {
@@ -62,8 +62,8 @@ export default function NameOnboardingScreen() {
             <Button
               title="Continue"
               onPress={handleContinue}
-              loading={isLoading}
-              disabled={isLoading || !name.trim()}
+              loading={isSaving}
+              disabled={isSaving || !name.trim()}
               size="lg"
               fullWidth
             />
