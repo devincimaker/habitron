@@ -19,6 +19,10 @@ export default function TabLayout() {
   return (
     <Tabs
       tabBar={(props) => <CustomTabBar {...props as any} />}
+      // Work around react-navigation/react-navigation#12755: with a tab
+      // `animation` set, react-native-screens can detach a newly mounted
+      // scene mid-transition, leaving the screen blank until it is revisited.
+      detachInactiveScreens={false}
       screenOptions={{
         headerStyle: styles.header,
         headerTitleStyle: styles.headerTitle,
