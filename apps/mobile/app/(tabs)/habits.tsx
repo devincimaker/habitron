@@ -27,12 +27,13 @@ import type {
 import { HabitEditorModal } from '../../components/HabitEditorModal';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
 import { HabitItem } from '../../components/HabitItem';
+import { HeaderIconButton } from '../../components/HeaderIconButton';
 import { MiniCalendar } from '../../components/MiniCalendar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
-import { BORDER_RADIUS, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
+import { HEADER, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import {
   canGoToNextDay,
   canGoToPreviousDay,
@@ -86,19 +87,16 @@ export default function HabitsScreen() {
     navigation.setOptions({
       headerRight: () => (
         <View style={styles.headerActions}>
-          <Pressable
-            style={styles.headerManagerButton}
-            onPress={() => setShowHabitManager(true)}
-            accessibilityRole="button"
+          <HeaderIconButton
+            name="book-outline"
             accessibilityLabel="Open habit manager"
-          >
-            <Ionicons name="book-outline" size={20} color={colors.text} />
-          </Pressable>
+            onPress={() => setShowHabitManager(true)}
+          />
           <ProfileHeaderButton />
         </View>
       ),
     });
-  }, [colors.text, navigation, styles]);
+  }, [navigation, styles]);
 
   const handleRefresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -378,17 +376,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  headerManagerButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    marginRight: SPACING.sm,
+    gap: HEADER.controlGap,
   },
   fab: {
     position: 'absolute',

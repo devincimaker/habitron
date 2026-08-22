@@ -3,8 +3,12 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import { Avatar } from './ui';
 import { useAuthStore } from '../stores/useAuthStore';
-import { HEADER, SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import {
+  HEADER,
+  HEADER_CONTROL_HIT_SLOP,
+  type Colors,
+} from '../constants/theme';
+import { useThemedStyles } from '../hooks/useColors';
 
 export function ProfileHeaderButton() {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -20,14 +24,17 @@ export function ProfileHeaderButton() {
     <TouchableOpacity
       onPress={handlePress}
       style={styles.container}
-      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+      hitSlop={HEADER_CONTROL_HIT_SLOP}
       activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel="Open profile"
     >
       <Avatar
         text={user?.email || '?'}
         size="sm"
         backgroundColor={colors.primary}
         textColor={colors.white}
+        textStyle={styles.initial}
       />
     </TouchableOpacity>
   );
@@ -35,9 +42,12 @@ export function ProfileHeaderButton() {
 
 const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
-    height: HEADER.height,
-    marginRight: SPACING.md,
+    marginRight: HEADER.edgeMargin,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  initial: {
+    fontSize: 13,
+    fontWeight: '600',
   },
 });

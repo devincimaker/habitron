@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, ViewStyle } from 'react-native';
+import { View, Text, StyleSheet, TextStyle, ViewStyle } from 'react-native';
 import { AVATAR_SIZES } from '../../constants/theme';
 import { useColors } from '../../hooks/useColors';
 
@@ -10,6 +10,7 @@ interface AvatarProps {
   backgroundColor?: string;
   textColor?: string;
   style?: ViewStyle;
+  textStyle?: TextStyle;
 }
 
 export function Avatar({
@@ -18,6 +19,7 @@ export function Avatar({
   backgroundColor,
   textColor,
   style,
+  textStyle,
 }: AvatarProps) {
   const colors = useColors();
   const sizeConfig = AVATAR_SIZES[size];
@@ -46,6 +48,7 @@ export function Avatar({
             fontSize: sizeConfig.fontSize,
             color: textColor ?? colors.white,
           },
+          textStyle,
         ]}
       >
         {avatarText}

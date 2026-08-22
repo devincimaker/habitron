@@ -7,6 +7,7 @@ export const COLORS_LIGHT = {
   surface: "#F5F5F5",
 
   text: "#333333",
+  textStrong: "#1C1C1E", // iOS label — navigation bar titles
   textSecondary: "#666666",
   textLight: "#999999",
 
@@ -19,6 +20,9 @@ export const COLORS_LIGHT = {
   black: "#000000",
 
   border: "#E0E0E0",
+  hairline: "rgba(60, 60, 67, 0.29)", // iOS separator
+  controlFill: "rgba(120, 120, 128, 0.12)", // iOS tertiary system fill
+  controlIcon: "#3A3A3C",
   shadow: "rgba(0, 0, 0, 0.1)",
   overlay: "rgba(255, 255, 255, 0.2)",
   backdrop: "rgba(0, 0, 0, 0.5)",
@@ -33,6 +37,7 @@ export const COLORS_DARK: Colors = {
   surface: "#2C2C2E",
 
   text: "#F5F5F5",
+  textStrong: "#F5F5F5",
   textSecondary: "#ADADAD",
   textLight: "#8E8E93",
 
@@ -45,6 +50,9 @@ export const COLORS_DARK: Colors = {
   black: "#000000",
 
   border: "#38383A",
+  hairline: "rgba(84, 84, 88, 0.65)",
+  controlFill: "rgba(120, 120, 128, 0.24)",
+  controlIcon: "#EBEBF0",
   shadow: "rgba(0, 0, 0, 0.3)",
   overlay: "rgba(255, 255, 255, 0.1)",
   backdrop: "rgba(0, 0, 0, 0.7)",
@@ -193,5 +201,26 @@ export const TAB_BAR = {
 // Header (iOS navigation bar)
 export const HEADER = {
   height: 44, // iOS standard navigation bar content height
-  profileButtonSize: 32,
+  // Trailing controls share one language: 32pt circles, 12pt apart,
+  // 16pt from the screen edge, each expanded to 44pt via hitSlop.
+  controlSize: 32,
+  controlRadius: 16,
+  controlGap: 12,
+  controlIconSize: 18,
+  edgeMargin: SPACING.md,
+  title: {
+    fontSize: FONT_SIZES.body, // 17
+    fontWeight: "600" as const,
+    letterSpacing: -0.43, // SF Pro Text @ 17pt
+  },
+} as const;
+
+// Grows a 32pt header control to the 44pt minimum touch target
+const HEADER_CONTROL_SLOP = (TOUCH_TARGET.min - HEADER.controlSize) / 2;
+
+export const HEADER_CONTROL_HIT_SLOP = {
+  top: HEADER_CONTROL_SLOP,
+  bottom: HEADER_CONTROL_SLOP,
+  left: HEADER_CONTROL_SLOP,
+  right: HEADER_CONTROL_SLOP,
 } as const;

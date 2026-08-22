@@ -4,7 +4,7 @@ import * as Haptics from 'expo-haptics';
 import { CustomTabBar } from '../../components/CustomTabBar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { useSessionStore } from '../../stores/useSessionStore';
-import { type Colors } from '../../constants/theme';
+import { HEADER, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
 export const unstable_settings = {
@@ -26,6 +26,8 @@ export default function TabLayout() {
       screenOptions={{
         headerStyle: styles.header,
         headerTitleStyle: styles.headerTitle,
+        headerTitleAlign: 'center',
+        headerShadowVisible: false,
         headerRight: () => <ProfileHeaderButton />,
         animation: 'fade',
       }}
@@ -104,9 +106,12 @@ export default function TabLayout() {
 const createStyles = (colors: Colors) => StyleSheet.create({
   header: {
     backgroundColor: colors.background,
+    // iOS hairline separator instead of the default shadow
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.hairline,
   },
   headerTitle: {
-    color: colors.text,
-    fontWeight: '600',
+    ...HEADER.title,
+    color: colors.textStrong,
   },
 });
