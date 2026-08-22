@@ -11,22 +11,9 @@ cp apps/mcp/.env.example apps/mcp/.env   # fill in values
 pnpm --filter @habits-coach/mcp start     # stdio server
 ```
 
-Register with Claude Code (user scope, so it is available from any directory):
+The server is registered project-scoped from the `~/Coach` folder (its `.mcp.json` points at this entrypoint), so it loads only for terminals opened there. The coaching skills (`/plan-day`, `/review-day`) live in `~/Coach/.claude/skills`, not in this repo — this package is tools only.
 
-```bash
-claude mcp add --scope user habitron -- npx tsx /path/to/thrive/apps/mcp/src/index.ts
-```
-
-Then in any session: `/mcp__habitron__plan_day` or `/mcp__habitron__review_day`.
-
-## Surface
-
-Prompts (the "skills"):
-
-- `plan_day [date]` — intake → draft → confirm → `save_day_plan`
-- `review_day [date]` — record outcomes, journal, durable lessons
-
-Tools:
+## Tools
 
 | Read | Write |
 | --- | --- |
@@ -41,6 +28,5 @@ Tools:
 
 - `src/db.ts` — Supabase reads/writes, one function per operation
 - `src/context.ts` — builds the compact day packet (`get_day_context`)
-- `src/server.ts` — tool and prompt registration (zod-validated)
-- `src/prompts.ts` — the planning and review prompts
+- `src/server.ts` — tool registration (zod-validated)
 - `src/time.ts` — timezone-aware "today", weekday, week range helpers

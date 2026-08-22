@@ -82,7 +82,7 @@ xcrun simctl openurl "$UDID" "exp+habits-coach://expo-development-client/?url=ht
 
 ## MCP server (`apps/mcp`)
 
-Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio MCP server so day planning can happen in a strong model with calendar/Linear/email context. See `apps/mcp/README.md` for the tool surface, the `plan_day` / `review_day` prompts, and registration. It needs `apps/mcp/.env` (Supabase service role + `HABITRON_USER_ID`).
+Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio MCP server so day planning can happen in a strong model with calendar/Linear/email context. See `apps/mcp/README.md` for the tool surface. The coaching skills that drive it live outside this repo in `~/Coach/.claude/skills`, and `~/Coach/.mcp.json` registers the server. It needs `apps/mcp/.env` (Supabase service role + `HABITRON_USER_ID`).
 
 ## Supabase Migrations
 

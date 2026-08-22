@@ -2,8 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import * as db from './db.js';
-import { PLAN_DAY_PROMPT, REVIEW_DAY_PROMPT } from './prompts.js';
-import { isIsoDate, localNow, today } from './time.js';
+import { isIsoDate, today } from './time.js';
 
 const dateSchema = z
   .string()
@@ -356,42 +355,6 @@ export function createServer(): McpServer {
       annotations: { destructiveHint: true },
     },
     ({ id }) => run(async () => ({ deleted: id, ...(await db.deleteMemory(id), {}) }))
-  );
-
-  // ---------------------------------------------------------------- prompts
-
-  server.registerPrompt(
-    'plan_day',
-    {
-      title: 'Plan my day',
-      description: 'Run a collaborative day-planning session and save the accepted plan.',
-      argsSchema: { date: z.string().optional().describe('YYYY-MM-DD, defaults to today') },
-    },
-    ({ date }) => ({
-      messages: [
-        {
-          role: 'user',
-          content: { type: 'text', text: PLAN_DAY_PROMPT(date || today(), localNow()) },
-        },
-      ],
-    })
-  );
-
-  server.registerPrompt(
-    'review_day',
-    {
-      title: 'Review my day',
-      description: 'Close out a day: record outcomes, capture a short journal entry, and note durable lessons.',
-      argsSchema: { date: z.string().optional().describe('YYYY-MM-DD, defaults to today') },
-    },
-    ({ date }) => ({
-      messages: [
-        {
-          role: 'user',
-          content: { type: 'text', text: REVIEW_DAY_PROMPT(date || today(), localNow()) },
-        },
-      ],
-    })
   );
 
   return server;
