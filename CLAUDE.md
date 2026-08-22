@@ -80,6 +80,10 @@ xcrun simctl openurl "$UDID" "exp+habits-coach://expo-development-client/?url=ht
 - Expo's deep links can open on any booted simulator with the app installed, not the one you specified. Using `--no-bundler` and launching by UDID ensures the correct simulator.
 - The Dev Client discovers all Metro bundlers on the network. Using `openurl` with the specific port URL forces it to connect to the correct one instead of showing a picker or auto-connecting to the wrong server.
 
+## MCP server (`apps/mcp`)
+
+Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio MCP server so day planning can happen in a strong model with calendar/Linear/email context. See `apps/mcp/README.md` for the tool surface, the `plan_day` / `review_day` prompts, and registration. It needs `apps/mcp/.env` (Supabase service role + `HABITRON_USER_ID`).
+
 ## Supabase Migrations
 
 When pushing database migrations:
