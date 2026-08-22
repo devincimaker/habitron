@@ -2,6 +2,7 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import * as db from './db.js';
+import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
 import { isIsoDate, today } from './time.js';
 
 const dateSchema = z
@@ -108,6 +109,44 @@ export function createServer(): McpServer {
       annotations: { readOnlyHint: true },
     },
     ({ includeInactive }) => run(() => db.listHabits(includeInactive ?? false))
+  );
+
+  server.registerTool(
+    'get_habit_history',
+    {
+      title: 'Get habit history',
+      description:
+        'How habits have actually gone over a window (default 30 days, max 365): per habit, expected vs completed, completion rate, current/longest streak, first-half vs second-half trend, completion by weekday, quantity totals, and a day-by-day grid. Use for "how are my habits going?", spotting patterns, and deciding what to change.',
+      inputSchema: {
+        days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30'),
+        habitId: z.string().uuid().optional().describe('Limit to one habit (includes archived ones)'),
+      },
+      annotations: { readOnlyHint: true },
+    },
+    ({ days, habitId }) => run(() => buildHabitHistory({ days: days ?? 30, habitId }))
+  );
+
+  server.registerTool(
+    'get_task_history',
+    {
+      title: 'Get task history',
+      description:
+        'What got done over a window (default 30 days, max 365): completed/canceled/created counts, completions per weekday and time of day, estimate-vs-actual accuracy, plan outcome tallies, open-task age, and the list of completed tasks with times. Use to understand real capacity and rhythms before planning.',
+      inputSchema: { days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30') },
+      annotations: { readOnlyHint: true },
+    },
+    ({ days }) => run(() => buildTaskHistory({ days: days ?? 30 }))
+  );
+
+  server.registerTool(
+    'get_journal_history',
+    {
+      title: 'Get journal history',
+      description: 'Journal entries and mood counts over a window (default 30 days, max 365).',
+      inputSchema: { days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30') },
+      annotations: { readOnlyHint: true },
+    },
+    ({ days }) => run(() => buildJournalHistory({ days: days ?? 30 }))
   );
 
   server.registerTool(

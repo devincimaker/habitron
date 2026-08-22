@@ -19,7 +19,7 @@ The server is registered project-scoped from the `~/Coach` folder (its `.mcp.jso
 | --- | --- |
 | `get_day_context` (the planning packet) | `create_task`, `update_task`, `set_task_status`, `delete_task` |
 | `list_tasks`, `list_habits`, `list_memories` | `log_habit` |
-| `get_plan_history` | `save_day_plan`, `set_plan_item_outcome` |
+| `get_habit_history`, `get_task_history`, `get_journal_history`, `get_plan_history` (learning from the past) | `save_day_plan`, `set_plan_item_outcome` |
 | | `add_journal_entry`, `add_memory`, `delete_memory` |
 
 `save_day_plan` enforces the invariant from `docs/v1-coach-planning-implementation-plan.md`: every todo item in an accepted plan is also scheduled on that date at the item's time, so the plan and the Tasks screen never drift. Saving again for the same date supersedes the previous version and links it via `parentPlanId`.
@@ -28,5 +28,6 @@ The server is registered project-scoped from the `~/Coach` folder (its `.mcp.jso
 
 - `src/db.ts` — Supabase reads/writes, one function per operation
 - `src/context.ts` — builds the compact day packet (`get_day_context`)
+- `src/history.ts` — habit / task / journal history and stats over a window
 - `src/server.ts` — tool registration (zod-validated)
 - `src/time.ts` — timezone-aware "today", weekday, week range helpers
