@@ -62,6 +62,25 @@ describe('taskQuickCreateTags', () => {
     });
   });
 
+  it('parses a parenthesised duration into the estimate and strips it from the title', () => {
+    expect(buildQuickCreateTodoDraft('Renew car insurance (1h 50m) 14:00 #admin')).toEqual({
+      title: 'Renew car insurance',
+      tagNames: ['admin'],
+      scheduledDate: '2026-04-16',
+      scheduledTime: '14:00',
+      estimateMinutes: 110,
+    });
+  });
+
+  it('highlights both the scheduled time and the estimate', () => {
+    expect(getQuickCreateTextSegments('Swim (45m) at 18:30')).toEqual([
+      { text: 'Swim ', kind: 'default' },
+      { text: '(45m)', kind: 'estimate' },
+      { text: ' at ', kind: 'default' },
+      { text: '18:30', kind: 'scheduledTime' },
+    ]);
+  });
+
   it('uses the provided default scheduled date for calendar quick create', () => {
     expect(
       buildQuickCreateTodoDraft('Write launch copy #brand', '2026-04-20')

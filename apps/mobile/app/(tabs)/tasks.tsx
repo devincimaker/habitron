@@ -12,7 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
-import { TaskRow } from '../../components/TaskRow';
+import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyLarge, BodyMedium, Card } from '../../components/ui';
@@ -125,10 +125,10 @@ export default function TasksScreen() {
   );
 
   const handleToggleTodoStatus = useCallback(
-    async (todo: Todo) => {
+    async (todo: Todo, options?: TaskStatusToggleOptions) => {
       try {
         const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
-        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus);
+        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus, options);
 
         await syncTodoPlanOutcome(
           todo.scheduledDate,

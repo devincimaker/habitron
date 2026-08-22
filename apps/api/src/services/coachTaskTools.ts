@@ -22,6 +22,7 @@ interface DbTodoRow {
   scheduled_date: string | null;
   scheduled_time: string | null;
   estimate_minutes: number | null;
+  actual_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
   sort_order: number;
@@ -39,6 +40,7 @@ export interface CoachTaskRecord {
   scheduledDate?: string;
   scheduledTime?: string;
   estimateMinutes?: number;
+  actualMinutes?: number;
   sortOrder: number;
   createdAt: number;
   updatedAt: number;
@@ -91,6 +93,7 @@ function mapTodoToCoachTask(todo: Todo): CoachTaskRecord {
     scheduledDate: todo.scheduledDate,
     scheduledTime: todo.scheduledTime,
     estimateMinutes: todo.estimateMinutes,
+    actualMinutes: todo.actualMinutes,
     sortOrder: todo.sortOrder,
     createdAt: todo.createdAt,
     updatedAt: todo.updatedAt,
@@ -108,6 +111,7 @@ function mapDbTodoToCoachTask(todo: DbTodoRow): CoachTaskRecord {
     scheduledDate: todo.scheduled_date ?? undefined,
     scheduledTime: todo.scheduled_time ?? undefined,
     estimateMinutes: todo.estimate_minutes ?? undefined,
+    actualMinutes: todo.actual_minutes ?? undefined,
     sortOrder: todo.sort_order,
     createdAt: new Date(todo.created_at).getTime(),
     updatedAt: new Date(todo.updated_at).getTime(),
@@ -155,7 +159,7 @@ async function fetchCoachTasks(source: TaskToolInputSource): Promise<CoachTaskRe
     const { data, error } = await supabase
       .from('todos')
       .select(
-        'id, user_id, goal_id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, completed_at, canceled_at, sort_order, created_at, updated_at'
+        'id, user_id, goal_id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at'
       )
       .eq('user_id', source.userId);
 
@@ -301,6 +305,7 @@ function toTaskToolPayload(task: CoachTaskRecord): Record<string, unknown> {
     scheduledDate: task.scheduledDate ?? null,
     scheduledTime: task.scheduledTime ?? null,
     estimateMinutes: task.estimateMinutes ?? null,
+    actualMinutes: task.actualMinutes ?? null,
     sortOrder: task.sortOrder,
     createdAt: new Date(task.createdAt).toISOString(),
     updatedAt: new Date(task.updatedAt).toISOString(),

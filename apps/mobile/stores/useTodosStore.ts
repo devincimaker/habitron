@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Todo, TodoDraft, TodoList, TodoStatus, TodoTag } from '@habits-coach/shared';
 import * as todosService from '../services/todos';
+import type { TodoStatusOptions } from '../services/todos';
 import { getTodoTagColor } from '../utils/todoTagColors';
 import { compareTodoScheduledTimes, resolveNewTodoSchedule } from '../utils/todoTime';
 
@@ -13,8 +14,12 @@ interface TodosState {
   addTodo: (todo: TodoDraft) => Promise<Todo>;
   addTodoOptimistic: (todo: TodoDraft) => Promise<Todo>;
   updateTodo: (todoId: string, changes: Partial<TodoDraft>) => Promise<Todo>;
-  setTodoStatus: (todoId: string, status: TodoStatus) => Promise<Todo>;
-  setTodoStatusOptimistic: (todoId: string, status: TodoStatus) => Promise<Todo>;
+  setTodoStatus: (todoId: string, status: TodoStatus, options?: TodoStatusOptions) => Promise<Todo>;
+  setTodoStatusOptimistic: (
+    todoId: string,
+    status: TodoStatus,
+    options?: TodoStatusOptions
+  ) => Promise<Todo>;
   removeTodo: (todoId: string) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
@@ -121,7 +126,11 @@ function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: T
   };
 }
 
-function applyOptimisticTodoStatus(todo: Todo, status: TodoStatus): Todo {
+function applyOptimisticTodoStatus(
+  todo: Todo,
+  status: TodoStatus,
+  options: TodoStatusOptions
+): Todo {
   const now = Date.now();
 
   return {
@@ -129,6 +138,7 @@ function applyOptimisticTodoStatus(todo: Todo, status: TodoStatus): Todo {
     status,
     completedAt: status === 'completed' ? now : undefined,
     canceledAt: status === 'canceled' ? now : undefined,
+    actualMinutes: status === 'completed' ? options.actualMinutes : undefined,
     updatedAt: now,
   };
 }
@@ -209,29 +219,29 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     return updatedTodo;
   },
 
-  setTodoStatus: async (todoId, status) => {
-    const updatedTodo = await todosService.setTodoStatus(todoId, status);
+  setTodoStatus: async (todoId, status, options = {}) => {
+    const updatedTodo = await todosService.setTodoStatus(todoId, status, options);
     set((state) => ({
       todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
     }));
     return updatedTodo;
   },
 
-  setTodoStatusOptimistic: async (todoId, status) => {
+  setTodoStatusOptimistic: async (todoId, status, options = {}) => {
     const existingTodo = get().todos.find((todo) => todo.id === todoId);
 
     if (!existingTodo) {
-      return get().setTodoStatus(todoId, status);
+      return get().setTodoStatus(todoId, status, options);
     }
 
-    const optimisticTodo = applyOptimisticTodoStatus(existingTodo, status);
+    const optimisticTodo = applyOptimisticTodoStatus(existingTodo, status, options);
 
     set((state) => ({
       todos: state.todos.map((todo) => (todo.id === todoId ? optimisticTodo : todo)),
     }));
 
     try {
-      const updatedTodo = await todosService.setTodoStatus(todoId, status);
+      const updatedTodo = await todosService.setTodoStatus(todoId, status, options);
       set((state) => ({
         todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
       }));

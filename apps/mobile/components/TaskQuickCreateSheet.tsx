@@ -247,7 +247,9 @@ export function TaskQuickCreateSheet({
                       style={
                         segment.kind === 'scheduledTime'
                           ? styles.inputHighlightScheduledTime
-                          : styles.inputHighlightDefault
+                          : segment.kind === 'estimate'
+                            ? styles.inputHighlightEstimate
+                            : styles.inputHighlightDefault
                       }
                     >
                       {segment.text}
@@ -441,6 +443,10 @@ const createStyles = (colors: Colors) =>
     },
     inputHighlightScheduledTime: {
       color: '#2F80ED',
+      fontWeight: '600',
+    },
+    inputHighlightEstimate: {
+      color: colors.textSecondary,
       fontWeight: '600',
     },
     inputWithHighlightOverlay: {

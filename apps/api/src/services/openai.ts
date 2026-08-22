@@ -234,7 +234,8 @@ function formatCoachTaskLine(task: CoachTaskOverview['sampleOpenTasks'][number])
     task.dueDate ? `due ${task.dueDate}` : null,
     task.scheduledDate ? `scheduled ${task.scheduledDate}` : null,
     task.scheduledTime ? `at ${task.scheduledTime}` : null,
-    task.estimateMinutes ? `${task.estimateMinutes}m` : null,
+    task.estimateMinutes ? `est ${task.estimateMinutes}m` : null,
+    task.actualMinutes ? `actual ${task.actualMinutes}m` : null,
   ]
     .filter(Boolean)
     .join(', ');

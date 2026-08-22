@@ -20,6 +20,7 @@ import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { SectionHeader } from '../../components/SectionHeader';
 import {
   TaskRow,
+  type TaskStatusToggleOptions,
   type TaskRowDragMoveEvent,
   type TaskRowDragStartEvent,
 } from '../../components/TaskRow';
@@ -152,10 +153,10 @@ export default function CalendarScreen() {
   );
 
   const handleToggleTodoStatus = useCallback(
-    async (todo: Todo) => {
+    async (todo: Todo, options?: TaskStatusToggleOptions) => {
       try {
         const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
-        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus);
+        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus, options);
 
         await syncTodoPlanOutcome(
           todo.scheduledDate,

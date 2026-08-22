@@ -110,6 +110,8 @@ export interface Todo {
   scheduledDate?: string;
   scheduledTime?: string;
   estimateMinutes?: number;
+  /** Minutes the task actually took, recorded when it is completed. */
+  actualMinutes?: number;
   completedAt?: number;
   canceledAt?: number;
   sortOrder: number;

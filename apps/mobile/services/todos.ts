@@ -45,8 +45,8 @@ interface DbTodo {
   due_date: string | null;
   scheduled_date: string | null;
   scheduled_time: string | null;
-  scheduled_block?: 'morning' | 'afternoon' | 'evening' | null;
   estimate_minutes: number | null;
+  actual_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
   sort_order: number;
@@ -93,8 +93,6 @@ function mapDbTodoTagToTodoTag(tag: DbTodoTag): TodoTag {
 }
 
 function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
-  const scheduledTime = todo.scheduled_time ?? mapLegacyScheduledBlockToTime(todo.scheduled_block);
-
   return {
     id: todo.id,
     title: todo.title,
@@ -103,8 +101,9 @@ function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
     priority: todo.priority ?? undefined,
     dueDate: todo.due_date ?? undefined,
     scheduledDate: todo.scheduled_date ?? undefined,
-    scheduledTime: scheduledTime ?? undefined,
+    scheduledTime: todo.scheduled_time ?? undefined,
     estimateMinutes: todo.estimate_minutes ?? undefined,
+    actualMinutes: todo.actual_minutes ?? undefined,
     completedAt: todo.completed_at ? new Date(todo.completed_at).getTime() : undefined,
     canceledAt: todo.canceled_at ? new Date(todo.canceled_at).getTime() : undefined,
     sortOrder: todo.sort_order,
@@ -126,72 +125,12 @@ function serializeScheduledTime(time?: string): string | null {
   return normalizedTime ?? null;
 }
 
-function mapLegacyScheduledBlockToTime(
-  block?: DbTodo['scheduled_block']
-): string | null {
-  switch (block) {
-    case 'morning':
-      return '09:00';
-    case 'afternoon':
-      return '13:00';
-    case 'evening':
-      return '18:00';
-    default:
-      return null;
-  }
-}
-
-function mapScheduledTimeToLegacyBlock(time?: string | null): DbTodo['scheduled_block'] {
-  const normalizedTime = normalizeTodoScheduledTimeInput(time);
-
-  if (!normalizedTime) {
-    return null;
-  }
-
-  const hour = Number.parseInt(normalizedTime.slice(0, 2), 10);
-
-  if (hour < 12) {
-    return 'morning';
-  }
-
-  if (hour < 17) {
-    return 'afternoon';
-  }
-
-  return 'evening';
-}
-
-function isMissingScheduledTimeSchemaError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') {
-    return false;
-  }
-
-  const maybeError = error as { code?: unknown; message?: unknown };
-  return maybeError.code === 'PGRST204'
-    && typeof maybeError.message === 'string'
-    && maybeError.message.includes("'scheduled_time'");
-}
-
 async function insertTodoRow(payload: Record<string, unknown>): Promise<DbTodo> {
-  let { data, error } = await supabase
+  const { data, error } = await supabase
     .from('todos')
     .insert(payload)
     .select()
     .single();
-
-  if (isMissingScheduledTimeSchemaError(error)) {
-    const fallbackPayload: Record<string, unknown> = {
-      ...payload,
-      scheduled_block: mapScheduledTimeToLegacyBlock((payload.scheduled_time as string | null | undefined) ?? null),
-    };
-    delete fallbackPayload.scheduled_time;
-
-    ({ data, error } = await supabase
-      .from('todos')
-      .insert(fallbackPayload)
-      .select()
-      .single());
-  }
 
   if (error) {
     console.error('Error adding todo:', error);
@@ -202,23 +141,10 @@ async function insertTodoRow(payload: Record<string, unknown>): Promise<DbTodo> 
 }
 
 async function updateTodoRow(todoId: string, payload: Partial<DbTodo>): Promise<void> {
-  let { error } = await supabase
+  const { error } = await supabase
     .from('todos')
     .update(payload)
     .eq('id', todoId);
-
-  if (isMissingScheduledTimeSchemaError(error)) {
-    const fallbackPayload = {
-      ...payload,
-      scheduled_block: mapScheduledTimeToLegacyBlock(payload.scheduled_time),
-    };
-    delete fallbackPayload.scheduled_time;
-
-    ({ error } = await supabase
-      .from('todos')
-      .update(fallbackPayload)
-      .eq('id', todoId));
-  }
 
   if (error) {
     console.error('Error updating todo:', error);
@@ -696,32 +622,25 @@ export async function updateTodo(
   return getTodoById(todoId);
 }
 
-export async function setTodoStatus(todoId: string, status: TodoStatus): Promise<Todo> {
+export interface TodoStatusOptions {
+  /** Minutes the task actually took. Only stored when the status is 'completed'. */
+  actualMinutes?: number;
+}
+
+export async function setTodoStatus(
+  todoId: string,
+  status: TodoStatus,
+  options: TodoStatusOptions = {}
+): Promise<Todo> {
   const now = new Date().toISOString();
   const updateData: Partial<DbTodo> = {
     status,
+    completed_at: status === 'completed' ? now : null,
+    canceled_at: status === 'canceled' ? now : null,
+    actual_minutes: status === 'completed' ? options.actualMinutes ?? null : null,
   };
 
-  if (status === 'completed') {
-    updateData.completed_at = now;
-    updateData.canceled_at = null;
-  } else if (status === 'canceled') {
-    updateData.completed_at = null;
-    updateData.canceled_at = now;
-  } else {
-    updateData.completed_at = null;
-    updateData.canceled_at = null;
-  }
-
-  const { error } = await supabase
-    .from('todos')
-    .update(updateData)
-    .eq('id', todoId);
-
-  if (error) {
-    console.error('Error updating todo status:', error);
-    throw error;
-  }
+  await updateTodoRow(todoId, updateData);
 
   return getTodoById(todoId);
 }

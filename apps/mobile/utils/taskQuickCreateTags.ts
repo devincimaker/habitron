@@ -1,4 +1,5 @@
 import type { TodoDraft } from '@habits-coach/shared';
+import { getInlineEstimateContext, stripInlineEstimateToken } from './todoEstimate';
 import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from './todoTime';
 
 export interface TextSelectionRange {
@@ -22,7 +23,7 @@ export interface InlineScheduledTimeContext {
 
 export interface QuickCreateTextSegment {
   text: string;
-  kind: 'default' | 'scheduledTime';
+  kind: 'default' | 'scheduledTime' | 'estimate';
 }
 
 const INLINE_TAG_TOKEN_PATTERN = /^#[\p{L}\p{N}_-]*$/u;
@@ -126,7 +127,10 @@ export function buildQuickCreateTodoDraft(
     return null;
   }
 
-  const title = stripInlineTagTokens(stripInlineScheduledTimeToken(text));
+  const estimate = getInlineEstimateContext(text);
+  const title = stripInlineTagTokens(
+    stripInlineScheduledTimeToken(stripInlineEstimateToken(text))
+  );
   if (!title) {
     return null;
   }
@@ -136,33 +140,36 @@ export function buildQuickCreateTodoDraft(
     title,
     ...(tagNames.length > 0 ? { tagNames } : {}),
     ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
+    ...(estimate ? { estimateMinutes: estimate.minutes } : {}),
   };
 }
 
 export function getQuickCreateTextSegments(text: string): QuickCreateTextSegment[] {
   const scheduledTime = getInlineScheduledTimeContext(text);
-  if (!scheduledTime) {
+  const estimate = getInlineEstimateContext(text);
+  const highlights = [
+    scheduledTime ? { ...scheduledTime, kind: 'scheduledTime' as const } : null,
+    estimate ? { ...estimate, kind: 'estimate' as const } : null,
+  ]
+    .filter((highlight): highlight is NonNullable<typeof highlight> => highlight !== null)
+    .sort((left, right) => left.start - right.start);
+
+  if (highlights.length === 0) {
     return [{ text, kind: 'default' }];
   }
 
   const segments: QuickCreateTextSegment[] = [];
-  if (scheduledTime.start > 0) {
-    segments.push({
-      text: text.slice(0, scheduledTime.start),
-      kind: 'default',
-    });
+  let cursor = 0;
+  for (const highlight of highlights) {
+    if (highlight.start > cursor) {
+      segments.push({ text: text.slice(cursor, highlight.start), kind: 'default' });
+    }
+    segments.push({ text: text.slice(highlight.start, highlight.end), kind: highlight.kind });
+    cursor = highlight.end;
   }
 
-  segments.push({
-    text: text.slice(scheduledTime.start, scheduledTime.end),
-    kind: 'scheduledTime',
-  });
-
-  if (scheduledTime.end < text.length) {
-    segments.push({
-      text: text.slice(scheduledTime.end),
-      kind: 'default',
-    });
+  if (cursor < text.length) {
+    segments.push({ text: text.slice(cursor), kind: 'default' });
   }
 
   return segments;
