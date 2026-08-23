@@ -12,6 +12,7 @@
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",
+    "build:device": "EXPO_PUBLIC_API_URL=https://thrive-api-un4s.onrender.com expo run:ios --device --configuration Release",
     "build:ios": "node scripts/build-ios.js",
     "submit:ios": "node scripts/submit-ios.js"
   },

@@ -9,6 +9,11 @@ pnpm dev
 
 In worktrees, this will use the `IOS_SIMULATOR` and `EXPO_PORT` values from `apps/mobile/.env`.
 
+To install a Release build on a physical iPhone without EAS (Xcode automatic signing, hosted API URL baked in):
+```bash
+cd apps/mobile && pnpm build:device
+```
+
 ## Worktrees
 
 Use the repo-owned command to create worktrees:
