@@ -10,8 +10,25 @@ export interface UserProfile {
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | { [key: string]: JsonValue } | JsonValue[];
 
-export type HabitFrequency = 'daily' | 'weekly';
-export type HabitTimeOfDay = 'morning' | 'afternoon' | 'evening' | 'anytime';
+export type HabitFrequency = 'daily' | 'weekly' | 'interval';
+export type HabitGoalType = 'boolean' | 'quantity';
+export type HabitCheckInMode = 'auto' | 'manual' | 'complete_all';
+export const HABIT_BUILTIN_UNITS = [
+  'Count',
+  'Cup',
+  'Milliliter',
+  'Minute',
+  'Hour',
+  'Kilometer',
+  'Page',
+] as const;
+export const HABIT_GOAL_DAY_PRESETS = [7, 21, 30, 100, 365] as const;
+export const HABIT_DEFAULT_SECTION_NAMES = [
+  'Morning',
+  'Afternoon',
+  'Night',
+  'Others',
+] as const;
 export type Priority = 1 | 2 | 3 | 4;
 export const HABIT_WEEKDAYS = [
   'Sun',
@@ -47,29 +64,67 @@ export interface GoalDraft {
 }
 
 // Habit types
-export interface Habit {
+export interface HabitSection {
   id: string;
   name: string;
+  sortOrder: number;
+}
+
+export interface HabitSchedule {
   frequency: HabitFrequency;
+  /** Daily: which weekdays the habit is due. */
   weeklyDays?: HabitWeekday[];
+  /** Weekly: how many times per week. */
   weeklyCount?: number;
-  timeOfDay?: HabitTimeOfDay;
+  /** Interval: due every N days counted from startDate. */
+  intervalDays?: number;
+  /** YYYY-MM-DD; the habit is not due before this date. */
+  startDate: string;
+  /** Number of days the habit runs from startDate; undefined = forever. */
+  goalDays?: number;
+}
+
+export interface HabitGoal {
+  goalType: HabitGoalType;
+  /** Quantity goals: amount to reach per due day. */
+  targetAmount?: number;
+  /** Quantity goals: unit label (built-in or user-defined). */
+  unit?: string;
+  checkInMode: HabitCheckInMode;
+  /** Quantity + auto check-in: amount added per check. */
+  recordIncrement?: number;
+}
+
+export interface Habit extends HabitSchedule, HabitGoal {
+  id: string;
+  name: string;
   reason?: string;
   icon?: string;
+  sectionId?: string;
+  /** Reminder times as HH:MM (24h). */
+  reminderTimes: string[];
+  constantReminder: boolean;
+  autoPopupLog: boolean;
   active: boolean;
   createdAt: number;
   updatedAt?: number;
 }
 
-export interface HabitDraft {
+export interface HabitDraft extends HabitSchedule, HabitGoal {
   name: string;
-  frequency: HabitFrequency;
-  weeklyDays?: HabitWeekday[];
-  weeklyCount?: number;
-  timeOfDay?: HabitTimeOfDay;
   reason?: string;
   icon?: string;
+  sectionId?: string;
+  reminderTimes: string[];
+  constantReminder: boolean;
+  autoPopupLog: boolean;
 }
+
+/** The habit fields the coach is allowed to propose; the rest take defaults. */
+export type CoachHabitDraft = Pick<
+  HabitDraft,
+  'name' | 'frequency' | 'weeklyDays' | 'weeklyCount' | 'intervalDays' | 'reason' | 'icon'
+>;
 
 export type HabitStatus = 'pending' | 'completed' | 'skipped';
 
@@ -77,6 +132,13 @@ export interface HabitLog {
   habitId: string;
   date: string; // YYYY-MM-DD format
   status: HabitStatus;
+  /** Accumulated amount for quantity habits; 0 for boolean habits. */
+  amount: number;
+}
+
+export interface HabitLogEntry {
+  status: HabitStatus;
+  amount: number;
 }
 
 // Todo types
@@ -245,13 +307,13 @@ export type CoachAction =
       entity: 'habit';
       operation: 'add';
       clientKey?: string;
-      habit: HabitDraft;
+      habit: CoachHabitDraft;
     }
   | {
       entity: 'habit';
       operation: 'edit';
       habitId: string;
-      changes: Partial<HabitDraft>;
+      changes: Partial<CoachHabitDraft>;
     }
   | {
       entity: 'habit';
@@ -350,6 +412,7 @@ export interface CoachingSession {
 // Habit with today's status for display
 export interface HabitWithStatus extends Habit {
   todayStatus: HabitStatus;
+  todayAmount: number;
 }
 
 // API types

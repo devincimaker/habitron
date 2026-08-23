@@ -158,7 +158,7 @@ function buildHabitsContext(habits: ChatRequest['habits']): string {
   return `## Habits\n${habits
     .map(
       (habit) =>
-        `- "${habit.name}" [id: ${habit.id}] (${habit.frequency}, ${habit.timeOfDay || 'anytime'})${habit.reason ? ` - ${habit.reason}` : ''}`
+        `- "${habit.name}" [id: ${habit.id}] (${habit.frequency})${habit.reason ? ` - ${habit.reason}` : ''}`
     )
     .join('\n')}`;
 }

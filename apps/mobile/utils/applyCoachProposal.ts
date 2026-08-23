@@ -1,19 +1,21 @@
-import type {
-  CoachProposal,
-  DailyPlanDraft,
-  DailyPlanDraftItem,
-  Goal,
-  Habit,
-  JournalEntry,
-  Todo,
+import {
+  withHabitDraftDefaults,
+  type CoachProposal,
+  type DailyPlanDraft,
+  type DailyPlanDraftItem,
+  type Goal,
+  type Habit,
+  type HabitDraft,
+  type JournalEntry,
+  type Todo,
 } from '@habits-coach/shared';
 
 interface ApplyCoachProposalDependencies {
   addGoal: (goal: any) => Promise<Goal>;
   updateGoal: (goalId: string, changes: any) => Promise<Goal>;
   archiveGoal: (goalId: string) => Promise<Goal>;
-  addHabit: (habit: any) => Promise<Habit>;
-  updateHabit: (habitId: string, changes: any) => Promise<Habit>;
+  addHabit: (habit: HabitDraft) => Promise<Habit>;
+  updateHabit: (habitId: string, changes: Partial<HabitDraft>) => Promise<Habit>;
   archiveHabit: (habitId: string) => Promise<Habit>;
   removeHabit: (habitId: string) => Promise<void>;
   addTodo: (todo: any) => Promise<Todo>;
@@ -137,7 +139,7 @@ export async function applyCoachProposal(
 
       case 'habit':
         if (action.operation === 'add') {
-          const habit = await deps.addHabit(action.habit);
+          const habit = await deps.addHabit(withHabitDraftDefaults(action.habit));
           if (action.clientKey) resolvedRefs.set(action.clientKey, habit.id);
         } else if (action.operation === 'edit') {
           await deps.updateHabit(action.habitId, action.changes);

@@ -1,7 +1,13 @@
 import { supabase } from './supabase';
 import {
+  HABIT_DEFAULT_SECTION_NAMES,
   Habit,
+  HabitCheckInMode,
   HabitDraft,
+  HabitFrequency,
+  HabitGoalType,
+  HabitLogEntry,
+  HabitSection,
   HabitStatus,
   HabitWeekday,
   getTodayDate,
@@ -13,15 +19,33 @@ interface DbHabit {
   id: string;
   user_id: string;
   name: string;
-  frequency: 'daily' | 'weekly';
+  frequency: HabitFrequency;
   weekly_days: HabitWeekday[] | null;
   weekly_count: number | null;
-  time_of_day: 'morning' | 'afternoon' | 'evening' | 'anytime' | null;
+  interval_days: number | null;
+  start_date: string;
+  goal_days: number | null;
+  goal_type: HabitGoalType;
+  target_amount: number | string | null;
+  unit: string | null;
+  check_in_mode: HabitCheckInMode;
+  record_increment: number | string | null;
+  section_id: string | null;
+  constant_reminder: boolean;
+  auto_popup_log: boolean;
   reason: string | null;
   icon: string | null;
   active: boolean;
   created_at: string;
   updated_at: string;
+  habit_reminders: { time: string }[];
+}
+
+interface DbHabitSection {
+  id: string;
+  user_id: string;
+  name: string;
+  sort_order: number;
 }
 
 interface DbHabitLog {
@@ -30,18 +54,42 @@ interface DbHabitLog {
   user_id: string;
   date: string;
   status: HabitStatus;
+  amount: number | string;
 }
 
-// Convert database row to app type
+const HABIT_SELECT = '*, habit_reminders(time)';
+
+function toNumber(value: number | string | null): number | undefined {
+  if (value === null) return undefined;
+  return typeof value === 'number' ? value : Number(value);
+}
+
+/** Postgres TIME comes back as HH:MM:SS; the app uses HH:MM. */
+function toReminderTime(time: string): string {
+  return time.slice(0, 5);
+}
+
 function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
   return {
     id: dbHabit.id,
     name: normalizeHabitName(dbHabit.name),
     frequency: dbHabit.frequency,
     weeklyDays: dbHabit.weekly_days ?? undefined,
-    weeklyCount:
-      dbHabit.weekly_count ?? (dbHabit.frequency === 'weekly' ? 1 : undefined),
-    timeOfDay: dbHabit.time_of_day ?? undefined,
+    weeklyCount: dbHabit.weekly_count ?? undefined,
+    intervalDays: dbHabit.interval_days ?? undefined,
+    startDate: dbHabit.start_date,
+    goalDays: dbHabit.goal_days ?? undefined,
+    goalType: dbHabit.goal_type,
+    targetAmount: toNumber(dbHabit.target_amount),
+    unit: dbHabit.unit ?? undefined,
+    checkInMode: dbHabit.check_in_mode,
+    recordIncrement: toNumber(dbHabit.record_increment),
+    sectionId: dbHabit.section_id ?? undefined,
+    reminderTimes: (dbHabit.habit_reminders ?? [])
+      .map((reminder) => toReminderTime(reminder.time))
+      .sort(),
+    constantReminder: dbHabit.constant_reminder,
+    autoPopupLog: dbHabit.auto_popup_log,
     reason: dbHabit.reason ?? undefined,
     icon: dbHabit.icon ?? undefined,
     active: dbHabit.active,
@@ -50,11 +98,94 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
   };
 }
 
+function mapDbSectionToSection(row: DbHabitSection): HabitSection {
+  return { id: row.id, name: row.name, sortOrder: row.sort_order };
+}
+
+function toDbHabitFields(draft: HabitDraft) {
+  const isQuantity = draft.goalType === 'quantity';
+  return {
+    name: normalizeHabitName(draft.name),
+    frequency: draft.frequency,
+    weekly_days: draft.frequency === 'daily' ? draft.weeklyDays ?? null : null,
+    weekly_count: draft.frequency === 'weekly' ? draft.weeklyCount ?? 1 : null,
+    interval_days: draft.frequency === 'interval' ? draft.intervalDays ?? 2 : null,
+    start_date: draft.startDate,
+    goal_days: draft.goalDays ?? null,
+    goal_type: draft.goalType,
+    target_amount: isQuantity ? draft.targetAmount ?? 1 : null,
+    unit: isQuantity ? draft.unit ?? 'Count' : null,
+    check_in_mode: isQuantity ? draft.checkInMode : 'auto',
+    record_increment:
+      isQuantity && draft.checkInMode === 'auto' ? draft.recordIncrement ?? 1 : null,
+    section_id: draft.sectionId ?? null,
+    constant_reminder: draft.constantReminder,
+    auto_popup_log: draft.autoPopupLog,
+    reason: draft.reason ?? null,
+    icon: draft.icon ?? null,
+  };
+}
+
+async function requireUserId(): Promise<string> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    throw new Error('User not authenticated');
+  }
+
+  return user.id;
+}
+
+async function replaceReminders(
+  habitId: string,
+  userId: string,
+  reminderTimes: string[]
+): Promise<void> {
+  const { error: deleteError } = await supabase
+    .from('habit_reminders')
+    .delete()
+    .eq('habit_id', habitId);
+
+  if (deleteError) {
+    console.error('Error clearing habit reminders:', deleteError);
+    throw deleteError;
+  }
+
+  const uniqueTimes = Array.from(new Set(reminderTimes));
+  if (uniqueTimes.length === 0) return;
+
+  const { error: insertError } = await supabase.from('habit_reminders').insert(
+    uniqueTimes.map((time) => ({ habit_id: habitId, user_id: userId, time }))
+  );
+
+  if (insertError) {
+    console.error('Error saving habit reminders:', insertError);
+    throw insertError;
+  }
+}
+
+async function fetchHabit(habitId: string): Promise<Habit> {
+  const { data, error } = await supabase
+    .from('habits')
+    .select(HABIT_SELECT)
+    .eq('id', habitId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching habit:', error);
+    throw error;
+  }
+
+  return mapDbHabitToHabit(data as DbHabit);
+}
+
 // Habits CRUD
 export async function getHabits(): Promise<Habit[]> {
   const { data, error } = await supabase
     .from('habits')
-    .select('*')
+    .select(HABIT_SELECT)
     .order('active', { ascending: false })
     .order('created_at', { ascending: true });
 
@@ -66,30 +197,13 @@ export async function getHabits(): Promise<Habit[]> {
   return (data as DbHabit[]).map(mapDbHabitToHabit);
 }
 
-export async function addHabit(habit: HabitDraft): Promise<Habit> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
+export async function addHabit(draft: HabitDraft): Promise<Habit> {
+  const userId = await requireUserId();
 
   const { data, error } = await supabase
     .from('habits')
-    .insert({
-      user_id: user.id,
-      name: normalizeHabitName(habit.name),
-      frequency: habit.frequency,
-      weekly_days: habit.frequency === 'daily' ? habit.weeklyDays ?? null : null,
-      weekly_count:
-        habit.frequency === 'weekly' ? habit.weeklyCount ?? 1 : null,
-      time_of_day: habit.timeOfDay ?? null,
-      reason: habit.reason ?? null,
-      icon: habit.icon ?? null,
-      active: true,
-    })
-    .select()
+    .insert({ user_id: userId, active: true, ...toDbHabitFields(draft) })
+    .select('id')
     .single();
 
   if (error) {
@@ -97,7 +211,8 @@ export async function addHabit(habit: HabitDraft): Promise<Habit> {
     throw error;
   }
 
-  return mapDbHabitToHabit(data as DbHabit);
+  await replaceReminders(data.id, userId, draft.reminderTimes);
+  return fetchHabit(data.id);
 }
 
 export async function removeHabit(habitId: string): Promise<void> {
@@ -109,62 +224,32 @@ export async function removeHabit(habitId: string): Promise<void> {
   }
 }
 
-export async function updateHabit(
-  habitId: string,
-  updates: Partial<HabitDraft>
-): Promise<Habit> {
-  const updateData: Partial<DbHabit> = {};
+export async function updateHabit(habitId: string, draft: HabitDraft): Promise<Habit> {
+  const userId = await requireUserId();
 
-  if (updates.name !== undefined) updateData.name = normalizeHabitName(updates.name);
-  if (updates.frequency !== undefined) updateData.frequency = updates.frequency;
-  if (updates.frequency === 'daily') {
-    updateData.weekly_days = updates.weeklyDays ?? null;
-    updateData.weekly_count = null;
-  } else if (updates.frequency === 'weekly') {
-    updateData.weekly_days = null;
-    updateData.weekly_count = updates.weeklyCount ?? 1;
-  } else {
-    if (updates.weeklyDays !== undefined) {
-      updateData.weekly_days = updates.weeklyDays ?? null;
-    }
-    if (updates.weeklyCount !== undefined) {
-      updateData.weekly_count = updates.weeklyCount ?? null;
-    }
-  }
-  if (updates.timeOfDay !== undefined)
-    updateData.time_of_day = updates.timeOfDay;
-  if (updates.reason !== undefined) updateData.reason = updates.reason;
-  if (updates.icon !== undefined) updateData.icon = updates.icon;
-
-  const { data, error } = await supabase
+  const { error } = await supabase
     .from('habits')
-    .update(updateData)
-    .eq('id', habitId)
-    .select()
-    .single();
+    .update(toDbHabitFields(draft))
+    .eq('id', habitId);
 
   if (error) {
     console.error('Error updating habit:', error);
     throw error;
   }
 
-  return mapDbHabitToHabit(data as DbHabit);
+  await replaceReminders(habitId, userId, draft.reminderTimes);
+  return fetchHabit(habitId);
 }
 
 async function setHabitActiveState(habitId: string, active: boolean): Promise<Habit> {
-  const { data, error } = await supabase
-    .from('habits')
-    .update({ active })
-    .eq('id', habitId)
-    .select()
-    .single();
+  const { error } = await supabase.from('habits').update({ active }).eq('id', habitId);
 
   if (error) {
     console.error(`Error ${active ? 'restoring' : 'archiving'} habit:`, error);
     throw error;
   }
 
-  return mapDbHabitToHabit(data as DbHabit);
+  return fetchHabit(habitId);
 }
 
 export async function archiveHabit(habitId: string): Promise<Habit> {
@@ -175,11 +260,77 @@ export async function restoreHabit(habitId: string): Promise<Habit> {
   return setHabitActiveState(habitId, true);
 }
 
+// Sections
+export async function getSections(): Promise<HabitSection[]> {
+  const { data, error } = await supabase
+    .from('habit_sections')
+    .select('*')
+    .order('sort_order', { ascending: true })
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching habit sections:', error);
+    throw error;
+  }
+
+  const sections = (data as DbHabitSection[]).map(mapDbSectionToSection);
+  if (sections.length > 0) return sections;
+
+  const userId = await requireUserId();
+  const { data: seeded, error: seedError } = await supabase
+    .from('habit_sections')
+    .insert(
+      HABIT_DEFAULT_SECTION_NAMES.map((name, index) => ({
+        user_id: userId,
+        name,
+        sort_order: index,
+      }))
+    )
+    .select('*');
+
+  if (seedError) {
+    console.error('Error seeding habit sections:', seedError);
+    throw seedError;
+  }
+
+  return (seeded as DbHabitSection[]).map(mapDbSectionToSection);
+}
+
+export async function addSection(name: string, sortOrder: number): Promise<HabitSection> {
+  const userId = await requireUserId();
+
+  const { data, error } = await supabase
+    .from('habit_sections')
+    .insert({ user_id: userId, name: name.trim(), sort_order: sortOrder })
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error adding habit section:', error);
+    throw error;
+  }
+
+  return mapDbSectionToSection(data as DbHabitSection);
+}
+
+export async function removeSection(sectionId: string): Promise<void> {
+  const { error } = await supabase.from('habit_sections').delete().eq('id', sectionId);
+
+  if (error) {
+    console.error('Error removing habit section:', error);
+    throw error;
+  }
+}
+
 // Habit Logs
-export async function getLogsForDate(date: string): Promise<Map<string, HabitStatus>> {
+function mapDbLogToEntry(log: Pick<DbHabitLog, 'status' | 'amount'>): HabitLogEntry {
+  return { status: log.status, amount: toNumber(log.amount) ?? 0 };
+}
+
+export async function getLogsForDate(date: string): Promise<Map<string, HabitLogEntry>> {
   const { data, error } = await supabase
     .from('habit_logs')
-    .select('habit_id, status')
+    .select('habit_id, status, amount')
     .eq('date', date);
 
   if (error) {
@@ -187,62 +338,32 @@ export async function getLogsForDate(date: string): Promise<Map<string, HabitSta
     throw error;
   }
 
-  const logsMap = new Map<string, HabitStatus>();
-  for (const log of data as Pick<DbHabitLog, 'habit_id' | 'status'>[]) {
-    logsMap.set(log.habit_id, log.status);
+  const logsMap = new Map<string, HabitLogEntry>();
+  for (const log of data as Pick<DbHabitLog, 'habit_id' | 'status' | 'amount'>[]) {
+    logsMap.set(log.habit_id, mapDbLogToEntry(log));
   }
 
   return logsMap;
 }
 
-export async function getTodayLogs(): Promise<Map<string, HabitStatus>> {
+export async function getTodayLogs(): Promise<Map<string, HabitLogEntry>> {
   return getLogsForDate(getTodayDate());
 }
 
-export async function getLogsForHabitInRange(
-  habitId: string,
-  startDate: string,
-  endDate: string
-): Promise<Map<string, HabitStatus>> {
-  const { data, error } = await supabase
-    .from('habit_logs')
-    .select('date, status')
-    .eq('habit_id', habitId)
-    .gte('date', startDate)
-    .lte('date', endDate);
-
-  if (error) {
-    console.error('Error fetching logs for habit range:', error);
-    throw error;
-  }
-
-  const logsMap = new Map<string, HabitStatus>();
-  for (const log of data as { date: string; status: HabitStatus }[]) {
-    logsMap.set(log.date, log.status);
-  }
-
-  return logsMap;
-}
-
-export async function setHabitStatus(
+export async function setHabitLog(
   habitId: string,
   date: string,
-  status: HabitStatus
+  entry: HabitLogEntry
 ): Promise<void> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
+  const userId = await requireUserId();
 
   const { error } = await supabase.from('habit_logs').upsert(
     {
       habit_id: habitId,
-      user_id: user.id,
+      user_id: userId,
       date,
-      status,
+      status: entry.status,
+      amount: entry.amount,
     },
     {
       onConflict: 'habit_id,date',
@@ -250,7 +371,7 @@ export async function setHabitStatus(
   );
 
   if (error) {
-    console.error('Error setting habit status:', error);
+    console.error('Error setting habit log:', error);
     throw error;
   }
 }
