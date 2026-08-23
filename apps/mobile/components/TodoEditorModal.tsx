@@ -7,6 +7,7 @@ import { OptionChips } from './OptionChips';
 import { QuickDatePickerModal } from './QuickDatePickerModal';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
 import { useThemedStyles } from '../hooks/useColors';
+import { useTodosStore } from '../stores/useTodosStore';
 import { resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodoEditorModalProps {
@@ -36,6 +37,7 @@ export function TodoEditorModal({
   onSave,
 }: TodoEditorModalProps) {
   const [styles] = useThemedStyles(createStyles);
+  const tags = useTodosStore((state) => state.tags);
   const initialListName = useMemo(() => {
     const list = lists.find((candidate) => candidate.id === todo?.listId);
     return list?.name ?? lists.find((candidate) => candidate.isInbox)?.name ?? 'Inbox';
@@ -44,7 +46,8 @@ export function TodoEditorModal({
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [listName, setListName] = useState(initialListName);
-  const [tagNamesText, setTagNamesText] = useState('');
+  const [tagId, setTagId] = useState<string | undefined>();
+  const [newTagName, setNewTagName] = useState('');
   const [goalId, setGoalId] = useState<string | undefined>();
   const [priority, setPriority] = useState<number | undefined>();
   const [dueDate, setDueDate] = useState<string | undefined>();
@@ -62,7 +65,8 @@ export function TodoEditorModal({
     setTitle(todo?.title ?? '');
     setNotes(todo?.notes ?? '');
     setListName(currentList?.name ?? lists.find((candidate) => candidate.isInbox)?.name ?? 'Inbox');
-    setTagNamesText(todo?.tags.map((tag) => tag.name).join(', ') ?? '');
+    setTagId(todo?.tag?.id);
+    setNewTagName('');
     setGoalId(todo?.goalId);
     setPriority(todo?.priority);
     setDueDate(todo?.dueDate);
@@ -87,10 +91,7 @@ export function TodoEditorModal({
         title: title.trim(),
         notes: notes.trim() || undefined,
         listName: listName.trim() || undefined,
-        tagNames: tagNamesText
-          .split(',')
-          .map((tag) => tag.trim())
-          .filter(Boolean),
+        ...(newTagName.trim() ? { tagName: newTagName.trim() } : { tagId: tagId ?? null }),
         goalId,
         priority: priority as 1 | 2 | 3 | 4 | undefined,
         dueDate,
@@ -140,11 +141,26 @@ export function TodoEditorModal({
               value={listName}
               onChangeText={setListName}
             />
+            <View style={styles.section}>
+              <Label>Category</Label>
+              <OptionChips
+                options={[
+                  { label: 'None', value: 'none' as const },
+                  ...tags.map((tag) => ({ label: tag.name, value: tag.id })),
+                ]}
+                selectedValue={newTagName.trim() ? 'none' : (tagId ?? 'none')}
+                onChange={(value) => {
+                  setTagId(value === 'none' ? undefined : value);
+                  setNewTagName('');
+                }}
+                wrap
+              />
+            </View>
             <Input
-              label="Tags"
-              placeholder="admin, deep work, errands"
-              value={tagNamesText}
-              onChangeText={setTagNamesText}
+              label="New category"
+              placeholder="Health, Work, Relationships..."
+              value={newTagName}
+              onChangeText={setNewTagName}
             />
 
             <View style={styles.section}>

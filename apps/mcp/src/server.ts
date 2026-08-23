@@ -162,6 +162,18 @@ export function createServer(): McpServer {
   );
 
   server.registerTool(
+    'list_tags',
+    {
+      title: 'List tags',
+      description:
+        'The task categories (tags). Every task carries at most one tag, naming the part of life it affects (e.g. Health, Work, Relationships). Call before assigning a tag so existing names are reused.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+    },
+    () => run(() => db.listTags())
+  );
+
+  server.registerTool(
     'list_memories',
     {
       title: 'List memories',
@@ -178,7 +190,8 @@ export function createServer(): McpServer {
     'create_task',
     {
       title: 'Create task',
-      description: 'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day.',
+      description:
+        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -187,6 +200,7 @@ export function createServer(): McpServer {
         scheduledDate: dateSchema.optional(),
         scheduledTime: timeSchema.optional(),
         estimateMinutes: z.number().int().positive().optional(),
+        tagId: z.string().uuid().optional().describe('Category; see list_tags'),
       },
     },
     (args) => run(() => db.createTask(args))
@@ -197,7 +211,7 @@ export function createServer(): McpServer {
     {
       title: 'Update task',
       description:
-        'Edit, schedule, reschedule, or unschedule a task. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
+        'Edit, schedule, reschedule, unschedule, or re-categorise a task. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
       inputSchema: {
         id: z.string().uuid(),
         title: z.string().min(1).optional(),
@@ -207,6 +221,7 @@ export function createServer(): McpServer {
         scheduledDate: dateSchema.nullable().optional(),
         scheduledTime: timeSchema.nullable().optional(),
         estimateMinutes: z.number().int().positive().nullable().optional(),
+        tagId: z.string().uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
       },
     },
     ({ id, ...patch }) => run(() => db.updateTask(id, patch))
@@ -236,6 +251,22 @@ export function createServer(): McpServer {
       annotations: { destructiveHint: true },
     },
     ({ id }) => run(async () => ({ deleted: id, ...(await db.deleteTask(id), {}) }))
+  );
+
+  // ------------------------------------------------------------------- tags
+
+  server.registerTool(
+    'create_tag',
+    {
+      title: 'Create tag',
+      description:
+        'Create a new task category. Prefer reusing an existing tag from list_tags; names are unique per user (case-insensitive).',
+      inputSchema: {
+        name: z.string().min(1),
+        color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB').optional(),
+      },
+    },
+    ({ name, color }) => run(() => db.createTag(name, color))
   );
 
   // ----------------------------------------------------------------- habits

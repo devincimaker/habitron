@@ -212,6 +212,15 @@ export async function buildTaskHistory(args: { days: number }) {
     .filter((t) => t.status === 'open')
     .map((t) => daysBetween(t.createdAt.slice(0, 10), end));
 
+  // Completed work per category, so the coach can spot neglected areas of life.
+  const byTag: Record<string, { tagId: string | null; completed: number; minutes: number }> = {};
+  for (const t of completed) {
+    const key = t.tag?.name ?? 'untagged';
+    const entry = (byTag[key] ??= { tagId: t.tag?.id ?? null, completed: 0, minutes: 0 });
+    entry.completed += 1;
+    entry.minutes += t.actualMinutes ?? t.estimateMinutes ?? 0;
+  }
+
   return {
     window: { start, end, days: args.days },
     summary: {
@@ -222,6 +231,8 @@ export async function buildTaskHistory(args: { days: number }) {
       averageCompletedPerActiveDay: daysWithCompletions ? round(completed.length / daysWithCompletions) : 0,
       openTasks: openAgeDays.length,
       oldestOpenTaskAgeDays: openAgeDays.length ? Math.max(...openAgeDays) : 0,
+      /** Completed count and minutes (actual, else estimate) per category; tags with no completions are absent. */
+      byTag,
     },
     estimateAccuracy,
     byWeekday,
@@ -236,6 +247,7 @@ export async function buildTaskHistory(args: { days: number }) {
       estimateMinutes: t.estimateMinutes,
       actualMinutes: t.actualMinutes,
       priority: t.priority,
+      tag: t.tag,
     })),
   };
 }

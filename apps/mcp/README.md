@@ -11,16 +11,18 @@ cp apps/mcp/.env.example apps/mcp/.env   # fill in values
 pnpm --filter @habits-coach/mcp start     # stdio server
 ```
 
-The server is registered project-scoped from the `~/Coach` folder (its `.mcp.json` points at this entrypoint), so it loads only for terminals opened there. The coaching skills (`/plan-day`, `/review-day`) live in `~/Coach/.claude/skills`, not in this repo — this package is tools only.
+The server is registered project-scoped from the `~/Coach` folder (its `.mcp.json` points at this entrypoint), so it loads only for terminals opened there. The coaching skills (`/coach`, `/plan-day`, `/review-day`, `/review-habits`) live in `~/Coach/.claude/skills`, not in this repo — this package is tools only.
 
 ## Tools
 
 | Read | Write |
 | --- | --- |
 | `get_day_context` (the planning packet) | `create_task`, `update_task`, `set_task_status`, `delete_task` |
-| `list_tasks`, `list_habits`, `list_memories` | `log_habit` |
+| `list_tasks`, `list_habits`, `list_tags`, `list_memories` | `create_tag`, `log_habit` |
 | `get_habit_history`, `get_task_history`, `get_journal_history`, `get_plan_history` (learning from the past) | `save_day_plan`, `set_plan_item_outcome` |
 | | `add_journal_entry`, `add_memory`, `delete_memory` |
+
+Tags are categories: every task carries at most one (`tag` on every task returned by `list_tasks`, `get_day_context`, and `get_task_history`, whose `summary.byTag` breaks completed work down per category). `create_task` / `update_task` take a `tagId` (null clears it) and reject unknown ids.
 
 `save_day_plan` enforces the invariant from `docs/v1-coach-planning-implementation-plan.md`: every todo item in an accepted plan is also scheduled on that date at the item's time, so the plan and the Tasks screen never drift. Saving again for the same date supersedes the previous version and links it via `parentPlanId`.
 

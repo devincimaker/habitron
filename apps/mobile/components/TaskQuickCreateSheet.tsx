@@ -41,7 +41,7 @@ interface TaskQuickCreateSheetProps {
 const QUICK_ACTIONS = [
   { icon: 'calendar-outline', label: 'Schedule task' },
   { icon: 'flag-outline', label: 'Set priority' },
-  { icon: 'pricetag-outline', label: 'Add tags' },
+  { icon: 'pricetag-outline', label: 'Set category' },
   { icon: 'ellipsis-horizontal', label: 'More task actions' },
 ] as const;
 

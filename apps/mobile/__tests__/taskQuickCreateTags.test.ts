@@ -5,7 +5,7 @@ jest.mock('@habits-coach/shared', () => ({
 import {
   buildQuickCreateTodoDraft,
   getActiveInlineTagContext,
-  getInlineTagNames,
+  getInlineTagName,
   getInlineScheduledTimeContext,
   getQuickCreateTextSegments,
   insertTagTriggerAtSelection,
@@ -15,14 +15,12 @@ import {
 } from '../utils/taskQuickCreateTags';
 
 describe('taskQuickCreateTags', () => {
-  it('extracts inline tag names once and preserves the first casing', () => {
-    expect(
-      getInlineTagNames('Write launch copy #Brand #girls #brand #Girls')
-    ).toEqual(['Brand', 'girls']);
+  it('uses the first inline tag as the category and preserves its casing', () => {
+    expect(getInlineTagName('Write launch copy #Brand #girls')).toBe('Brand');
   });
 
-  it('does not treat hashtags inside words as todo tags', () => {
-    expect(getInlineTagNames('Study C# basics and ship #backend')).toEqual(['backend']);
+  it('does not treat hashtags inside words as the category', () => {
+    expect(getInlineTagName('Study C# basics and ship #backend')).toBe('backend');
   });
 
   it('strips inline tags from the saved title and collapses whitespace', () => {
@@ -31,10 +29,10 @@ describe('taskQuickCreateTags', () => {
     );
   });
 
-  it('builds a todo draft with parsed tag names', () => {
+  it('builds a todo draft with the parsed category', () => {
     expect(buildQuickCreateTodoDraft('Write launch copy #brand #girls')).toEqual({
       title: 'Write launch copy',
-      tagNames: ['brand', 'girls'],
+      tagName: 'brand',
     });
   });
 
@@ -53,10 +51,10 @@ describe('taskQuickCreateTags', () => {
     );
   });
 
-  it('builds a todo draft with both parsed tag names and scheduled time', () => {
+  it('builds a todo draft with both the parsed category and scheduled time', () => {
     expect(buildQuickCreateTodoDraft('Need Tomas algo 20:00 #brand')).toEqual({
       title: 'Need Tomas algo',
-      tagNames: ['brand'],
+      tagName: 'brand',
       scheduledDate: '2026-04-16',
       scheduledTime: '20:00',
     });
@@ -65,7 +63,7 @@ describe('taskQuickCreateTags', () => {
   it('parses a parenthesised duration into the estimate and strips it from the title', () => {
     expect(buildQuickCreateTodoDraft('Renew car insurance (1h 50m) 14:00 #admin')).toEqual({
       title: 'Renew car insurance',
-      tagNames: ['admin'],
+      tagName: 'admin',
       scheduledDate: '2026-04-16',
       scheduledTime: '14:00',
       estimateMinutes: 110,
@@ -86,7 +84,7 @@ describe('taskQuickCreateTags', () => {
       buildQuickCreateTodoDraft('Write launch copy #brand', '2026-04-20')
     ).toEqual({
       title: 'Write launch copy',
-      tagNames: ['brand'],
+      tagName: 'brand',
       scheduledDate: '2026-04-20',
     });
   });

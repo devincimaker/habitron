@@ -33,7 +33,6 @@ function createTodo(id: string, title = 'Todo'): Todo {
     id,
     title,
     status: 'open',
-    tags: [],
     sortOrder: 0,
     listId: 'inbox',
     createdAt: 0,

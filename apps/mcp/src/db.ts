@@ -33,7 +33,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 // ---------------------------------------------------------------------------
 
 const TODO_COLUMNS =
-  'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at';
+  'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at, tag_id, todo_tags(id, name, color)';
 
 interface DbTodo {
   id: string;
@@ -52,6 +52,25 @@ interface DbTodo {
   sort_order: number;
   created_at: string;
   updated_at: string;
+  tag_id: string | null;
+  todo_tags: DbTag | null;
+}
+
+/** A task's category. Every task carries at most one. */
+export interface Tag {
+  id: string;
+  name: string;
+  color?: string;
+}
+
+interface DbTag {
+  id: string;
+  name: string;
+  color: string | null;
+}
+
+function mapTag(row: DbTag): Tag {
+  return { id: row.id, name: row.name, color: row.color ?? undefined };
 }
 
 export interface Task {
@@ -67,6 +86,8 @@ export interface Task {
   actualMinutes?: number;
   completedAt?: string;
   canceledAt?: string;
+  /** Category (at most one per task). */
+  tag?: Tag;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,6 +106,7 @@ function mapTodo(row: DbTodo): Task {
     actualMinutes: row.actual_minutes ?? undefined,
     completedAt: row.completed_at ?? undefined,
     canceledAt: row.canceled_at ?? undefined,
+    tag: row.todo_tags ? mapTag(row.todo_tags) : undefined,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -97,14 +119,14 @@ export async function listAllTasks(): Promise<Task[]> {
       .select(TODO_COLUMNS)
       .eq('user_id', userId)
       .order('sort_order', { ascending: true })
-  ) as DbTodo[];
+  ) as unknown as DbTodo[];
   return rows.map(mapTodo);
 }
 
 export async function getTask(id: string): Promise<Task> {
   const row = unwrap(
     await supabase.from('todos').select(TODO_COLUMNS).eq('user_id', userId).eq('id', id).maybeSingle()
-  ) as DbTodo | null;
+  ) as unknown as DbTodo | null;
   if (!row) {
     throw new Error(`Task not found: ${id}`);
   }
@@ -115,7 +137,7 @@ export async function getTasksByIds(ids: string[]): Promise<Map<string, Task>> {
   if (ids.length === 0) return new Map();
   const rows = unwrap(
     await supabase.from('todos').select(TODO_COLUMNS).eq('user_id', userId).in('id', ids)
-  ) as DbTodo[];
+  ) as unknown as DbTodo[];
   return new Map(rows.map((row) => [row.id, mapTodo(row)]));
 }
 
@@ -148,9 +170,20 @@ export interface TaskInput {
   scheduledDate?: string;
   scheduledTime?: string;
   estimateMinutes?: number;
+  tagId?: string;
+}
+
+async function assertTagExists(tagId: string): Promise<void> {
+  const row = unwrap(
+    await supabase.from('todo_tags').select('id').eq('user_id', userId).eq('id', tagId).maybeSingle()
+  ) as { id: string } | null;
+  if (!row) {
+    throw new Error(`Unknown tag: ${tagId}. Call list_tags to see the available categories.`);
+  }
 }
 
 export async function createTask(input: TaskInput): Promise<Task> {
+  if (input.tagId) await assertTagExists(input.tagId);
   const listId = await inboxListId();
   const row = unwrap(
     await supabase
@@ -165,11 +198,12 @@ export async function createTask(input: TaskInput): Promise<Task> {
         scheduled_date: input.scheduledDate ?? null,
         scheduled_time: input.scheduledTime ?? null,
         estimate_minutes: input.estimateMinutes ?? null,
+        tag_id: input.tagId ?? null,
         sort_order: Date.now(),
       })
       .select(TODO_COLUMNS)
       .single()
-  ) as DbTodo;
+  ) as unknown as DbTodo;
   return mapTodo(row);
 }
 
@@ -182,9 +216,11 @@ export interface TaskPatch {
   scheduledDate?: string | null;
   scheduledTime?: string | null;
   estimateMinutes?: number | null;
+  tagId?: string | null;
 }
 
 export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
+  if (patch.tagId) await assertTagExists(patch.tagId);
   const update: Record<string, unknown> = {};
   if (patch.title !== undefined) update.title = patch.title;
   if (patch.notes !== undefined) update.notes = patch.notes;
@@ -193,6 +229,7 @@ export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
   if (patch.scheduledDate !== undefined) update.scheduled_date = patch.scheduledDate;
   if (patch.scheduledTime !== undefined) update.scheduled_time = patch.scheduledTime;
   if (patch.estimateMinutes !== undefined) update.estimate_minutes = patch.estimateMinutes;
+  if (patch.tagId !== undefined) update.tag_id = patch.tagId;
   if (patch.scheduledDate === null) update.scheduled_time = null;
 
   const row = unwrap(
@@ -203,7 +240,7 @@ export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
       .eq('id', id)
       .select(TODO_COLUMNS)
       .maybeSingle()
-  ) as DbTodo | null;
+  ) as unknown as DbTodo | null;
   if (!row) {
     throw new Error(`Task not found: ${id}`);
   }
@@ -236,7 +273,7 @@ export async function setTaskStatus(
       .eq('id', id)
       .select(TODO_COLUMNS)
       .maybeSingle()
-  ) as DbTodo | null;
+  ) as unknown as DbTodo | null;
   if (!row) {
     throw new Error(`Task not found: ${id}`);
   }
@@ -245,6 +282,33 @@ export async function setTaskStatus(
 
 export async function deleteTask(id: string): Promise<void> {
   unwrap(await supabase.from('todos').delete().eq('user_id', userId).eq('id', id));
+}
+
+// ---------------------------------------------------------------------------
+// Tags (categories)
+// ---------------------------------------------------------------------------
+
+export async function listTags(): Promise<Tag[]> {
+  const rows = unwrap(
+    await supabase.from('todo_tags').select('id, name, color').eq('user_id', userId).order('name', { ascending: true })
+  ) as DbTag[];
+  return rows.map(mapTag);
+}
+
+export async function createTag(name: string, color?: string): Promise<Tag> {
+  const trimmed = name.trim();
+  const existing = (await listTags()).find((t) => t.name.toLowerCase() === trimmed.toLowerCase());
+  if (existing) {
+    throw new Error(`Tag "${existing.name}" already exists (${existing.id})`);
+  }
+  const row = unwrap(
+    await supabase
+      .from('todo_tags')
+      .insert({ user_id: userId, name: trimmed, color: color ?? null })
+      .select('id, name, color')
+      .single()
+  ) as DbTag;
+  return mapTag(row);
 }
 
 // ---------------------------------------------------------------------------

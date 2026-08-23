@@ -92,7 +92,7 @@ Or with changes:
           "title": "Send invoice",
           "notes": "Follow up with Acme",
           "listName": "Work",
-          "tagNames": ["admin"],
+          "tagName": "admin",
           "priority": 2,
           "scheduledDate": "2026-03-24",
           "scheduledTime": "09:30",
@@ -176,7 +176,7 @@ function buildTodosContext(todos: NonNullable<ChatRequest['todos']>): string {
         todo.dueDate ? `due ${todo.dueDate}` : null,
         todo.scheduledDate ? `scheduled ${todo.scheduledDate}` : null,
         todo.scheduledTime ? `at ${todo.scheduledTime}` : null,
-        todo.tags.length > 0 ? `tags ${todo.tags.map((tag) => tag.name).join(', ')}` : null,
+        todo.tag ? `category ${todo.tag.name}` : null,
       ]
         .filter(Boolean)
         .join(', ');

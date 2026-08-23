@@ -63,40 +63,31 @@ function resolveOptimisticListId(
   return lists.find((list) => list.isInbox)?.id ?? lists[0]?.id ?? 'optimistic-inbox';
 }
 
-function resolveOptimisticTags(tags: TodoTag[], draft: TodoDraft): TodoTag[] {
-  if (draft.tagIds?.length) {
-    return draft.tagIds
-      .map((tagId) => tags.find((tag) => tag.id === tagId))
-      .filter((tag): tag is TodoTag => Boolean(tag));
+function resolveOptimisticTag(tags: TodoTag[], draft: TodoDraft): TodoTag | undefined {
+  if (draft.tagId) {
+    return tags.find((tag) => tag.id === draft.tagId);
   }
 
-  if (!draft.tagNames?.length) {
-    return [];
+  const tagName = draft.tagName?.trim();
+  if (!tagName) {
+    return undefined;
+  }
+
+  const existingTag = tags.find(
+    (tag) => tag.name.trim().toLowerCase() === tagName.toLowerCase()
+  );
+  if (existingTag) {
+    return existingTag;
   }
 
   const now = Date.now();
-
-  return Array.from(
-    new Set(
-      draft.tagNames.map((tagName) => tagName.trim()).filter(Boolean)
-    )
-  ).map((tagName, index) => {
-    const existingTag = tags.find(
-      (tag) => tag.name.trim().toLowerCase() === tagName.toLowerCase()
-    );
-
-    if (existingTag) {
-      return existingTag;
-    }
-
-    return {
-      id: `optimistic-tag-${now}-${index}`,
-      name: tagName,
-      color: getTodoTagColor(tagName),
-      createdAt: now,
-      updatedAt: now,
-    };
-  });
+  return {
+    id: `optimistic-tag-${now}`,
+    name: tagName,
+    color: getTodoTagColor(tagName),
+    createdAt: now,
+    updatedAt: now,
+  };
 }
 
 function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: TodoDraft): Todo {
@@ -120,7 +111,7 @@ function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: T
     sortOrder: now,
     listId: resolveOptimisticListId(state.lists, draft),
     goalId: draft.goalId,
-    tags: resolveOptimisticTags(state.tags, draft),
+    tag: resolveOptimisticTag(state.tags, draft),
     createdAt: now,
     updatedAt: now,
   };

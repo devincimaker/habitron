@@ -50,25 +50,16 @@ interface DbTodo {
   completed_at: string | null;
   canceled_at: string | null;
   sort_order: number;
+  tag_id: string | null;
   created_at: string;
   updated_at: string;
 }
 
-interface DbTodoTagAssignment {
-  todo_id: string;
-  tag_id: string;
-  todo_tags: DbTodoTag | DbTodoTag[] | null;
+interface DbTodoWithTag extends DbTodo {
+  todo_tags: DbTodoTag | null;
 }
 
-function getAssignedDbTodoTag(assignment: DbTodoTagAssignment): DbTodoTag | null {
-  if (!assignment.todo_tags) {
-    return null;
-  }
-
-  return Array.isArray(assignment.todo_tags)
-    ? assignment.todo_tags[0] ?? null
-    : assignment.todo_tags;
-}
+const TODO_SELECT = '*, todo_tags(*)';
 
 function mapDbTodoListToTodoList(list: DbTodoList): TodoList {
   return {
@@ -92,7 +83,7 @@ function mapDbTodoTagToTodoTag(tag: DbTodoTag): TodoTag {
   };
 }
 
-function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
+function mapDbTodoToTodo(todo: DbTodoWithTag): Todo {
   return {
     id: todo.id,
     title: todo.title,
@@ -109,7 +100,7 @@ function mapDbTodoToTodo(todo: DbTodo, tags: TodoTag[]): Todo {
     sortOrder: todo.sort_order,
     listId: todo.list_id,
     goalId: todo.goal_id ?? undefined,
-    tags,
+    tag: todo.todo_tags ? mapDbTodoTagToTodoTag(todo.todo_tags) : undefined,
     createdAt: new Date(todo.created_at).getTime(),
     updatedAt: new Date(todo.updated_at).getTime(),
   };
@@ -217,43 +208,10 @@ async function ensureInboxList(userId: string): Promise<TodoList> {
   return mapDbTodoListToTodoList(created as DbTodoList);
 }
 
-async function getTodoTagAssignments(
-  todoIds?: string[]
-): Promise<Map<string, TodoTag[]>> {
-  let query = supabase
-    .from('todo_tag_assignments')
-    .select('todo_id, tag_id, todo_tags(*)');
-
-  if (todoIds && todoIds.length > 0) {
-    query = query.in('todo_id', todoIds);
-  }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error('Error fetching todo tag assignments:', error);
-    throw error;
-  }
-
-  const tagsByTodoId = new Map<string, TodoTag[]>();
-  for (const assignment of data as DbTodoTagAssignment[]) {
-    const dbTag = getAssignedDbTodoTag(assignment);
-    if (!dbTag) {
-      continue;
-    }
-
-    const tags = tagsByTodoId.get(assignment.todo_id) ?? [];
-    tags.push(mapDbTodoTagToTodoTag(dbTag));
-    tagsByTodoId.set(assignment.todo_id, tags);
-  }
-
-  return tagsByTodoId;
-}
-
-async function getTodoRow(todoId: string): Promise<DbTodo> {
+async function getTodoById(todoId: string): Promise<Todo> {
   const { data, error } = await supabase
     .from('todos')
-    .select('*')
+    .select(TODO_SELECT)
     .eq('id', todoId)
     .single();
 
@@ -262,13 +220,7 @@ async function getTodoRow(todoId: string): Promise<DbTodo> {
     throw error;
   }
 
-  return data as DbTodo;
-}
-
-async function getTodoById(todoId: string): Promise<Todo> {
-  const todo = await getTodoRow(todoId);
-  const tagsByTodoId = await getTodoTagAssignments([todoId]);
-  return mapDbTodoToTodo(todo, tagsByTodoId.get(todoId) ?? []);
+  return mapDbTodoToTodo(data as unknown as DbTodoWithTag);
 }
 
 async function resolveListId(
@@ -320,125 +272,59 @@ async function resolveListId(
   return (created as DbTodoList).id;
 }
 
-async function resolveTagIds(
+/**
+ * Resolves the draft's category to a tag id. `undefined` means "leave untouched",
+ * `null` means "clear". A tagName that doesn't exist yet is created.
+ */
+async function resolveTagId(
   userId: string,
-  input: Pick<TodoDraft, 'tagIds' | 'tagNames'>
-): Promise<string[] | undefined> {
-  if (input.tagIds !== undefined) {
-    return input.tagIds;
+  input: Pick<TodoDraft, 'tagId' | 'tagName'>
+): Promise<string | null | undefined> {
+  if (input.tagId !== undefined) {
+    return input.tagId;
   }
 
-  if (input.tagNames === undefined) {
+  if (input.tagName === undefined) {
     return undefined;
   }
 
-  const normalizedNames = Array.from(
-    new Set(
-      input.tagNames
-        .map((tag) => tag.trim())
-        .filter(Boolean)
-    )
-  );
-
-  if (normalizedNames.length === 0) {
-    return [];
+  const name = input.tagName?.trim();
+  if (!name) {
+    return null;
   }
 
   const { data: existing, error } = await supabase
     .from('todo_tags')
     .select('*')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .ilike('name', name)
+    .maybeSingle();
 
   if (error) {
-    console.error('Error fetching todo tags:', error);
+    console.error('Error fetching todo tag:', error);
     throw error;
   }
 
-  const existingTags = (existing as DbTodoTag[]).reduce((acc, tag) => {
-    acc.set(tag.name.toLowerCase(), tag);
-    return acc;
-  }, new Map<string, DbTodoTag>());
-
-  const resolvedIds: string[] = [];
-
-  for (const name of normalizedNames) {
-    const existingTag = existingTags.get(name.toLowerCase());
-    if (existingTag) {
-      resolvedIds.push(existingTag.id);
-      continue;
-    }
-
-    const { data: created, error: createError } = await supabase
-      .from('todo_tags')
-      .insert({
-        user_id: userId,
-        name,
-        color: getTodoTagColor(name),
-      })
-      .select()
-      .single();
-
-    if (createError) {
-      console.error('Error creating todo tag:', createError);
-      throw createError;
-    }
-
-    const createdTag = created as DbTodoTag;
-    existingTags.set(createdTag.name.toLowerCase(), createdTag);
-    resolvedIds.push(createdTag.id);
+  if (existing) {
+    return (existing as DbTodoTag).id;
   }
 
-  return resolvedIds;
-}
+  const { data: created, error: createError } = await supabase
+    .from('todo_tags')
+    .insert({
+      user_id: userId,
+      name,
+      color: getTodoTagColor(name),
+    })
+    .select()
+    .single();
 
-async function syncTodoTags(todoId: string, userId: string, tagIds: string[]): Promise<void> {
-  const { data: existingAssignments, error: existingError } = await supabase
-    .from('todo_tag_assignments')
-    .select('tag_id')
-    .eq('todo_id', todoId);
-
-  if (existingError) {
-    console.error('Error fetching existing todo tag assignments:', existingError);
-    throw existingError;
+  if (createError) {
+    console.error('Error creating todo tag:', createError);
+    throw createError;
   }
 
-  const existingTagIds = new Set(
-    (existingAssignments as Array<{ tag_id: string }>).map((assignment) => assignment.tag_id)
-  );
-  const targetTagIds = new Set(tagIds);
-
-  const toDelete = Array.from(existingTagIds).filter((tagId) => !targetTagIds.has(tagId));
-  const toInsert = Array.from(targetTagIds).filter((tagId) => !existingTagIds.has(tagId));
-
-  if (toDelete.length > 0) {
-    const { error: deleteError } = await supabase
-      .from('todo_tag_assignments')
-      .delete()
-      .eq('todo_id', todoId)
-      .in('tag_id', toDelete);
-
-    if (deleteError) {
-      console.error('Error deleting todo tag assignments:', deleteError);
-      throw deleteError;
-    }
-  }
-
-  if (toInsert.length > 0) {
-    const { error: insertError } = await supabase
-      .from('todo_tag_assignments')
-      .insert(
-        toInsert.map((tagId) => ({
-          user_id: userId,
-          todo_id: todoId,
-          tag_id: tagId,
-        }))
-      );
-
-    if (insertError) {
-      console.error('Error inserting todo tag assignments:', insertError);
-      throw insertError;
-    }
-  }
+  return (created as DbTodoTag).id;
 }
 
 export async function getTodoLists(): Promise<TodoList[]> {
@@ -521,7 +407,7 @@ export async function createTodoTag(name: string, color?: string): Promise<TodoT
 export async function getTodos(): Promise<Todo[]> {
   const { data, error } = await supabase
     .from('todos')
-    .select('*')
+    .select(TODO_SELECT)
     .order('status', { ascending: true })
     .order('scheduled_date', { ascending: true })
     .order('due_date', { ascending: true })
@@ -532,16 +418,13 @@ export async function getTodos(): Promise<Todo[]> {
     throw error;
   }
 
-  const todoRows = data as DbTodo[];
-  const tagsByTodoId = await getTodoTagAssignments(todoRows.map((todo) => todo.id));
-
-  return todoRows.map((todo) => mapDbTodoToTodo(todo, tagsByTodoId.get(todo.id) ?? []));
+  return (data as unknown as DbTodoWithTag[]).map(mapDbTodoToTodo);
 }
 
 export async function addTodo(todo: TodoDraft): Promise<Todo> {
   const userId = await getCurrentUserId();
   const listId = await resolveListId(userId, todo);
-  const tagIds = await resolveTagIds(userId, todo);
+  const tagId = await resolveTagId(userId, todo);
   const schedule = resolveNewTodoSchedule(todo.scheduledDate, todo.scheduledTime);
 
   if (schedule === null) {
@@ -560,12 +443,9 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
     scheduled_date: schedule.scheduledDate ?? null,
     scheduled_time: serializeScheduledTime(schedule.scheduledTime),
     estimate_minutes: todo.estimateMinutes ?? null,
+    tag_id: tagId ?? null,
     sort_order: Date.now(),
   });
-
-  if (tagIds !== undefined) {
-    await syncTodoTags(createdTodo.id, userId, tagIds);
-  }
 
   return getTodoById(createdTodo.id);
 }
@@ -599,6 +479,9 @@ export async function updateTodo(
   }
   if (changes.goalId !== undefined) updateData.goal_id = changes.goalId ?? null;
 
+  const tagId = await resolveTagId(userId, changes);
+  if (tagId !== undefined) updateData.tag_id = tagId;
+
   if (changes.listId !== undefined || changes.listName !== undefined) {
     updateData.list_id = await resolveListId(userId, {
       listId: changes.listId,
@@ -608,15 +491,6 @@ export async function updateTodo(
 
   if (Object.keys(updateData).length > 0) {
     await updateTodoRow(todoId, updateData);
-  }
-
-  const tagIds = await resolveTagIds(userId, {
-    tagIds: changes.tagIds,
-    tagNames: changes.tagNames,
-  });
-
-  if (tagIds !== undefined) {
-    await syncTodoTags(todoId, userId, tagIds);
   }
 
   return getTodoById(todoId);

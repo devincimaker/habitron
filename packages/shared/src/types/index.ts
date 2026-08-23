@@ -179,7 +179,8 @@ export interface Todo {
   sortOrder: number;
   listId: string;
   goalId?: string;
-  tags: TodoTag[];
+  /** The single category this task belongs to. */
+  tag?: TodoTag;
   createdAt: number;
   updatedAt: number;
 }
@@ -195,8 +196,10 @@ export interface TodoDraft {
   listId?: string;
   listName?: string;
   goalId?: string;
-  tagIds?: string[];
-  tagNames?: string[];
+  /** Category by id; `null` clears it. Takes precedence over tagName. */
+  tagId?: string | null;
+  /** Category by name; created if it doesn't exist yet. */
+  tagName?: string | null;
 }
 
 // Journal types

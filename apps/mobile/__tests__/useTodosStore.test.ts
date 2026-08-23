@@ -31,7 +31,6 @@ const baseTodo: Todo = {
   status: 'open',
   sortOrder: 0,
   listId: baseList.id,
-  tags: [],
   createdAt: 1,
   updatedAt: 1,
 };
@@ -191,7 +190,7 @@ describe('useTodosStore selectors', () => {
     expect(useTodosStore.getState().todos).toEqual([]);
   });
 
-  it('includes inline tag names on an optimistic todo before the backend responds', async () => {
+  it('includes the inline category on an optimistic todo before the backend responds', async () => {
     let resolveAddTodo: (todo: Todo) => void = () => undefined;
 
     useTodosStore.setState({
@@ -217,20 +216,17 @@ describe('useTodosStore selectors', () => {
 
     const pendingAdd = useTodosStore.getState().addTodoOptimistic({
       title: 'Optimistic tagged task',
-      tagNames: ['brand', 'girls'],
+      tagName: 'girls',
     });
 
     expect(useTodosStore.getState().todos).toEqual([
       expect.objectContaining({
         title: 'Optimistic tagged task',
-        tags: [
-          baseTag,
-          expect.objectContaining({
-            id: expect.stringContaining('optimistic-tag-'),
-            name: 'girls',
-            color: getTodoTagColor('girls'),
-          }),
-        ],
+        tag: expect.objectContaining({
+          id: expect.stringContaining('optimistic-tag-'),
+          name: 'girls',
+          color: getTodoTagColor('girls'),
+        }),
       }),
     ]);
 
@@ -238,15 +234,12 @@ describe('useTodosStore selectors', () => {
       ...baseTodo,
       id: 'todo-tagged',
       title: 'Optimistic tagged task',
-      tags: [
-        baseTag,
-        {
-          id: 'tag-2',
-          name: 'girls',
-          createdAt: 2,
-          updatedAt: 2,
-        },
-      ],
+      tag: {
+        id: 'tag-2',
+        name: 'girls',
+        createdAt: 2,
+        updatedAt: 2,
+      },
       sortOrder: 10,
       createdAt: 10,
       updatedAt: 10,
@@ -255,13 +248,10 @@ describe('useTodosStore selectors', () => {
     await expect(pendingAdd).resolves.toEqual(
       expect.objectContaining({
         id: 'todo-tagged',
-        tags: [
-          baseTag,
-          expect.objectContaining({
-            id: 'tag-2',
-            name: 'girls',
-          }),
-        ],
+        tag: expect.objectContaining({
+          id: 'tag-2',
+          name: 'girls',
+        }),
       })
     );
   });

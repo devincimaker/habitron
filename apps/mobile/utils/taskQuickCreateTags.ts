@@ -42,9 +42,8 @@ function clampSelectionValue(value: number, length: number) {
   return Math.max(0, Math.min(value, length));
 }
 
-export function getInlineTagNames(text: string): string[] {
-  const uniqueTagNames = new Map<string, string>();
-
+/** The first `#tag` token in the text — a task has exactly one category. */
+export function getInlineTagName(text: string): string | undefined {
   for (let index = 0; index < text.length; index += 1) {
     if (text[index] !== '#' || (index > 0 && !isWhitespace(text[index - 1]))) {
       continue;
@@ -59,16 +58,10 @@ export function getInlineTagNames(text: string): string[] {
       continue;
     }
 
-    const tagName = text.slice(index + 1, cursor);
-    const normalizedTagName = tagName.toLowerCase();
-    if (!uniqueTagNames.has(normalizedTagName)) {
-      uniqueTagNames.set(normalizedTagName, tagName);
-    }
-
-    index = cursor - 1;
+    return text.slice(index + 1, cursor);
   }
 
-  return Array.from(uniqueTagNames.values());
+  return undefined;
 }
 
 export function stripInlineTagTokens(text: string) {
@@ -135,10 +128,10 @@ export function buildQuickCreateTodoDraft(
     return null;
   }
 
-  const tagNames = getInlineTagNames(text);
+  const tagName = getInlineTagName(text);
   return {
     title,
-    ...(tagNames.length > 0 ? { tagNames } : {}),
+    ...(tagName ? { tagName } : {}),
     ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
     ...(estimate ? { estimateMinutes: estimate.minutes } : {}),
   };

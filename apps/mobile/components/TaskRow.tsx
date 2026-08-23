@@ -314,26 +314,25 @@ export function TaskRow({
                 {todo.title}
               </BodyMedium>
               <View style={[styles.taskMeta, isCompact && styles.compactTaskMeta]}>
-                {isCompact
-                  ? todo.tags.slice(0, 2).map((tag) => (
-                      <View
-                        key={tag.id}
-                        style={[
-                          styles.tagPill,
-                          tag.color
-                            ? {
-                                backgroundColor: getTodoTagTintColor(tag.color, '1F'),
-                                borderColor: getTodoTagTintColor(tag.color, '3D'),
-                              }
-                            : undefined,
-                        ]}
-                      >
-                        <Caption color={tag.color ?? colors.textSecondary}>{tag.name}</Caption>
-                      </View>
-                    ))
-                  : todo.tags.length > 0 ? (
-                      <Caption>{todo.tags.map((tag) => `#${tag.name}`).join(' ')}</Caption>
-                    ) : null}
+                {todo.tag ? (
+                  isCompact ? (
+                    <View
+                      style={[
+                        styles.tagPill,
+                        todo.tag.color
+                          ? {
+                              backgroundColor: getTodoTagTintColor(todo.tag.color, '1F'),
+                              borderColor: getTodoTagTintColor(todo.tag.color, '3D'),
+                            }
+                          : undefined,
+                      ]}
+                    >
+                      <Caption color={todo.tag.color ?? colors.textSecondary}>{todo.tag.name}</Caption>
+                    </View>
+                  ) : (
+                    <Caption>#{todo.tag.name}</Caption>
+                  )
+                ) : null}
                 {shouldShowCompactSchedule ? (
                   <Caption
                     color={compactScheduleColor}
