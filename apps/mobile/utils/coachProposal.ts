@@ -4,6 +4,7 @@ import type {
   CoachProposal,
   Goal,
   Habit,
+  HabitFrequency,
   Todo,
 } from '@habits-coach/shared';
 
@@ -22,8 +23,8 @@ function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function isHabitFrequency(value: unknown): value is 'daily' | 'weekly' {
-  return value === 'daily' || value === 'weekly';
+function isHabitFrequency(value: unknown): value is HabitFrequency {
+  return value === 'daily' || value === 'weekly' || value === 'interval';
 }
 
 function findGoalTitle(goalId: string, context?: CoachActionDescriptionContext): string | null {

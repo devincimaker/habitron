@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  FlatList,
   RefreshControl,
+  SectionList,
   StyleSheet,
   Pressable,
+  Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,8 +24,10 @@ import type {
   Habit,
   HabitDraft,
   HabitStatus,
+  HabitWithStatus,
 } from '@habits-coach/shared';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
+import { HabitLogSheet } from '../../components/HabitLogSheet';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
 import { HabitItem } from '../../components/HabitItem';
 import { HeaderIconButton } from '../../components/HeaderIconButton';
@@ -33,18 +36,32 @@ import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
-import { HEADER, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
+import {
+  HEADER,
+  SHADOWS,
+  SPACING,
+  TAB_BAR,
+  TYPOGRAPHY,
+  type Colors,
+} from '../../constants/theme';
 import {
   canGoToNextDay,
   canGoToPreviousDay,
   getNextDay,
   getPreviousDay,
 } from '../../utils/dateUtils';
+import { getCheckInIncrement } from '../../utils/habitSchedule';
 import { useThemedStyles } from '../../hooks/useColors';
 
 const SWIPE_THRESHOLD = 25;
 
 type TransitionDirection = 'forward' | 'backward';
+
+interface HabitSectionData {
+  key: string;
+  title: string | null;
+  data: HabitWithStatus[];
+}
 
 export default function HabitsScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -52,6 +69,7 @@ export default function HabitsScreen() {
   const navigation = useNavigation<any>();
   const {
     habits,
+    sections,
     isLoading,
     loadHabits,
     addHabit,
@@ -59,7 +77,10 @@ export default function HabitsScreen() {
     archiveHabit,
     restoreHabit,
     removeHabit,
+    addSection,
+    removeSection,
     setHabitStatus,
+    setHabitAmount,
     getHabitsWithStatus,
     selectedDate,
     setSelectedDate,
@@ -69,6 +90,7 @@ export default function HabitsScreen() {
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitEditor, setShowHabitEditor] = useState(false);
   const [showHabitManager, setShowHabitManager] = useState(false);
+  const [loggingHabitId, setLoggingHabitId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transitionDirection, setTransitionDirection] =
     useState<TransitionDirection>('backward');
@@ -78,6 +100,34 @@ export default function HabitsScreen() {
     () => habits.filter((habit) => habit.active).length,
     [habits]
   );
+  const loggingHabit = useMemo(
+    () => habitsWithStatus.find((habit) => habit.id === loggingHabitId) ?? null,
+    [habitsWithStatus, loggingHabitId]
+  );
+
+  const listSections = useMemo<HabitSectionData[]>(() => {
+    const bySection = new Map<string | undefined, HabitWithStatus[]>();
+    for (const habit of habitsWithStatus) {
+      const bucket = bySection.get(habit.sectionId) ?? [];
+      bucket.push(habit);
+      bySection.set(habit.sectionId, bucket);
+    }
+
+    const result: HabitSectionData[] = [];
+    for (const section of sections) {
+      const data = bySection.get(section.id);
+      if (data?.length) {
+        result.push({ key: section.id, title: section.name, data });
+      }
+    }
+    const unsorted = habitsWithStatus.filter(
+      (habit) => !habit.sectionId || !sections.some((section) => section.id === habit.sectionId)
+    );
+    if (unsorted.length) {
+      result.push({ key: 'unsorted', title: null, data: unsorted });
+    }
+    return result;
+  }, [habitsWithStatus, sections]);
 
   useEffect(() => {
     void loadHabits();
@@ -107,10 +157,8 @@ export default function HabitsScreen() {
     }
   }, [loadHabits]);
 
-  const handleStatusChange = useCallback(
+  const syncPlanOutcome = useCallback(
     async (habitId: string, status: HabitStatus) => {
-      await setHabitStatus(habitId, status);
-
       const planForDate =
         plansByDate[selectedDate] === undefined
           ? await loadPlan(selectedDate)
@@ -124,7 +172,52 @@ export default function HabitsScreen() {
         );
       }
     },
-    [loadPlan, plansByDate, selectedDate, setHabitStatus, updateOutcomeForHabit]
+    [loadPlan, plansByDate, selectedDate, updateOutcomeForHabit]
+  );
+
+  const handleStatusChange = useCallback(
+    async (habitId: string, status: HabitStatus) => {
+      await setHabitStatus(habitId, status);
+      await syncPlanOutcome(habitId, status);
+    },
+    [setHabitStatus, syncPlanOutcome]
+  );
+
+  const handleAmountChange = useCallback(
+    async (habitId: string, amount: number) => {
+      await setHabitAmount(habitId, amount);
+      const updated = useHabitsStore.getState().getHabitsWithStatus().find((h) => h.id === habitId);
+      await syncPlanOutcome(habitId, updated?.todayStatus ?? 'pending');
+    },
+    [setHabitAmount, syncPlanOutcome]
+  );
+
+  const handleCheckIn = useCallback(
+    (habit: HabitWithStatus) => {
+      const needsSheet =
+        habit.autoPopupLog ||
+        (habit.goalType === 'quantity' && habit.checkInMode === 'manual');
+      if (needsSheet) {
+        setLoggingHabitId(habit.id);
+        return;
+      }
+
+      if (habit.goalType !== 'quantity') {
+        void handleStatusChange(
+          habit.id,
+          habit.todayStatus === 'completed' ? 'pending' : 'completed'
+        );
+        return;
+      }
+
+      if (habit.todayStatus === 'completed') {
+        void handleStatusChange(habit.id, 'pending');
+        return;
+      }
+
+      void handleAmountChange(habit.id, habit.todayAmount + getCheckInIncrement(habit));
+    },
+    [handleAmountChange, handleStatusChange]
   );
 
   const handleSaveHabit = useCallback(
@@ -176,7 +269,7 @@ export default function HabitsScreen() {
       Gesture.Pan()
         .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
         .failOffsetY([-12, 12])
-        .enabled(!showHabitEditor && !showHabitManager)
+        .enabled(!showHabitEditor && !showHabitManager && !loggingHabitId)
         .onEnd((event) => {
           if (event.translationX > SWIPE_THRESHOLD) {
             runOnJS(navigateToPreviousDay)();
@@ -184,13 +277,14 @@ export default function HabitsScreen() {
             runOnJS(navigateToNextDay)();
           }
         }),
-    [navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
+    [loggingHabitId, navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
   );
   const renderHabitRow = useCallback(
-    ({ item }: { item: typeof habitsWithStatus[number] }) => (
+    ({ item }: { item: HabitWithStatus }) => (
       <HabitItem
         habit={item}
         onStatusChange={handleStatusChange}
+        onCheckIn={handleCheckIn}
         onPress={(habitId) => {
           const selected = habits.find((candidate) => candidate.id === habitId);
           if (selected) {
@@ -199,7 +293,14 @@ export default function HabitsScreen() {
         }}
       />
     ),
-    [habits, handleStatusChange, openHabitEditor]
+    [habits, handleCheckIn, handleStatusChange, openHabitEditor]
+  );
+  const renderSectionHeader = useCallback(
+    ({ section }: { section: HabitSectionData }) =>
+      section.title ? (
+        <Text style={styles.sectionHeader}>{section.title}</Text>
+      ) : null,
+    [styles]
   );
   const handleEditFromManager = useCallback(
     (habit: Habit) => {
@@ -297,13 +398,15 @@ export default function HabitsScreen() {
             entering={listEntering}
             exiting={listExiting}
           >
-            <FlatList
-              data={habitsWithStatus}
+            <SectionList
+              sections={listSections}
               renderItem={renderHabitRow}
+              renderSectionHeader={renderSectionHeader}
               keyExtractor={(habit) => habit.id}
               ListEmptyComponent={isLoading ? null : renderEmptyState}
               contentContainerStyle={styles.listContent}
               contentInsetAdjustmentBehavior="automatic"
+              stickySectionHeadersEnabled={false}
               refreshControl={
                 <RefreshControl
                   refreshing={isRefreshing}
@@ -343,8 +446,19 @@ export default function HabitsScreen() {
         <HabitEditorModal
           visible={showHabitEditor}
           habit={editingHabit}
+          sections={sections}
+          allHabits={habits}
           onClose={closeHabitEditor}
           onSave={handleSaveHabit}
+          onAddSection={addSection}
+          onRemoveSection={removeSection}
+        />
+
+        <HabitLogSheet
+          habit={loggingHabit}
+          onClose={() => setLoggingHabitId(null)}
+          onSaveAmount={handleAmountChange}
+          onSetStatus={handleStatusChange}
         />
       </View>
     </GestureDetector>
@@ -365,6 +479,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   listContent: {
     paddingBottom: SPACING.xxl,
+  },
+  sectionHeader: {
+    ...TYPOGRAPHY.label,
+    color: colors.textSecondary,
+    paddingHorizontal: SPACING.md + SPACING.xs,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xs,
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   emptyCard: {
     marginHorizontal: SPACING.md,

@@ -10,45 +10,55 @@ import {
 import { SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
-interface WeeklyCountPickerProps {
-  value: number;
-  onChange: (value: number) => void;
+export interface WheelOption<T extends string | number> {
+  label: string;
+  value: T;
+}
+
+interface WheelPickerProps<T extends string | number> {
+  options: Array<WheelOption<T>>;
+  value: T;
+  onChange: (value: T) => void;
+  visibleRows?: number;
+  minWidth?: number;
 }
 
 const ITEM_HEIGHT = 40;
-const VISIBLE_ROWS = 3;
-const OPTIONS = [1, 2, 3, 4, 5, 6, 7];
 
-export function WeeklyCountPicker({
+export function WheelPicker<T extends string | number>({
+  options,
   value,
   onChange,
-}: WeeklyCountPickerProps) {
+  visibleRows = 5,
+  minWidth = 56,
+}: WheelPickerProps<T>) {
   const [styles] = useThemedStyles(createStyles);
   const scrollViewRef = useRef<ScrollView>(null);
-  const maskHeight = ITEM_HEIGHT * VISIBLE_ROWS;
+  const maskHeight = ITEM_HEIGHT * visibleRows;
+  const selectedIndex = Math.max(
+    0,
+    options.findIndex((option) => option.value === value)
+  );
 
   useEffect(() => {
-    scrollViewRef.current?.scrollTo({
-      y: (Math.max(1, Math.min(7, value)) - 1) * ITEM_HEIGHT,
-      animated: false,
-    });
-  }, [value]);
+    scrollViewRef.current?.scrollTo({ y: selectedIndex * ITEM_HEIGHT, animated: false });
+  }, [selectedIndex]);
 
   const handleMomentumEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetY = event.nativeEvent.contentOffset.y;
     const index = Math.round(offsetY / ITEM_HEIGHT);
-    const selected = OPTIONS[Math.max(0, Math.min(OPTIONS.length - 1, index))];
-    if (selected !== value) {
-      onChange(selected);
+    const selected = options[Math.max(0, Math.min(options.length - 1, index))];
+    if (selected && selected.value !== value) {
+      onChange(selected.value);
     }
   };
 
-  const numbers = useMemo(
+  const rows = useMemo(
     () =>
-      OPTIONS.map((count) => {
-        const distance = Math.abs(count - value);
+      options.map((option, index) => {
+        const distance = Math.abs(index - selectedIndex);
         return (
-          <View key={count} style={styles.optionRow}>
+          <View key={String(option.value)} style={styles.optionRow}>
             <Text
               style={[
                 styles.optionText,
@@ -57,16 +67,20 @@ export function WeeklyCountPicker({
                 distance > 1 && styles.optionTextFar,
               ]}
             >
-              {count}
+              {option.label}
             </Text>
           </View>
         );
       }),
-    [styles, value]
+    [options, selectedIndex, styles]
   );
 
   return (
-    <View style={[styles.mask, { height: maskHeight }]}>
+    <View style={[styles.mask, { height: maskHeight, minWidth }]}>
+      <View
+        pointerEvents="none"
+        style={[styles.highlight, { top: maskHeight / 2 - ITEM_HEIGHT / 2 }]}
+      />
       <ScrollView
         ref={scrollViewRef}
         showsVerticalScrollIndicator={false}
@@ -77,8 +91,9 @@ export function WeeklyCountPicker({
           paddingVertical: maskHeight / 2 - ITEM_HEIGHT / 2,
         }}
         onMomentumScrollEnd={handleMomentumEnd}
+        onScrollEndDrag={handleMomentumEnd}
       >
-        {numbers}
+        {rows}
       </ScrollView>
     </View>
   );
@@ -89,7 +104,14 @@ const createStyles = (colors: Colors) =>
     mask: {
       overflow: 'hidden',
       alignSelf: 'center',
-      minWidth: 48,
+    },
+    highlight: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      height: ITEM_HEIGHT,
+      borderRadius: 10,
+      backgroundColor: colors.surface,
     },
     optionRow: {
       height: ITEM_HEIGHT,
@@ -103,7 +125,7 @@ const createStyles = (colors: Colors) =>
     },
     optionTextActive: {
       ...TYPOGRAPHY.displayMedium,
-      color: colors.primary,
+      color: colors.text,
       fontWeight: '700',
     },
     optionTextNear: {

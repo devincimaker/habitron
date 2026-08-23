@@ -5,9 +5,11 @@ type HabitRow = {
   id: string;
   user_id: string;
   name: string;
-  frequency: 'daily' | 'weekly';
+  frequency: 'daily' | 'weekly' | 'interval';
   weekly_days: string[] | null;
-  created_at: string;
+  interval_days: number | null;
+  start_date: string;
+  goal_days: number | null;
 };
 
 /**
@@ -44,7 +46,9 @@ serve(async (req: Request) => {
         name,
         frequency,
         weekly_days,
-        created_at
+        interval_days,
+        start_date,
+        goal_days
       `)
       .eq('active', true);
 
@@ -246,28 +250,37 @@ function getNext9AM(timezone: string): Date {
   return utcDate;
 }
 
+/** Mirrors apps/mobile/utils/habitSchedule.ts#isHabitDueOnDate. */
 function isHabitDueOnDate(habit: HabitRow, date: string): boolean {
-  const createdAtDate = new Date(habit.created_at);
-  createdAtDate.setHours(0, 0, 0, 0);
-
+  const startDate = new Date(habit.start_date + 'T00:00:00');
   const targetDate = new Date(date + 'T00:00:00');
-  targetDate.setHours(0, 0, 0, 0);
+  const daysSinceStart = Math.round(
+    (targetDate.getTime() - startDate.getTime()) / (24 * 60 * 60 * 1000)
+  );
 
-  if (createdAtDate > targetDate) {
+  if (daysSinceStart < 0) {
     return false;
   }
 
-  if (habit.frequency === 'daily') {
-    if (!habit.weekly_days || habit.weekly_days.length === 0) {
-      return true;
-    }
-
-    const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
-      targetDate.getDay()
-    ];
-
-    return habit.weekly_days.includes(weekday);
+  if (habit.goal_days && daysSinceStart >= habit.goal_days) {
+    return false;
   }
 
-  return true;
+  switch (habit.frequency) {
+    case 'daily': {
+      if (!habit.weekly_days || habit.weekly_days.length === 0) {
+        return true;
+      }
+
+      const weekday = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][
+        targetDate.getDay()
+      ];
+
+      return habit.weekly_days.includes(weekday);
+    }
+    case 'weekly':
+      return true;
+    case 'interval':
+      return daysSinceStart % (habit.interval_days ?? 1) === 0;
+  }
 }

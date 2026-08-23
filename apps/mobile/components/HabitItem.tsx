@@ -11,26 +11,33 @@ import { HabitWithStatus, HabitStatus } from '@habits-coach/shared';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, STATUS_INDICATOR, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { getHabitIconAccentColor, resolveHabitIcon } from '../utils/habitIcons';
+import { formatHabitProgress } from '../utils/habitSchedule';
 
 interface HabitItemProps {
   habit: HabitWithStatus;
   onStatusChange: (habitId: string, status: HabitStatus) => void;
+  /** Tap on the status circle or swipe right: one check-in (boolean toggle or quantity increment). */
+  onCheckIn: (habit: HabitWithStatus) => void;
   onPress?: (habitId: string) => void;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export function HabitItem({
-  habit, onStatusChange, onPress }: HabitItemProps) {
+export function HabitItem({ habit, onStatusChange, onCheckIn, onPress }: HabitItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
   const habitIcon = resolveHabitIcon(habit.name, habit.icon);
   const habitIconColor = getHabitIconAccentColor(habitIcon) ?? colors.primary;
+  const isQuantity = habit.goalType === 'quantity';
+  const progress = isQuantity
+    ? Math.min(1, habit.todayAmount / (habit.targetAmount ?? 1))
+    : habit.todayStatus === 'completed'
+      ? 1
+      : 0;
 
   const handleSwipeComplete = (direction: 'left' | 'right') => {
     if (direction === 'right') {
-      const newStatus = habit.todayStatus === 'completed' ? 'pending' : 'completed';
-      onStatusChange(habit.id, newStatus);
+      onCheckIn(habit);
     } else {
       onStatusChange(habit.id, 'skipped');
     }
@@ -41,6 +48,7 @@ export function HabitItem({
   };
 
   const panGesture = Gesture.Pan()
+    .activeOffsetX([-20, 20])
     .onUpdate((event) => {
       translateX.value = event.translationX;
     })
@@ -53,8 +61,19 @@ export function HabitItem({
       translateX.value = withSpring(0);
     });
 
+  const handleCheckIn = () => {
+    onCheckIn(habit);
+  };
+
+  const checkInTap = Gesture.Tap().onEnd((_event, success) => {
+    if (success) {
+      runOnJS(handleCheckIn)();
+    }
+  });
+
   const tapGesture = Gesture.Tap()
-    .onEnd((event, success) => {
+    .requireExternalGestureToFail(checkInTap)
+    .onEnd((_event, success) => {
       if (success) {
         runOnJS(handlePress)();
       }
@@ -107,12 +126,21 @@ export function HabitItem({
 
       <GestureDetector gesture={composedGesture}>
         <Animated.View style={[styles.content, animatedStyle]}>
-          <View style={[
-            styles.statusIndicator,
-            habit.todayStatus !== 'pending' && { borderColor: getStatusColor(), borderWidth: STATUS_INDICATOR.borderWidth },
-          ]}>
-            {renderStatusContent()}
-          </View>
+          <GestureDetector gesture={checkInTap}>
+            <View
+              accessibilityRole="button"
+              accessibilityLabel={`Check in ${habit.name}`}
+              style={[
+                styles.statusIndicator,
+                habit.todayStatus !== 'pending' && {
+                  borderColor: getStatusColor(),
+                  borderWidth: STATUS_INDICATOR.borderWidth,
+                },
+              ]}
+            >
+              {renderStatusContent()}
+            </View>
+          </GestureDetector>
           <View style={styles.textContainer}>
             <Text style={[
               styles.habitName,
@@ -121,6 +149,22 @@ export function HabitItem({
             ]}>
               {habit.name}
             </Text>
+            {isQuantity ? (
+              <View style={styles.progressRow}>
+                <View style={styles.progressTrack}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${Math.round(progress * 100)}%` },
+                      habit.todayStatus === 'completed' && styles.progressFillDone,
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressLabel}>
+                  {formatHabitProgress(habit, habit.todayAmount)}
+                </Text>
+              </View>
+            ) : null}
           </View>
         </Animated.View>
       </GestureDetector>
@@ -172,6 +216,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: SPACING.md,
+    backgroundColor: colors.surface,
   },
   statusIcon: {
     ...TYPOGRAPHY.headingMedium,
@@ -179,6 +224,7 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   textContainer: {
     flex: 1,
+    gap: 4,
   },
   habitName: {
     ...TYPOGRAPHY.headingMedium,
@@ -191,5 +237,29 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   skippedText: {
     color: colors.textLight,
+  },
+  progressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  progressTrack: {
+    flex: 1,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.surface,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 3,
+    backgroundColor: colors.primary,
+  },
+  progressFillDone: {
+    backgroundColor: colors.success,
+  },
+  progressLabel: {
+    ...TYPOGRAPHY.caption,
+    color: colors.textSecondary,
   },
 });
