@@ -295,7 +295,7 @@ export function createServer(): McpServer {
     {
       title: 'Save day plan',
       description:
-        'Accept a plan for a date, superseding any previous plan for that date (versions are kept). Invariant: every todo item is also scheduled on the date at its scheduledTime, so the plan and the Tasks screen never drift. Items: todo (todoId), habit (habitId), or note (free text with no backing entity). Call only after the user has agreed to the plan.',
+        'Accept a plan for a date, superseding any previous plan for that date (versions are kept). Items are executed in the order given: their position in the array is the sequence. Do NOT set scheduledTime unless the item genuinely happens at a fixed time (a class, a meeting, a call, a store that closes) — inventing clock times for ordinary tasks is wrong. Invariant: every todo item is also scheduled on the date, at its scheduledTime when it has one, so the plan and the Tasks screen never drift. Items: todo (todoId), habit (habitId), or note (free text with no backing entity). Call only after the user has agreed to the plan.',
       inputSchema: {
         date: dateSchema,
         rationale: z.string().optional().describe('One short paragraph on why the day looks like this'),
@@ -307,7 +307,11 @@ export function createServer(): McpServer {
               habitId: z.string().uuid().optional(),
               title: z.string().optional().describe('Required for notes; defaults to the entity title otherwise'),
               notes: z.string().optional(),
-              scheduledTime: timeSchema,
+              scheduledTime: timeSchema
+                .optional()
+                .describe(
+                  'Only for real appointments — a class, meeting, call, or a store that closes. Omit it for everything else; plan items are ordered by their position in this array.'
+                ),
               estimateMinutes: z.number().int().positive().optional(),
               isOptional: z.boolean().optional(),
             })
@@ -367,7 +371,7 @@ export function createServer(): McpServer {
             .map((i) =>
               db.updateTask(i.todoId as string, {
                 scheduledDate: date,
-                scheduledTime: i.scheduledTime,
+                scheduledTime: i.scheduledTime ?? null,
                 estimateMinutes: i.estimateMinutes ?? undefined,
               })
             )

@@ -244,7 +244,7 @@ export interface DailyPlanItem {
   todoId?: string;
   titleSnapshot: string;
   notesSnapshot?: string;
-  scheduledTime: string;
+  scheduledTime?: string;
   estimateMinutesSnapshot?: number;
   isOptional: boolean;
   position: number;

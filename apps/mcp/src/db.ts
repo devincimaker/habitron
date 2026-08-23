@@ -570,7 +570,7 @@ interface DbDailyPlanItem {
   todo_id: string | null;
   title_snapshot: string;
   notes_snapshot: string | null;
-  scheduled_time: string;
+  scheduled_time: string | null;
   estimate_minutes_snapshot: number | null;
   is_optional: boolean;
   position: number;
@@ -587,7 +587,7 @@ function mapPlanItem(row: DbDailyPlanItem): DailyPlanItem {
     todoId: row.todo_id ?? undefined,
     titleSnapshot: row.title_snapshot,
     notesSnapshot: row.notes_snapshot ?? undefined,
-    scheduledTime: row.scheduled_time,
+    scheduledTime: row.scheduled_time ?? undefined,
     estimateMinutesSnapshot: row.estimate_minutes_snapshot ?? undefined,
     isOptional: row.is_optional,
     position: row.position,
@@ -665,7 +665,7 @@ export interface PlanItemInput {
   habitId?: string;
   title: string;
   notes?: string;
-  scheduledTime: string;
+  scheduledTime?: string;
   estimateMinutes?: number;
   isOptional: boolean;
 }
@@ -723,7 +723,7 @@ export async function saveAcceptedPlan(input: {
           todo_id: item.itemType === 'todo' ? item.todoId : null,
           title_snapshot: item.title,
           notes_snapshot: item.notes ?? null,
-          scheduled_time: item.scheduledTime,
+          scheduled_time: item.scheduledTime ?? null,
           estimate_minutes_snapshot: item.estimateMinutes ?? null,
           is_optional: item.isOptional,
           position,
