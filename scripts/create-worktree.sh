@@ -22,7 +22,8 @@ Routing:
   Both are cheap to reverse later: pnpm wt:setup --db / --sim.
 
 Environment:
-  WORKTREE_ROOT         Override the parent directory used for new worktrees.
+  WORKTREE_ROOT         Parent directory for new worktrees
+                        (default: <parent of main checkout>/.<repo>-worktrees).
   WORKTREE_SKIP_INSTALL Set to 1 to skip pnpm install.
 
 By default, new branches are created from the caller's current HEAD.
@@ -47,24 +48,6 @@ resolve_current_repo() {
   repo_path=$(git rev-parse --show-toplevel)
   repo_path=$(cd "$repo_path" && pwd -P)
   echo "$repo_path"
-}
-
-resolve_repo_slug() {
-  local repo_path=$1
-  local remote_url
-  local slug
-
-  remote_url=$(git -C "$repo_path" config --get remote.origin.url 2>/dev/null || true)
-  if [ -n "$remote_url" ]; then
-    slug=${remote_url##*/}
-    slug=${slug%.git}
-    if [ -n "$slug" ]; then
-      echo "$slug"
-      return 0
-    fi
-  fi
-
-  basename "$repo_path"
 }
 
 read_env_value() {
@@ -148,18 +131,6 @@ resolve_remote_branch_ref() {
   return 1
 }
 
-readarray_fallback() {
-  local cmd=$1
-  if command -v mapfile >/dev/null 2>&1; then
-    mapfile -t WORKTREE_PATHS < <(eval "$cmd")
-  else
-    WORKTREE_PATHS=()
-    while IFS= read -r line; do
-      WORKTREE_PATHS+=("$line")
-    done < <(eval "$cmd")
-  fi
-}
-
 SKIP_INSTALL=${WORKTREE_SKIP_INSTALL:-0}
 BASE_REF_ARG=""
 SETUP_FLAGS=()
@@ -222,15 +193,10 @@ if [ -z "${MAIN_REPO:-}" ] || [ ! -d "$MAIN_REPO/.git" ]; then
   exit 1
 fi
 
-readarray_fallback "git -C \"$MAIN_REPO\" worktree list --porcelain | awk -v main_repo=\"$MAIN_REPO\" '/^worktree / { path = substr(\$0, 10); if (path != main_repo) print path }'"
-
-DEFAULT_WORKTREE_ROOT=""
-if [ ${#WORKTREE_PATHS[@]} -gt 0 ]; then
-  DEFAULT_WORKTREE_ROOT=$(dirname "${WORKTREE_PATHS[0]}")
-else
-  DEFAULT_WORKTREE_ROOT="$HOME/conductor/workspaces/$(resolve_repo_slug "$MAIN_REPO")"
-  echo "WARNING: No existing worktree root found. Defaulting to $DEFAULT_WORKTREE_ROOT." >&2
-fi
+# New worktrees live next to the main checkout in a hidden sibling folder
+# (<parent>/.<repo>-worktrees), so they are easy to find and never mistaken for
+# a Conductor workspace. WORKTREE_ROOT overrides it.
+DEFAULT_WORKTREE_ROOT="$(dirname "$MAIN_REPO")/.$(basename "$MAIN_REPO")-worktrees"
 
 WORKTREE_ROOT=${WORKTREE_ROOT:-$DEFAULT_WORKTREE_ROOT}
 WORKTREE_PATH="${WORKTREE_ROOT%/}/$WORKTREE_NAME"
