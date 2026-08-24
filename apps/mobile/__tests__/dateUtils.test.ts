@@ -7,6 +7,7 @@ import {
   formatDateString,
   formatShortDate,
   getTaskDateBadge,
+  getNextMonday,
 } from '../utils/dateUtils';
 import { getTodayDate } from '@habits-coach/shared';
 
@@ -155,6 +156,25 @@ describe('dateUtils', () => {
         label: 'Tomorrow',
         tone: 'upcoming',
       });
+    });
+  });
+
+  describe('getNextMonday', () => {
+    it('lands on a Monday', () => {
+      expect(new Date(getNextMonday() + 'T00:00:00').getDay()).toBe(1);
+    });
+
+    it('is always in the future, a full week out when today is Monday', () => {
+      const nextMonday = getNextMonday();
+      const daysAway = Math.round(
+        (new Date(nextMonday + 'T00:00:00').getTime() -
+          new Date(today + 'T00:00:00').getTime()) /
+          86_400_000
+      );
+
+      expect(daysAway).toBeGreaterThanOrEqual(1);
+      expect(daysAway).toBeLessThanOrEqual(7);
+      expect(daysAway === 7).toBe(new Date(today + 'T00:00:00').getDay() === 1);
     });
   });
 });
