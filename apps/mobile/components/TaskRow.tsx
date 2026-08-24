@@ -16,6 +16,7 @@ import {
 import { getTodoTagTintColor } from '../utils/todoTagColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
 import { useThemedStyles } from '../hooks/useColors';
+import { useTodosStore } from '../stores/useTodosStore';
 
 export interface TaskStatusToggleOptions {
   actualMinutes?: number;
@@ -41,13 +42,14 @@ interface TaskRowProps {
   onToggleStatus: (todo: Todo, options?: TaskStatusToggleOptions) => Promise<void>;
   onRemove: (todo: Todo) => void;
   onEdit: (todo: Todo) => void;
+  onReschedule: (todo: Todo) => void;
   onDragStart?: (todo: Todo, event: TaskRowDragStartEvent) => void;
   onDragMove?: (todo: Todo, event: TaskRowDragMoveEvent) => void;
   onDragEnd?: (todo: Todo, event: TaskRowDragMoveEvent) => void;
   isDragging?: boolean;
 }
 
-const REMOVE_ACTION_WIDTH = 84;
+const SWIPE_ACTION_WIDTH = 72;
 
 export function TaskRow({
   todo,
@@ -55,6 +57,7 @@ export function TaskRow({
   onToggleStatus,
   onRemove,
   onEdit,
+  onReschedule,
   onDragStart,
   onDragMove,
   onDragEnd,
@@ -63,9 +66,13 @@ export function TaskRow({
   const [styles, colors] = useThemedStyles(createStyles);
   const rowRef = useRef<View>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const setChecklistItemDone = useTodosStore((state) => state.setChecklistItemDone);
+  const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
   const [askingActualMinutes, setAskingActualMinutes] = useState<number | null>(null);
   const isAsking = askingActualMinutes !== null;
   const isCompleted = todo.status === 'completed';
+  const checklist = todo.checklist ?? [];
+  const checklistDone = checklist.filter((item) => item.done).length;
   const estimateLabel = todo.estimateMinutes ? formatDurationMinutes(todo.estimateMinutes) : null;
   const completedDelta =
     isCompleted && todo.estimateMinutes && todo.actualMinutes
@@ -176,11 +183,33 @@ export function TaskRow({
     onRemove(todo);
   }, [closeSwipeable, onRemove, todo]);
 
+  const handleReschedulePress = useCallback(() => {
+    closeSwipeable();
+    onReschedule(todo);
+  }, [closeSwipeable, onReschedule, todo]);
+
   const renderRightActions = useCallback(
     (progress: Animated.AnimatedInterpolation<number>) => {
+      const actions = [
+        {
+          key: 'reschedule',
+          icon: 'calendar-outline',
+          label: `Change date of ${todo.title}`,
+          background: colors.primary,
+          onPress: handleReschedulePress,
+        },
+        {
+          key: 'remove',
+          icon: 'trash-outline',
+          label: `Remove ${todo.title}`,
+          background: colors.error,
+          onPress: handleRemovePress,
+        },
+      ] as const;
+
       const translateX = progress.interpolate({
         inputRange: [0, 1],
-        outputRange: [REMOVE_ACTION_WIDTH * 0.35, 0],
+        outputRange: [SWIPE_ACTION_WIDTH * 0.35, 0],
         extrapolate: 'clamp',
       });
       const opacity = progress.interpolate({
@@ -195,29 +224,42 @@ export function TaskRow({
       });
 
       return (
-        <View style={styles.removeActionContainer}>
+        <View style={styles.swipeActionsContainer}>
           <Animated.View
             style={[
-              styles.removeActionButton,
+              styles.swipeActions,
               {
                 opacity,
                 transform: [{ translateX }, { scale }],
               },
             ]}
           >
-            <Pressable
-              style={styles.removeActionPressable}
-              onPress={handleRemovePress}
-              accessibilityRole="button"
-              accessibilityLabel={`Remove ${todo.title}`}
-            >
-              <Ionicons name="trash-outline" size={20} color={colors.white} />
-            </Pressable>
+            {actions.map((action) => (
+              <Pressable
+                key={action.key}
+                style={[styles.swipeAction, { backgroundColor: action.background }]}
+                onPress={action.onPress}
+                accessibilityRole="button"
+                accessibilityLabel={action.label}
+              >
+                <Ionicons name={action.icon} size={20} color={colors.white} />
+              </Pressable>
+            ))}
           </Animated.View>
         </View>
       );
     },
-    [colors.white, handleRemovePress, styles.removeActionButton, styles.removeActionContainer, styles.removeActionPressable, todo.title]
+    [
+      colors.error,
+      colors.primary,
+      colors.white,
+      handleRemovePress,
+      handleReschedulePress,
+      styles.swipeAction,
+      styles.swipeActions,
+      styles.swipeActionsContainer,
+      todo.title,
+    ]
   );
 
   return (
@@ -225,7 +267,7 @@ export function TaskRow({
       ref={swipeableRef}
       friction={1.4}
       overshootRight={false}
-      rightThreshold={REMOVE_ACTION_WIDTH * 0.55}
+      rightThreshold={SWIPE_ACTION_WIDTH * 0.55}
       renderRightActions={renderRightActions}
     >
       <GestureDetector gesture={dragGesture}>
@@ -365,7 +407,51 @@ export function TaskRow({
                     </Caption>
                   </View>
                 ) : null}
+                {checklist.length > 0 ? (
+                  <Pressable
+                    style={styles.checklistProgress}
+                    onPress={() => setIsChecklistExpanded((current) => !current)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Checklist, ${checklistDone} of ${checklist.length} done`}
+                    hitSlop={6}
+                  >
+                    <Ionicons
+                      name={isChecklistExpanded ? 'chevron-down' : 'list-outline'}
+                      size={12}
+                      color={colors.textLight}
+                    />
+                    <Caption color={colors.textLight}>
+                      {checklistDone}/{checklist.length}
+                    </Caption>
+                  </Pressable>
+                ) : null}
               </View>
+              {isChecklistExpanded && checklist.length > 0 ? (
+                <View style={styles.checklistItems}>
+                  {checklist.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      style={styles.checklistItemRow}
+                      onPress={() => void setChecklistItemDone(todo.id, item.id, !item.done)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: item.done }}
+                      accessibilityLabel={item.title}
+                    >
+                      <Ionicons
+                        name={item.done ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={18}
+                        color={item.done ? colors.success : colors.textLight}
+                      />
+                      <Caption
+                        color={item.done ? colors.textLight : colors.text}
+                        style={item.done ? styles.checklistItemDone : undefined}
+                      >
+                        {item.title}
+                      </Caption>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
             </Pressable>
           </View>
           )}
@@ -475,6 +561,24 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   doneButtonText: {
     fontWeight: '600',
   },
+  checklistProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  checklistItems: {
+    marginTop: 6,
+    gap: 2,
+  },
+  checklistItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: 4,
+  },
+  checklistItemDone: {
+    textDecorationLine: 'line-through',
+  },
   tagPill: {
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: colors.surface,
@@ -483,17 +587,16 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 2,
   },
-  removeActionContainer: {
-    width: REMOVE_ACTION_WIDTH,
-    justifyContent: 'center',
+  swipeActionsContainer: {
+    width: SWIPE_ACTION_WIDTH * 2,
     overflow: 'hidden',
   },
-  removeActionButton: {
+  swipeActions: {
     flex: 1,
-    backgroundColor: colors.error,
+    flexDirection: 'row',
   },
-  removeActionPressable: {
-    flex: 1,
+  swipeAction: {
+    width: SWIPE_ACTION_WIDTH,
     alignItems: 'center',
     justifyContent: 'center',
   },

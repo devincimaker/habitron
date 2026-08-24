@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Modal, ScrollView, StyleSheet, View } from 'react-native';
-import type { Goal, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
+import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import type { ChecklistItemDraft, Goal, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
 import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
 import { OptionChips } from './OptionChips';
@@ -36,7 +37,7 @@ export function TodoEditorModal({
   onClose,
   onSave,
 }: TodoEditorModalProps) {
-  const [styles] = useThemedStyles(createStyles);
+  const [styles, colors] = useThemedStyles(createStyles);
   const tags = useTodosStore((state) => state.tags);
   const initialListName = useMemo(() => {
     const list = lists.find((candidate) => candidate.id === todo?.listId);
@@ -55,6 +56,7 @@ export function TodoEditorModal({
   const [scheduledTimeInput, setScheduledTimeInput] = useState('');
   const [scheduledTimeError, setScheduledTimeError] = useState<string | undefined>();
   const [estimateMinutes, setEstimateMinutes] = useState('');
+  const [checklistItems, setChecklistItems] = useState<ChecklistItemDraft[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [editingDateField, setEditingDateField] = useState<'due' | 'scheduled' | null>(null);
 
@@ -74,7 +76,28 @@ export function TodoEditorModal({
     setScheduledTimeInput(todo?.scheduledTime ?? '');
     setScheduledTimeError(undefined);
     setEstimateMinutes(todo?.estimateMinutes ? String(todo.estimateMinutes) : '');
+    setChecklistItems(
+      (todo?.checklist ?? []).map((item) => ({
+        id: item.id,
+        title: item.title,
+        done: item.done,
+      }))
+    );
   }, [visible, todo, lists, defaultScheduledDate]);
+
+  const updateChecklistItem = (index: number, changes: Partial<ChecklistItemDraft>) => {
+    setChecklistItems((items) =>
+      items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...changes } : item))
+    );
+  };
+
+  const removeChecklistItem = (index: number) => {
+    setChecklistItems((items) => items.filter((_, itemIndex) => itemIndex !== index));
+  };
+
+  const addChecklistItem = () => {
+    setChecklistItems((items) => [...items, { title: '' }]);
+  };
 
   const handleSave = async () => {
     if (!title.trim()) return;
@@ -100,6 +123,9 @@ export function TodoEditorModal({
         estimateMinutes: estimateMinutes.trim()
           ? Number.parseInt(estimateMinutes.trim(), 10)
           : undefined,
+        ...(checklistItems.length > 0 || todo?.checklist?.length
+          ? { checklist: checklistItems.filter((item) => item.title.trim()) }
+          : {}),
       });
       onClose();
     } finally {
@@ -162,6 +188,52 @@ export function TodoEditorModal({
               value={newTagName}
               onChangeText={setNewTagName}
             />
+
+            <View style={styles.section}>
+              <Label>Checklist</Label>
+              {checklistItems.map((item, index) => (
+                <View key={item.id ?? `new-${index}`} style={styles.checklistRow}>
+                  <Pressable
+                    onPress={() => updateChecklistItem(index, { done: !item.done })}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: !!item.done }}
+                    accessibilityLabel={item.title || 'Checklist item'}
+                    hitSlop={8}
+                  >
+                    <Ionicons
+                      name={item.done ? 'checkmark-circle' : 'ellipse-outline'}
+                      size={22}
+                      color={item.done ? colors.success : colors.textLight}
+                    />
+                  </Pressable>
+                  <TextInput
+                    style={[styles.checklistInput, item.done && styles.checklistInputDone]}
+                    placeholder="Item"
+                    placeholderTextColor={colors.textLight}
+                    value={item.title}
+                    onChangeText={(value) => updateChecklistItem(index, { title: value })}
+                    autoFocus={!item.id && !item.title}
+                  />
+                  <Pressable
+                    onPress={() => removeChecklistItem(index)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Remove ${item.title || 'checklist item'}`}
+                    hitSlop={8}
+                  >
+                    <Ionicons name="close" size={18} color={colors.textLight} />
+                  </Pressable>
+                </View>
+              ))}
+              <Pressable
+                style={styles.addChecklistItem}
+                onPress={addChecklistItem}
+                accessibilityRole="button"
+                accessibilityLabel="Add checklist item"
+              >
+                <Ionicons name="add" size={18} color={colors.textSecondary} />
+                <Caption>Add item</Caption>
+              </Pressable>
+            </View>
 
             <View style={styles.section}>
               <Label>Goal</Label>
@@ -288,6 +360,28 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   section: {
     marginBottom: SPACING.md,
+  },
+  checklistRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: 6,
+  },
+  checklistInput: {
+    flex: 1,
+    paddingVertical: 4,
+    color: colors.text,
+    fontSize: 15,
+  },
+  checklistInputDone: {
+    color: colors.textLight,
+    textDecorationLine: 'line-through',
+  },
+  addChecklistItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingVertical: 6,
   },
   dateRow: {
     flexDirection: 'row',

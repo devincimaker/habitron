@@ -137,6 +137,53 @@ describe('taskQuickCreateTags', () => {
     });
   });
 
+  it('turns lines after the first into checklist items', () => {
+    expect(
+      buildQuickCreateTodoDraft('Groceries #admin\nmilk\neggs\nbread')
+    ).toEqual({
+      title: 'Groceries',
+      tagName: 'admin',
+      checklist: ['milk', 'eggs', 'bread'],
+    });
+  });
+
+  it('keeps inline tokens working on the first line and skips blank checklist lines', () => {
+    expect(
+      buildQuickCreateTodoDraft('Groceries (30m) 17:00 #admin\nmilk\n\n  eggs  \n')
+    ).toEqual({
+      title: 'Groceries',
+      tagName: 'admin',
+      scheduledDate: '2026-04-16',
+      scheduledTime: '17:00',
+      estimateMinutes: 30,
+      checklist: ['milk', 'eggs'],
+    });
+  });
+
+  it('ignores tokens on checklist lines', () => {
+    expect(buildQuickCreateTodoDraft('Groceries\ncall Ana at 18:00\n#pharmacy stop')).toEqual({
+      title: 'Groceries',
+      checklist: ['call Ana at 18:00', '#pharmacy stop'],
+    });
+  });
+
+  it('does not offer tag suggestions below the first line', () => {
+    expect(
+      getActiveInlineTagContext('Groceries\n#mi', {
+        start: 13,
+        end: 13,
+      })
+    ).toBeNull();
+  });
+
+  it('only highlights tokens on the first line', () => {
+    expect(getQuickCreateTextSegments('Groceries 17:00\nbuy milk at 18:00')).toEqual([
+      { text: 'Groceries ', kind: 'default' },
+      { text: '17:00', kind: 'scheduledTime' },
+      { text: '\nbuy milk at 18:00', kind: 'default' },
+    ]);
+  });
+
   it('builds text segments that mark the assigned scheduled time for highlighting', () => {
     expect(getQuickCreateTextSegments('Need Tomas algo 20:00 #brand')).toEqual([
       { text: 'Need Tomas algo ', kind: 'default' },

@@ -1,4 +1,14 @@
-import type { Habit, HabitDraft } from '../types';
+import type { ChecklistItemDraft, Habit, HabitDraft } from '../types';
+
+/** Plain strings become new items; drafts with an id refer to existing items. */
+export function normalizeChecklistDraft(
+  checklist: string[] | ChecklistItemDraft[]
+): ChecklistItemDraft[] {
+  return checklist
+    .map((item) => (typeof item === 'string' ? { title: item } : item))
+    .map((item) => ({ ...item, title: item.title.trim() }))
+    .filter((item) => item.title.length > 0);
+}
 
 /**
  * Get today's date in YYYY-MM-DD format

@@ -31,6 +31,18 @@ function isHabitDue(habit: Habit, date: string): boolean {
   return true;
 }
 
+/** Tasks with a checklist get a compact done/total counter for the packet. */
+function withChecklistProgress<T extends Task>(task: T) {
+  if (!task.checklist) return task;
+  return {
+    ...task,
+    checklistProgress: {
+      done: task.checklist.filter((item) => item.done).length,
+      total: task.checklist.length,
+    },
+  };
+}
+
 function sortByPriorityThenTime(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
     const time = (a.scheduledTime ?? '99:99').localeCompare(b.scheduledTime ?? '99:99');
@@ -62,20 +74,30 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
 
   const scheduled = sortByPriorityThenTime(open.filter((t) => t.scheduledDate === date)).map((t) => {
     const item = planOutcomeByTodo.get(t.id);
-    return item ? { ...t, planItemId: item.id, planOutcome: item.outcome } : t;
+    const task = withChecklistProgress(t);
+    return item ? { ...task, planItemId: item.id, planOutcome: item.outcome } : task;
   });
-  const completedOnDate = tasks.filter(
-    (t) => t.status === 'completed' && t.completedAt?.slice(0, 10) === date
-  );
-  const overdue = open.filter((t) => t.dueDate && t.dueDate < date && t.scheduledDate !== date);
-  const dueSoon = open.filter(
-    (t) => t.dueDate && t.dueDate >= date && t.dueDate <= addDays(date, 7) && t.scheduledDate !== date
-  );
-  const scheduledLater = open.filter((t) => t.scheduledDate && t.scheduledDate > date);
-  const scheduledPast = open.filter((t) => t.scheduledDate && t.scheduledDate < date);
+  const completedOnDate = tasks
+    .filter((t) => t.status === 'completed' && t.completedAt?.slice(0, 10) === date)
+    .map(withChecklistProgress);
+  const overdue = open
+    .filter((t) => t.dueDate && t.dueDate < date && t.scheduledDate !== date)
+    .map(withChecklistProgress);
+  const dueSoon = open
+    .filter(
+      (t) => t.dueDate && t.dueDate >= date && t.dueDate <= addDays(date, 7) && t.scheduledDate !== date
+    )
+    .map(withChecklistProgress);
+  const scheduledLater = open
+    .filter((t) => t.scheduledDate && t.scheduledDate > date)
+    .map(withChecklistProgress);
+  const scheduledPast = open
+    .filter((t) => t.scheduledDate && t.scheduledDate < date)
+    .map(withChecklistProgress);
   const unscheduled = open
     .filter((t) => !t.scheduledDate)
-    .sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5));
+    .sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5))
+    .map(withChecklistProgress);
 
   const habitsForDay: HabitForDay[] = habits.map((habit) => {
     const own = logs.filter((l) => l.habitId === habit.id);

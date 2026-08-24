@@ -59,6 +59,13 @@ export function getUpcomingDays(count = 7): UpcomingDayOption[] {
   return days;
 }
 
+/** The Monday that follows today; a week out when today is already Monday. */
+export function getNextMonday(): string {
+  const date = new Date(getTodayDate() + 'T00:00:00');
+  date.setDate(date.getDate() + (((8 - date.getDay()) % 7) || 7));
+  return toDateString(date.getFullYear(), date.getMonth() + 1, date.getDate());
+}
+
 export function canGoToPreviousDay(selectedDate: string): boolean {
   const selected = new Date(selectedDate + 'T00:00:00');
   const sixDaysAgo = new Date();

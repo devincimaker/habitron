@@ -108,38 +108,57 @@ export function stripInlineScheduledTimeToken(text: string) {
     .trim();
 }
 
+/**
+ * Splits multi-line quick-create input: the first line is the task (with
+ * inline tokens), every following non-empty line becomes a checklist item.
+ */
+export function splitQuickCreateInput(text: string): {
+  firstLine: string;
+  checklistItems: string[];
+} {
+  const [firstLine = '', ...rest] = text.split('\n');
+  return {
+    firstLine,
+    checklistItems: rest.map((line) => line.trim()).filter((line) => line.length > 0),
+  };
+}
+
 export function buildQuickCreateTodoDraft(
   text: string,
   defaultScheduledDate?: string
 ): TodoDraft | null {
+  const { firstLine, checklistItems } = splitQuickCreateInput(text);
   const schedule = resolveNewTodoSchedule(
     defaultScheduledDate,
-    getInlineScheduledTimeContext(text)?.normalizedTime
+    getInlineScheduledTimeContext(firstLine)?.normalizedTime
   );
   if (schedule === null) {
     return null;
   }
 
-  const estimate = getInlineEstimateContext(text);
+  const estimate = getInlineEstimateContext(firstLine);
   const title = stripInlineTagTokens(
-    stripInlineScheduledTimeToken(stripInlineEstimateToken(text))
+    stripInlineScheduledTimeToken(stripInlineEstimateToken(firstLine))
   );
   if (!title) {
     return null;
   }
 
-  const tagName = getInlineTagName(text);
+  const tagName = getInlineTagName(firstLine);
   return {
     title,
     ...(tagName ? { tagName } : {}),
     ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
     ...(estimate ? { estimateMinutes: estimate.minutes } : {}),
+    ...(checklistItems.length > 0 ? { checklist: checklistItems } : {}),
   };
 }
 
 export function getQuickCreateTextSegments(text: string): QuickCreateTextSegment[] {
-  const scheduledTime = getInlineScheduledTimeContext(text);
-  const estimate = getInlineEstimateContext(text);
+  // Tokens only count on the first line; checklist lines below stay verbatim.
+  const { firstLine } = splitQuickCreateInput(text);
+  const scheduledTime = getInlineScheduledTimeContext(firstLine);
+  const estimate = getInlineEstimateContext(firstLine);
   const highlights = [
     scheduledTime ? { ...scheduledTime, kind: 'scheduledTime' as const } : null,
     estimate ? { ...estimate, kind: 'estimate' as const } : null,
@@ -177,6 +196,11 @@ export function getActiveInlineTagContext(
   }
 
   const caret = clampSelectionValue(selection.start, text.length);
+  const firstLineEnd = text.indexOf('\n');
+  if (firstLineEnd !== -1 && caret > firstLineEnd) {
+    // The category tag lives on the first line; below it lines are checklist items.
+    return null;
+  }
   let start = caret;
   while (start > 0 && !isWhitespace(text[start - 1])) {
     start -= 1;

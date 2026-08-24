@@ -1,5 +1,7 @@
 import { supabase } from './supabase';
 import type {
+  ChecklistItem,
+  ChecklistItemDraft,
   Priority,
   Todo,
   TodoDraft,
@@ -7,6 +9,7 @@ import type {
   TodoStatus,
   TodoTag,
 } from '@habits-coach/shared';
+import { normalizeChecklistDraft } from '@habits-coach/shared';
 import { getTodoTagColor } from '../utils/todoTagColors';
 import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from '../utils/todoTime';
 
@@ -55,11 +58,23 @@ interface DbTodo {
   updated_at: string;
 }
 
-interface DbTodoWithTag extends DbTodo {
-  todo_tags: DbTodoTag | null;
+interface DbChecklistItem {
+  id: string;
+  user_id: string;
+  todo_id: string;
+  title: string;
+  done: boolean;
+  position: number;
+  created_at: string;
+  updated_at: string;
 }
 
-const TODO_SELECT = '*, todo_tags(*)';
+interface DbTodoWithRelations extends DbTodo {
+  todo_tags: DbTodoTag | null;
+  todo_checklist_items: DbChecklistItem[];
+}
+
+const TODO_SELECT = '*, todo_tags(*), todo_checklist_items(*)';
 
 function mapDbTodoListToTodoList(list: DbTodoList): TodoList {
   return {
@@ -83,7 +98,16 @@ function mapDbTodoTagToTodoTag(tag: DbTodoTag): TodoTag {
   };
 }
 
-function mapDbTodoToTodo(todo: DbTodoWithTag): Todo {
+function mapDbChecklistItem(item: DbChecklistItem): ChecklistItem {
+  return {
+    id: item.id,
+    title: item.title,
+    done: item.done,
+    position: item.position,
+  };
+}
+
+function mapDbTodoToTodo(todo: DbTodoWithRelations): Todo {
   return {
     id: todo.id,
     title: todo.title,
@@ -101,9 +125,84 @@ function mapDbTodoToTodo(todo: DbTodoWithTag): Todo {
     listId: todo.list_id,
     goalId: todo.goal_id ?? undefined,
     tag: todo.todo_tags ? mapDbTodoTagToTodoTag(todo.todo_tags) : undefined,
+    checklist: todo.todo_checklist_items.length
+      ? [...todo.todo_checklist_items]
+          .sort((a, b) => a.position - b.position)
+          .map(mapDbChecklistItem)
+      : undefined,
     createdAt: new Date(todo.created_at).getTime(),
     updatedAt: new Date(todo.updated_at).getTime(),
   };
+}
+
+/**
+ * Makes the task's checklist match `drafts` exactly: items with an id are
+ * updated, the rest inserted, existing items missing from the array deleted.
+ * Positions follow array order.
+ */
+async function syncChecklist(
+  userId: string,
+  todoId: string,
+  checklist: string[] | ChecklistItemDraft[]
+): Promise<void> {
+  const drafts = normalizeChecklistDraft(checklist);
+
+  const { data: existingRows, error: fetchError } = await supabase
+    .from('todo_checklist_items')
+    .select('id')
+    .eq('todo_id', todoId);
+
+  if (fetchError) {
+    console.error('Error fetching checklist items:', fetchError);
+    throw fetchError;
+  }
+
+  const keptIds = new Set(drafts.flatMap((item) => (item.id ? [item.id] : [])));
+  const removedIds = (existingRows as Array<{ id: string }>)
+    .map((row) => row.id)
+    .filter((id) => !keptIds.has(id));
+
+  if (removedIds.length > 0) {
+    const { error } = await supabase
+      .from('todo_checklist_items')
+      .delete()
+      .in('id', removedIds);
+
+    if (error) {
+      console.error('Error deleting checklist items:', error);
+      throw error;
+    }
+  }
+
+  if (drafts.length > 0) {
+    const { error } = await supabase.from('todo_checklist_items').upsert(
+      drafts.map((item, position) => ({
+        ...(item.id ? { id: item.id } : {}),
+        user_id: userId,
+        todo_id: todoId,
+        title: item.title,
+        done: item.done ?? false,
+        position,
+      }))
+    );
+
+    if (error) {
+      console.error('Error saving checklist items:', error);
+      throw error;
+    }
+  }
+}
+
+export async function setChecklistItemDone(itemId: string, done: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('todo_checklist_items')
+    .update({ done })
+    .eq('id', itemId);
+
+  if (error) {
+    console.error('Error updating checklist item:', error);
+    throw error;
+  }
 }
 
 function serializeScheduledTime(time?: string): string | null {
@@ -220,7 +319,7 @@ async function getTodoById(todoId: string): Promise<Todo> {
     throw error;
   }
 
-  return mapDbTodoToTodo(data as unknown as DbTodoWithTag);
+  return mapDbTodoToTodo(data as unknown as DbTodoWithRelations);
 }
 
 async function resolveListId(
@@ -418,7 +517,7 @@ export async function getTodos(): Promise<Todo[]> {
     throw error;
   }
 
-  return (data as unknown as DbTodoWithTag[]).map(mapDbTodoToTodo);
+  return (data as unknown as DbTodoWithRelations[]).map(mapDbTodoToTodo);
 }
 
 export async function addTodo(todo: TodoDraft): Promise<Todo> {
@@ -446,6 +545,10 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
     tag_id: tagId ?? null,
     sort_order: Date.now(),
   });
+
+  if (todo.checklist?.length) {
+    await syncChecklist(userId, createdTodo.id, todo.checklist);
+  }
 
   return getTodoById(createdTodo.id);
 }
@@ -491,6 +594,10 @@ export async function updateTodo(
 
   if (Object.keys(updateData).length > 0) {
     await updateTodoRow(todoId, updateData);
+  }
+
+  if (changes.checklist !== undefined) {
+    await syncChecklist(userId, todoId, changes.checklist);
   }
 
   return getTodoById(todoId);

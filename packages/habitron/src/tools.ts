@@ -177,7 +177,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'create_task',
       title: 'Create task',
       description:
-        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected.',
+        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -187,6 +187,10 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.optional(),
         estimateMinutes: z.int().positive().optional(),
         tagId: z.uuid().optional().describe('Category; see list_tags'),
+        checklist: z
+          .array(z.string().min(1))
+          .optional()
+          .describe('Checklist item titles in order (e.g. ["milk", "eggs", "bread"])'),
       },
       handler: (args) => db.createTask(args),
     }),
@@ -206,8 +210,22 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.nullable().optional(),
         estimateMinutes: z.int().positive().nullable().optional(),
         tagId: z.uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
+        checklist: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            'Replaces the full checklist in order ([] clears it). Items whose title matches an existing one keep their done state.'
+          ),
       },
       handler: ({ id, ...patch }) => db.updateTask(id, patch),
+    }),
+
+    defineTool({
+      name: 'set_checklist_item_done',
+      title: 'Set checklist item done',
+      description: "Tick or untick one checklist item on a task. Item ids come from the task's checklist.",
+      inputSchema: { itemId: z.uuid(), done: z.boolean() },
+      handler: ({ itemId, done }) => db.setChecklistItemDone(itemId, done),
     }),
 
     defineTool({
@@ -248,6 +266,40 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB').optional(),
       },
       handler: ({ name, color }) => db.createTag(name, color),
+    }),
+
+    defineTool({
+      name: 'update_tag',
+      title: 'Update tag',
+      description:
+        'Rename or recolour an existing category. Every task keeps its link, so this is the safe way to fix a category whose name no longer fits. Names are unique per user (case-insensitive).',
+      inputSchema: {
+        id: z.uuid(),
+        name: z.string().min(1).optional(),
+        color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB')
+          .nullable()
+          .optional()
+          .describe('null clears the colour'),
+      },
+      handler: ({ id, name, color }) => db.updateTag(id, { name, color }),
+    }),
+
+    defineTool({
+      name: 'delete_tag',
+      title: 'Delete tag',
+      description:
+        'Delete a category. Tasks are never deleted, but any task still carrying this tag becomes uncategorised — pass reassignToTagId to move them to another category first. Destructive: check list_tags and confirm with the user before calling. The result reports how many tasks were affected.',
+      inputSchema: {
+        id: z.uuid(),
+        reassignToTagId: z
+          .uuid()
+          .optional()
+          .describe("Move this tag's tasks here before deleting; otherwise they lose their category"),
+      },
+      annotations: { destructiveHint: true },
+      handler: ({ id, reassignToTagId }) => db.deleteTag(id, reassignToTagId),
     }),
 
     // ----------------------------------------------------------------- habits

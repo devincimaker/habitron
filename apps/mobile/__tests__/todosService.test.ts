@@ -10,7 +10,7 @@ jest.mock('../services/supabase', () => ({
   },
 }));
 
-import { getTodos } from '../services/todos';
+import { getTodos, setChecklistItemDone } from '../services/todos';
 
 describe('todos service', () => {
   beforeEach(() => {
@@ -53,6 +53,28 @@ describe('todos service', () => {
           created_at: '2026-04-15T09:00:00.000Z',
           updated_at: '2026-04-15T09:00:00.000Z',
         },
+        todo_checklist_items: [
+          {
+            id: 'item-2',
+            user_id: 'user-1',
+            todo_id: 'todo-1',
+            title: 'eggs',
+            done: false,
+            position: 1,
+            created_at: '2026-04-15T10:00:00.000Z',
+            updated_at: '2026-04-15T10:00:00.000Z',
+          },
+          {
+            id: 'item-1',
+            user_id: 'user-1',
+            todo_id: 'todo-1',
+            title: 'milk',
+            done: true,
+            position: 0,
+            created_at: '2026-04-15T10:00:00.000Z',
+            updated_at: '2026-04-15T10:00:00.000Z',
+          },
+        ],
       },
       {
         ...{
@@ -75,6 +97,7 @@ describe('todos service', () => {
           created_at: '2026-04-15T10:00:00.000Z',
           updated_at: '2026-04-15T10:00:00.000Z',
           todo_tags: null,
+          todo_checklist_items: [],
         },
       },
     ];
@@ -104,13 +127,33 @@ describe('todos service', () => {
 
     const todos = await getTodos();
 
-    expect(select).toHaveBeenCalledWith('*, todo_tags(*)');
+    expect(select).toHaveBeenCalledWith('*, todo_tags(*), todo_checklist_items(*)');
     expect(todos).toEqual([
       expect.objectContaining({
         id: 'todo-1',
         tag: expect.objectContaining({ id: 'tag-1', name: 'brand', color: '#666666' }),
+        checklist: [
+          { id: 'item-1', title: 'milk', done: true, position: 0 },
+          { id: 'item-2', title: 'eggs', done: false, position: 1 },
+        ],
       }),
-      expect.objectContaining({ id: 'todo-2', tag: undefined }),
+      expect.objectContaining({ id: 'todo-2', tag: undefined, checklist: undefined }),
     ]);
+  });
+
+  it('ticks a checklist item', async () => {
+    const eq = jest.fn().mockResolvedValue({ error: null });
+    const update = jest.fn().mockReturnValue({ eq });
+    mockFrom.mockImplementation((table: string) => {
+      if (table === 'todo_checklist_items') {
+        return { update };
+      }
+      throw new Error(`Unexpected table: ${table}`);
+    });
+
+    await setChecklistItemDone('item-1', true);
+
+    expect(update).toHaveBeenCalledWith({ done: true });
+    expect(eq).toHaveBeenCalledWith('id', 'item-1');
   });
 });

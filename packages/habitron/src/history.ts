@@ -239,6 +239,7 @@ export async function buildTaskHistory(db: Db, timezone: string, args: { days: n
       actualMinutes: t.actualMinutes,
       priority: t.priority,
       tag: t.tag,
+      checklist: t.checklist,
     })),
   };
 }
