@@ -12,6 +12,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
+import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
@@ -74,6 +75,7 @@ export default function TasksScreen() {
   const { goals, loadGoals } = useGoalsStore();
 
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
@@ -183,6 +185,7 @@ export default function TasksScreen() {
                   onToggleStatus={handleToggleTodoStatus}
                   onRemove={removeTodo}
                   onEdit={openTaskEditor}
+                  onReschedule={setReschedulingTodo}
                   variant="compact"
                 />
               ))}
@@ -236,6 +239,7 @@ export default function TasksScreen() {
                       onToggleStatus={handleToggleTodoStatus}
                       onRemove={removeTodo}
                       onEdit={openTaskEditor}
+                      onReschedule={setReschedulingTodo}
                       variant="compact"
                     />
                   ))}
@@ -261,6 +265,11 @@ export default function TasksScreen() {
           visible={showQuickCreate}
           onClose={() => setShowQuickCreate(false)}
           onSave={handleQuickCreate}
+        />
+
+        <TaskRescheduleModal
+          todo={reschedulingTodo}
+          onClose={() => setReschedulingTodo(null)}
         />
 
         <TodoEditorModal
