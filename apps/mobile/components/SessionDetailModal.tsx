@@ -13,7 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { CATEGORY_COLORS, type Colors } from '../constants/theme';
 import type { CoachingSessionDetail } from '@habits-coach/shared';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface SessionDetailModalProps {
   visible: boolean;

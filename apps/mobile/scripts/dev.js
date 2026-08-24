@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { spawn, spawnSync } = require('child_process');
-const { readFileSync, existsSync } = require('fs');
+const { readFileSync, existsSync, readdirSync, statSync } = require('fs');
 const { resolve } = require('path');
 
 const appRoot = resolve(__dirname, '..');
@@ -80,7 +80,50 @@ function isDevClientInstalled(udid) {
   return result.status === 0;
 }
 
-function installDevClient(simulatorName) {
+// The Dev Client is a generic shell: it holds no JS, and EXPO_PUBLIC_* is
+// inlined by Metro at bundle time. So one build serves every simulator, and
+// installing it takes seconds where `expo run:ios` takes minutes. Only a
+// change to app.json or the native dep set needs a real rebuild.
+function findPrebuiltDevClient() {
+  const derived = resolve(process.env.HOME || '', 'Library/Developer/Xcode/DerivedData');
+  if (!existsSync(derived)) return null;
+
+  const candidates = readdirSync(derived)
+    .filter((name) => name.startsWith('HabitsCoach-'))
+    .map((name) => resolve(derived, name, 'Build/Products/Debug-iphonesimulator/HabitsCoach.app'))
+    .filter((appPath) => existsSync(appPath))
+    .map((appPath) => ({ appPath, mtime: statSync(appPath).mtimeMs }))
+    .sort((a, b) => b.mtime - a.mtime);
+
+  return candidates.length > 0 ? candidates[0].appPath : null;
+}
+
+// Without this, SpringBoard's "Open in HabitsCoach?" alert can appear on a deep
+// link fired while a modal is up, and that alert ignores programmatic taps.
+function preapproveSchemes(udid) {
+  for (const scheme of ['habits-coach', 'exp+habits-coach', bundleIdentifier]) {
+    run('xcrun', [
+      'simctl', 'spawn', udid, 'defaults', 'write',
+      'com.apple.launchservices.schemeapproval',
+      `com.apple.CoreSimulator.CoreSimulatorBridge-->${scheme}`,
+      '-string', bundleIdentifier,
+    ], { stdio: 'ignore' });
+  }
+}
+
+function installDevClient(simulatorName, udid) {
+  const prebuilt = findPrebuiltDevClient();
+
+  if (prebuilt) {
+    console.log(`Installing the existing dev client (${prebuilt})...`);
+    const installed = run('xcrun', ['simctl', 'install', udid, prebuilt], { stdio: 'inherit' });
+    if (installed.status === 0) {
+      preapproveSchemes(udid);
+      return;
+    }
+    console.log('Install failed, falling back to a native build...');
+  }
+
   const result = run(npxCommand, ['expo', 'run:ios', '--device', simulatorName, '--no-bundler'], {
     stdio: 'inherit',
   });
@@ -88,6 +131,8 @@ function installDevClient(simulatorName) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+
+  preapproveSchemes(udid);
 }
 
 function openDevClient(udid, port) {
@@ -100,6 +145,20 @@ function openDevClient(udid, port) {
 }
 
 loadEnvFile(resolve(appRoot, '.env'));
+
+// A worktree set up with --no-sim owns no simulator, and its .env names one
+// that was never created. Say that plainly instead of failing later on a
+// missing device, and never fall back to a default: the default is another
+// worktree's simulator.
+const ledgerPath = resolve(appRoot, '../../.env.worktree');
+if (existsSync(ledgerPath)) {
+  const ledger = readFileSync(ledgerPath, 'utf-8');
+  if (/^WT_SIM_MODE=none$/m.test(ledger)) {
+    console.error('This worktree was set up with --no-sim, so it has no simulator to run on.');
+    console.error('If the change turned out to be visible after all:  pnpm wt:setup --sim');
+    process.exit(1);
+  }
+}
 
 const simulator = env.IOS_SIMULATOR || 'iPhone 16e';
 const port = env.EXPO_PORT || '8081';
@@ -120,7 +179,7 @@ ensureSimulatorBooted(udid);
 
 if (!isDevClientInstalled(udid)) {
   console.log(`Installing development build for ${simulator}...`);
-  installDevClient(simulator);
+  installDevClient(simulator, udid);
 }
 
 const metro = spawn(npxCommand, ['expo', 'start', '--port', port], {

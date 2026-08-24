@@ -2,7 +2,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BodyMedium, Button, Caption, HeadingLarge } from './ui';
 import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
 import { getUpcomingDays } from '../utils/dateUtils';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface QuickDatePickerModalProps {
   visible: boolean;

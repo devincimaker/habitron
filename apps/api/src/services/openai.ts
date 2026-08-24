@@ -163,29 +163,6 @@ function buildHabitsContext(habits: ChatRequest['habits']): string {
     .join('\n')}`;
 }
 
-function buildTodosContext(todos: NonNullable<ChatRequest['todos']>): string {
-  if (todos.length === 0) {
-    return '## Tasks\n- No tasks tracked yet.';
-  }
-
-  return `## Tasks\n${todos
-    .map((todo) => {
-      const details = [
-        todo.status,
-        todo.priority ? `priority ${todo.priority}` : null,
-        todo.dueDate ? `due ${todo.dueDate}` : null,
-        todo.scheduledDate ? `scheduled ${todo.scheduledDate}` : null,
-        todo.scheduledTime ? `at ${todo.scheduledTime}` : null,
-        todo.tag ? `category ${todo.tag.name}` : null,
-      ]
-        .filter(Boolean)
-        .join(', ');
-
-      return `- "${todo.title}" [id: ${todo.id}]${details ? ` (${details})` : ''}${todo.notes ? ` - ${todo.notes}` : ''}`;
-    })
-    .join('\n')}`;
-}
-
 function buildJournalContext(entries: NonNullable<ChatRequest['journalEntries']>): string {
   if (entries.length === 0) {
     return '## Journal\n- No journal entries captured yet.';

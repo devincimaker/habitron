@@ -5,14 +5,19 @@
   "packageManager": "pnpm@9.15.0",
   "scripts": {
     "dev": "turbo dev --ui tui",
-    "worktree:create": "./scripts/create-worktree.sh",
-    "worktree:setup": "./scripts/setup-worktree.sh",
-    "worktree:teardown": "./scripts/teardown-worktree.sh",
+    "wt:new": "./scripts/create-worktree.sh",
+    "wt:setup": "./scripts/setup-worktree.sh",
+    "wt:list": "./scripts/worktree-list.sh",
+    "wt:rm": "./scripts/worktree-remove.sh",
+    "wt:db:reset": "./scripts/worktree-db-reset.sh",
+    "wt:teardown": "./scripts/teardown-worktree.sh",
     "build": "turbo build",
     "build:ios": "pnpm --filter @habits-coach/mobile build:ios",
     "submit:ios": "pnpm --filter @habits-coach/mobile submit:ios",
     "start": "turbo start --ui tui",
     "typecheck": "turbo typecheck",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "test": "turbo test",
     "test:coverage": "turbo test:coverage",
     "clean": "turbo clean && rm -rf node_modules",
@@ -22,6 +27,10 @@
     "db:new": "supabase migration new"
   },
   "devDependencies": {
-    "turbo": "^2.3.3"
+    "eslint": "^9",
+    "eslint-plugin-react-hooks": "^5",
+    "globals": "^17.11.0",
+    "turbo": "^2.3.3",
+    "typescript-eslint": "^8"
   }
 }

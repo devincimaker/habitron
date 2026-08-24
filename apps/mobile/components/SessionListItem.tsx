@@ -9,7 +9,7 @@ import Animated, {
 import { Ionicons } from '@expo/vector-icons';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
 import { FONT_SIZES, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 const SWIPE_THRESHOLD = 80;
 

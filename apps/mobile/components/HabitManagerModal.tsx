@@ -12,7 +12,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Habit } from '@habits-coach/shared';
-import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { BORDER_RADIUS, SHADOWS, SPACING, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { BodyMedium, Caption, HeadingMedium } from './ui';
 import {

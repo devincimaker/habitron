@@ -36,7 +36,7 @@ function formatDuration(ms: number): string {
 
 // Waveform visualization component
 function Waveform({ level, isWarning = false }: { level: number; isWarning?: boolean }) {
-  const [styles, colors] = useThemedStyles(createStyles);
+  const [, colors] = useThemedStyles(createStyles);
   const bars = 20;
   const animatedValues = useRef(
     Array.from({ length: bars }, () => new Animated.Value(0.15))

@@ -3,7 +3,7 @@ import type { CoachProposal, Goal, Habit, Todo } from '@habits-coach/shared';
 import { Button, Card, BodyMedium, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, BORDER_RADIUS, SHADOWS, TYPOGRAPHY, LIST_ITEM, type Colors } from '../constants/theme';
 import { describeCoachAction, getProposalSummary } from '../utils/coachProposal';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
 
 export type CoachProposalCardStatus = 'pending' | 'applying' | 'applied' | 'failed';

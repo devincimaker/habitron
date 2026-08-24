@@ -40,7 +40,7 @@ export function ProfileHeaderButton() {
   );
 }
 
-const createStyles = (colors: Colors) => StyleSheet.create({
+const createStyles = (_colors: Colors) => StyleSheet.create({
   container: {
     marginRight: HEADER.edgeMargin,
     justifyContent: 'center',

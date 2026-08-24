@@ -41,14 +41,16 @@ function AnimatedTabIcon({
   routeName: string;
   color: string;
 }) {
+  // Every hook runs before the early return below: a route with no icon entry
+  // would otherwise change this component's hook count between renders.
+  const animatedStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(focused ? 1 : 0.6, { duration: 150 }),
+  }));
+
   const icons = TAB_ICONS[routeName];
   if (!icons) return null;
 
   const iconName = focused ? icons.active : icons.inactive;
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: withTiming(focused ? 1 : 0.6, { duration: 150 }),
-  }));
 
   return (
     <Animated.View style={animatedStyle}>

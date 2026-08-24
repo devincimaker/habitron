@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, TextInput, View } from 'react
 import { Ionicons } from '@expo/vector-icons';
 import type { ChecklistItemDraft, Goal, Todo, TodoDraft, TodoList } from '@habits-coach/shared';
 import { Button, Caption, HeadingLarge, Input, Label } from './ui';
-import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
+import { SPACING, type Colors } from '../constants/theme';
 import { OptionChips } from './OptionChips';
 import { QuickDatePickerModal } from './QuickDatePickerModal';
 import { formatRelativeDateLabel } from '../utils/dateUtils';

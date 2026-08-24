@@ -8,7 +8,7 @@ import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import { useProfileStore } from '../../stores/useProfileStore';
 import { Button, Input, Avatar, HeadingLarge, BodyMedium, Caption } from '../../components/ui';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, TAB_BAR, TOUCH_TARGET, type Colors } from '../../constants/theme';
-import { useThemedStyles, useColors } from '../../hooks/useColors';
+import { useThemedStyles } from '../../hooks/useColors';
 
 export default function ProfileScreen() {
   const [styles, colors] = useThemedStyles(createStyles);

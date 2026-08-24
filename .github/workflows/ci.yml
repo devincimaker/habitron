@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+concurrency:
+  # A new push supersedes the run it interrupted, except on master, where every
+  # commit's run is the record of whether that commit deployed.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+jobs:
+  gate:
+    name: typecheck + lint + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      # Errors fail the gate; react-hooks/exhaustive-deps warnings do not yet.
+      # Raise this to --max-warnings 0 once those are worked through.
+      - run: pnpm lint
+
+      - run: pnpm test
+
+  deploy:
+    name: deploy migrations
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # db push compares against what is already applied, but the diff below
+          # needs the previous commit to know whether migrations moved at all.
+          fetch-depth: 2
+
+      - name: Did this commit touch migrations?
+        id: changed
+        run: |
+          if git diff --name-only HEAD~1 HEAD -- supabase/migrations/ | grep -q .; then
+            echo "migrations=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "migrations=false" >> "$GITHUB_OUTPUT"
+            echo "No migration changes in this commit — nothing to deploy."
+          fi
+
+      - uses: supabase/setup-cli@v1
+        if: steps.changed.outputs.migrations == 'true'
+        with:
+          version: latest
+
+      # Fails loudly rather than skipping. A deploy step that quietly does
+      # nothing when a secret is missing is indistinguishable from one that
+      # worked, and the cost of that confusion is production schema drift.
+      - name: Check deploy credentials
+        if: steps.changed.outputs.migrations == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          missing=""
+          [ -n "$SUPABASE_ACCESS_TOKEN" ] || missing="$missing SUPABASE_ACCESS_TOKEN"
+          [ -n "$SUPABASE_DB_PASSWORD" ] || missing="$missing SUPABASE_DB_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "::error::This commit adds migrations but these repo secrets are unset:$missing"
+            echo "Add them with:"
+            echo "  gh secret set SUPABASE_ACCESS_TOKEN"
+            echo "  gh secret set SUPABASE_DB_PASSWORD"
+            exit 1
+          fi
+
+      - name: Push migrations to production
+        if: steps.changed.outputs.migrations == 'true'
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          supabase link --project-ref fitklsshlhjwddbxhhdi
+          supabase db push

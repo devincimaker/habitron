@@ -49,7 +49,6 @@ import type {
 import {
   SPACING,
   BORDER_RADIUS,
-  TAB_BAR,
   TYPOGRAPHY,
   TOUCH_TARGET,
   type Colors,

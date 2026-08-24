@@ -41,6 +41,10 @@ yarn-error.*
 # local env files
 .env
 .env*.local
+# per-worktree ledger written by scripts/setup-worktree.sh
+.env.worktree
+# git worktrees created inside the repo are separate checkouts, not content
+.claude/worktrees/
 
 # typescript
 *.tsbuildinfo

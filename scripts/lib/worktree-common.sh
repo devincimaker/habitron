@@ -1,0 +1,428 @@
+#!/usr/bin/env bash
+# Shared helpers for the wt:* worktree commands.
+#
+# Design in one line: a worktree owns an Expo port, an API port and a simulator
+# it created for itself; its database is either the shared hosted project
+# (default, free) or its own hosted Supabase branch (--db, for branches that
+# touch migrations). The main checkout is never managed by these scripts.
+#
+# Cross-repo resource coordination lives in lib/resource-registry.sh. This file
+# owns everything that is specific to *this* repo: the per-worktree ledger
+# (.env.worktree), Supabase branch databases, and the guards around both.
+#
+# Source this file from a script; it does not run anything on its own.
+
+# --- constants ---------------------------------------------------------------
+
+# Passed explicitly to every Supabase CLI call. `supabase link` state is NOT
+# trusted: supabase/config.toml and .claude/commands both carried refs for
+# projects that are not this one, and a wrong ref fails in confusing ways.
+WT_PROJECT_REF="fitklsshlhjwddbxhhdi"
+
+# Match the main checkout's simulator so QA differences are never an
+# iOS-version artifact (apps/mobile/.env → IOS_SIMULATOR=iPhone 16e).
+WT_SIM_DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-16e"
+WT_SIM_RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-18-5"
+
+# Gitignored files that must be recreated in a worktree (git does not carry them).
+WT_ENV_FILES=("apps/api/.env" "apps/mobile/.env")
+
+WT_BUNDLE_ID="com.capybarastudios.habitscoach"
+WT_URL_SCHEMES=("habits-coach" "exp+habits-coach" "$WT_BUNDLE_ID")
+
+# --- basics ------------------------------------------------------------------
+
+wt_die() {
+  echo "Error: $*" >&2
+  exit 1
+}
+
+wt_info() { echo "  $*"; }
+wt_step() { echo; echo "==> $*"; }
+
+wt_git_common_dir() {
+  git rev-parse --path-format=absolute --git-common-dir
+}
+
+# The main checkout — deliberately unmanaged. Nothing here ever writes to it.
+wt_primary_path() {
+  dirname "$(wt_git_common_dir)"
+}
+
+wt_state_dir() {
+  printf '%s/thrive-worktrees\n' "$(wt_git_common_dir)"
+}
+
+# --- env file helpers --------------------------------------------------------
+
+wt_read_value() {
+  local file=$1 key=$2
+  [ -f "$file" ] || return 1
+  sed -n "s/^${key}=//p" "$file" | tail -n 1
+}
+
+# Replace KEY=... in place, or append it. Keeps unrelated lines and comments.
+wt_upsert_env() {
+  local file=$1 key=$2 value=$3 temp
+  mkdir -p "$(dirname "$file")"
+  touch "$file"
+  temp=$(mktemp "${file}.XXXXXX")
+  awk -v key="$key" -v value="$value" '
+    BEGIN { found = 0 }
+    index($0, key "=") == 1 { if (!found) print key "=" value; found = 1; next }
+    { print }
+    END { if (!found) print key "=" value }
+  ' "$file" > "$temp"
+  mv "$temp" "$file"
+}
+
+# --- locking -----------------------------------------------------------------
+# Setup allocates ports and simulators by scanning what already exists, so two
+# concurrent runs could hand out the same slot. The registry has its own lock,
+# but it only covers the write; the read-decide-write window needs this one.
+#
+# mkdir is the atomic gate, but two subtleties matter:
+#   - A lock that exists with no pid file yet is usually one someone created
+#     microseconds ago, NOT an abandoned one. Reclaiming on sight lets a cleaner
+#     delete a live lock. Only reclaim a pid-less lock after a grace period.
+#   - Two processes can both decide a lock is stale, both rm -rf, and the second
+#     rm can delete the lock the first just acquired. So the owner writes a
+#     random token and re-reads it; whoever loses the race goes back to waiting,
+#     and the EXIT trap only removes a lock still carrying its own token.
+WT_LOCK_GRACE_SECONDS=30
+
+wt_unlock() {
+  [ -n "${WT_LOCK_DIR:-}" ] || return 0
+  if [ "$(cat "$WT_LOCK_DIR/token" 2>/dev/null || true)" = "${WT_LOCK_TOKEN:-}" ]; then
+    rm -rf "$WT_LOCK_DIR" 2>/dev/null || true
+  fi
+  WT_LOCK_DIR=""
+}
+
+wt_lock() {
+  local state_dir lock_dir owner token age now created attempt=0
+  state_dir=$(wt_state_dir)
+  mkdir -p "$state_dir"
+  lock_dir="$state_dir/setup.lock"
+  token="$$-${RANDOM}-${RANDOM}"
+
+  while true; do
+    if mkdir "$lock_dir" 2>/dev/null; then
+      printf '%s\n' "$token" > "$lock_dir/token"
+      printf '%s\n' "$$" > "$lock_dir/pid"
+      sleep 0.1
+      if [ "$(cat "$lock_dir/token" 2>/dev/null || true)" = "$token" ]; then
+        WT_LOCK_DIR=$lock_dir
+        WT_LOCK_TOKEN=$token
+        trap wt_unlock EXIT
+        return 0
+      fi
+      continue  # someone reclaimed it from under us; wait our turn
+    fi
+
+    owner=$(cat "$lock_dir/pid" 2>/dev/null || true)
+    if [ -n "$owner" ]; then
+      if ! kill -0 "$owner" 2>/dev/null; then
+        wt_info "clearing a stale lock from dead pid $owner"
+        rm -rf "$lock_dir" 2>/dev/null || true
+        continue
+      fi
+    else
+      now=$(date +%s)
+      created=$(stat -f %m "$lock_dir" 2>/dev/null || printf '%s' "$now")
+      age=$((now - created))
+      if [ "$age" -gt "$WT_LOCK_GRACE_SECONDS" ]; then
+        wt_info "clearing a lock abandoned before it recorded an owner"
+        rm -rf "$lock_dir" 2>/dev/null || true
+        continue
+      fi
+    fi
+
+    attempt=$((attempt + 1))
+    [ "$attempt" -lt 900 ] || wt_die "Timed out waiting for another wt run (pid ${owner:-unknown}) to finish"
+    sleep 0.2
+  done
+}
+
+# --- worktree introspection --------------------------------------------------
+
+wt_path_for_branch() {
+  git worktree list --porcelain | awk -v ref="refs/heads/$1" '
+    $1 == "worktree" { path = substr($0, 10) }
+    $1 == "branch" && $2 == ref { print path; exit }
+  '
+}
+
+wt_branch_for_path() {
+  git worktree list --porcelain | awk -v wanted="$1" '
+    $1 == "worktree" { path = substr($0, 10) }
+    $1 == "branch" && path == wanted { sub("refs/heads/", "", $2); print $2; exit }
+  '
+}
+
+# Every linked worktree path, excluding the main checkout.
+wt_linked_paths() {
+  local primary
+  primary=$(wt_primary_path)
+  git worktree list --porcelain | sed -n 's/^worktree //p' | while IFS= read -r p; do
+    [ "$p" = "$primary" ] || printf '%s\n' "$p"
+  done
+}
+
+# Branch name -> filesystem/simulator-safe slug.
+wt_slug() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr '/ _' '-' | tr -cd '[:alnum:].-' | cut -c1-40
+}
+
+# --- merged branches ---------------------------------------------------------
+# Has this branch's work landed? GitHub is the authority, because git ancestry
+# cannot answer it: a squash merge puts a NEW commit on master, so the branch's
+# own commit is never an ancestor of anything, and an ancestry check would
+# answer "not merged" for every PR this repo has ever landed. That is the
+# answer that leaves a branch database billing.
+#
+# wt:list and worktree-remove both ask through here, so the two can never
+# disagree about whether a worktree is finished.
+
+WT_MERGED_HEADS=""        # heads of merged PRs, one per line
+WT_MERGED_HEADS_STATE=""  # "" unfetched | "ok" | "partial" | "unknown"
+WT_MERGED_PR_PAGE=200
+
+# One network call per process: wt:list asks about every worktree it prints, and
+# a round trip per row would make the listing slow enough to stop being run.
+# Subshells inherit the cache, so a caller looping in a pipeline should prime it
+# here first — a command substitution cannot fill it for anyone else.
+wt_load_merged_heads() {
+  [ -z "$WT_MERGED_HEADS_STATE" ] || return 0
+  # Pessimistic until proven otherwise. An unreachable GitHub must never read as
+  # "nothing is merged".
+  WT_MERGED_HEADS_STATE="unknown"
+  command -v gh >/dev/null 2>&1 || return 0
+
+  local out count
+  out=$(gh pr list --state merged --limit "$WT_MERGED_PR_PAGE" \
+          --json headRefName --jq '.[].headRefName' 2>/dev/null) || return 0
+  WT_MERGED_HEADS=$out
+
+  # A full page means there are older merged PRs we did not see. Absence from a
+  # truncated list is not proof of anything, so misses get asked about directly.
+  count=$(printf '%s\n' "$out" | awk 'NF' | wc -l | tr -d ' ')
+  if [ "$count" -lt "$WT_MERGED_PR_PAGE" ]; then
+    WT_MERGED_HEADS_STATE="ok"
+  else
+    WT_MERGED_HEADS_STATE="partial"
+  fi
+}
+
+# 0 = a merged PR exists, 1 = provably none, 2 = could not tell.
+# Callers about to destroy something must treat 2 exactly like 1.
+wt_branch_has_merged_pr() {
+  local branch=$1 n
+  [ -n "$branch" ] && [ "$branch" != "(detached)" ] || return 2
+
+  wt_load_merged_heads
+  if printf '%s\n' "$WT_MERGED_HEADS" | grep -Fxq -- "$branch"; then
+    return 0
+  fi
+
+  case "$WT_MERGED_HEADS_STATE" in
+    ok) return 1 ;;
+    partial)
+      n=$(gh pr list --head "$branch" --state merged --json number --jq 'length' 2>/dev/null) || return 2
+      [ "${n:-0}" -gt 0 ] && return 0
+      return 1
+      ;;
+    *) return 2 ;;
+  esac
+}
+
+# --- simulator ---------------------------------------------------------------
+
+wt_sim_udid_for_name() {
+  xcrun simctl list devices -j 2>/dev/null | python3 -c '
+import json,sys
+name = sys.argv[1]
+data = json.load(sys.stdin)
+for devices in data.get("devices", {}).values():
+    for d in devices:
+        if d.get("name") == name:
+            print(d["udid"]); sys.exit(0)
+' "$1" 2>/dev/null || true
+}
+
+wt_sim_is_booted() {
+  [ "$(xcrun simctl list devices -j 2>/dev/null | python3 -c '
+import json,sys
+udid = sys.argv[1]
+data = json.load(sys.stdin)
+for devices in data.get("devices", {}).values():
+    for d in devices:
+        if d.get("udid") == udid:
+            print("yes" if d.get("state") == "Booted" else "no"); sys.exit(0)
+print("no")
+' "$1" 2>/dev/null)" = "yes" ]
+}
+
+# The Dev Client is a generic shell: it holds no JS, and EXPO_PUBLIC_* is
+# inlined by Metro at bundle time. So one build serves every worktree, and
+# installing that build takes seconds where `expo run:ios` takes minutes. A
+# worktree only needs a real rebuild when app.json or the native dep set
+# changes.
+wt_devclient_app() {
+  ls -dt ~/Library/Developer/Xcode/DerivedData/HabitsCoach-*/Build/Products/Debug-iphonesimulator/HabitsCoach.app 2>/dev/null | head -1
+}
+
+# Pre-approve the app's URL schemes. Without this, SpringBoard's "Open in
+# HabitsCoach?" alert can appear on a deep link fired while a modal is up, and
+# that alert ignores programmatic taps — only a device reboot clears it.
+wt_preapprove_schemes() {
+  local udid=$1 scheme
+  for scheme in "${WT_URL_SCHEMES[@]}"; do
+    xcrun simctl spawn "$udid" defaults write com.apple.launchservices.schemeapproval \
+      "com.apple.CoreSimulator.CoreSimulatorBridge-->$scheme" -string "$WT_BUNDLE_ID" 2>/dev/null || true
+  done
+}
+
+# --- supabase ----------------------------------------------------------------
+
+# `branches get -o json` returns the branch's CREDENTIALS, not metadata:
+# SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY,
+# SUPABASE_JWT_SECRET, POSTGRES_URL and POSTGRES_URL_NON_POOLING. Everything
+# setup needs is in that one call.
+wt_branch_field() {
+  local json=$1 key=$2
+  printf '%s' "$json" | python3 -c '
+import json,sys
+try: data = json.load(sys.stdin)
+except Exception: sys.exit(1)
+v = data.get(sys.argv[1]) if isinstance(data, dict) else None
+if not v: sys.exit(1)
+print(v)
+' "$key" 2>/dev/null || return 1
+}
+
+# Key names only. The payload holds the service-role key and Postgres URLs with
+# embedded passwords, so it must never reach an error message or a log.
+wt_branch_keys() {
+  printf '%s' "$1" | python3 -c '
+import json,sys
+try: d = json.load(sys.stdin)
+except Exception: print("<unparseable>"); sys.exit(0)
+print(", ".join(sorted(d)) if isinstance(d, dict) else type(d).__name__)
+' 2>/dev/null || printf '<unreadable>'
+}
+
+# Every branch as "name<TAB>status<TAB>default|-", or a non-zero return if the
+# listing could not be fetched or parsed.
+#
+# The non-zero return is the whole point. A project with no branches and a
+# Supabase that never answered produce the same empty output, and teardown
+# decides whether to delete a worktree on exactly that difference — so the two
+# cannot be allowed to look alike. Nothing here may fall back to "" on error.
+#
+# And "parsed" means the schema we expect, not merely valid JSON: the CLI's
+# {"error": "Access token not provided"} is a perfectly parseable object that
+# contains zero branches. Anything unexpected is treated as cannot-tell,
+# because reading it as an empty list is how an auth failure becomes "proof"
+# that a billed branch was already deleted.
+wt_branch_table() {
+  local json
+  json=$(supabase branches list --project-ref "$WT_PROJECT_REF" -o json 2>/dev/null) || return 1
+  [ -n "$json" ] || return 1
+  printf '%s' "$json" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+# A project with zero branches answers with a literal `null`, not `[]`. That is
+# a real answer, and it must not read as "could not tell" — an unchecked orphan
+# scan is the failure this whole tri-state exists to prevent. Errors take a
+# different shape ({"error": ...}), so they still fall through to the exit
+# below rather than being mistaken for an empty project.
+if data is None:
+    data = []
+if isinstance(data, dict):
+    if "branches" not in data:
+        sys.exit(1)
+    data = data["branches"]
+if not isinstance(data, list):
+    sys.exit(1)
+rows = []
+for b in data:
+    if not isinstance(b, dict):
+        sys.exit(1)
+    name = b.get("name") or b.get("git_branch") or ""
+    if not name:
+        sys.exit(1)
+    rows.append("{}\t{}\t{}".format(name, b.get("status", ""), "default" if b.get("is_default") else "-"))
+sys.stdout.write("".join(r + "\n" for r in rows))
+'
+}
+
+# 0 = it exists, 1 = it provably does not, 2 = could not tell.
+# Callers that are about to destroy something must treat 2 as 0.
+wt_branch_presence() {
+  local table
+  table=$(wt_branch_table) || return 2
+  printf '%s\n' "$table" | awk -F'\t' -v n="$1" 'BEGIN { missing = 1 } $1 == n { missing = 0 } END { exit missing }' \
+    && return 0
+  return 1
+}
+
+# Status lives in `branches list`, not `branches get`. Empty when the branch is
+# absent OR unreachable — fine for progress polling, never for a delete decision.
+wt_branch_status() {
+  local table
+  table=$(wt_branch_table) || return 1
+  printf '%s\n' "$table" | awk -F'\t' -v n="$1" '$1 == n { print $2 }'
+}
+
+wt_branch_exists() {
+  local presence=0
+  wt_branch_presence "$1" || presence=$?
+  [ "$presence" -eq 0 ]
+}
+
+# How many of this checkout's migrations the target database has NOT applied.
+# Non-zero return when the listing could not be read at all — a caller must
+# never read that as "everything is applied".
+#
+# This is the honest precondition for pushing, and the status field is not.
+# Supabase applies this repo's migrations itself while provisioning a branch,
+# but reports FUNCTIONS_DEPLOYED before that phase finishes. Pushing on the
+# strength of that status races Supabase's own runner: both apply the same
+# files, then collide inserting the same row into supabase_migrations
+# .schema_migrations, and the branch lands in MIGRATIONS_FAILED with a schema
+# that is actually complete. Asking the database cannot race anything.
+# Takes the worktree directory explicitly: `supabase migration list` reads the
+# LOCAL side of its comparison from the current working directory, so running it
+# from the main checkout compares the wrong tree and reports a worktree's brand
+# new migration as already applied.
+wt_unapplied_count() {
+  local dir=$1 db_url=$2 out
+  out=$(cd "$dir" && supabase migration list --db-url "$db_url" 2>/dev/null) || return 1
+  [ -n "$out" ] || return 1
+  printf '%s\n' "$out" | awk -F'|' '
+    {
+      local_v = $1; remote_v = $2
+      gsub(/^[ \t]+|[ \t]+$/, "", local_v)
+      gsub(/^[ \t]+|[ \t]+$/, "", remote_v)
+      if (local_v ~ /^[0-9]{14}$/ && remote_v == "") n++
+    }
+    END { print n + 0 }
+  '
+}
+
+# --- port ownership ----------------------------------------------------------
+# An assigned port is only ours while OUR process holds it. If that process died
+# and something else took the port, connecting to it would misroute the app and
+# tearing it down would kill an unrelated project.
+
+wt_pid_on_port() {
+  lsof -nP -tiTCP:"$1" -sTCP:LISTEN 2>/dev/null | head -1
+}
+
+wt_port_in_use() {
+  [ -n "$(wt_pid_on_port "$1")" ]
+}
