@@ -120,12 +120,6 @@ export interface HabitDraft extends HabitSchedule, HabitGoal {
   autoPopupLog: boolean;
 }
 
-/** The habit fields the coach is allowed to propose; the rest take defaults. */
-export type CoachHabitDraft = Pick<
-  HabitDraft,
-  'name' | 'frequency' | 'weeklyDays' | 'weeklyCount' | 'intervalDays' | 'reason' | 'icon'
->;
-
 export type HabitStatus = 'pending' | 'completed' | 'skipped';
 
 export interface HabitLog {
@@ -287,142 +281,12 @@ export interface DailyPlan {
   items: DailyPlanItem[];
 }
 
-export type DailyPlanDraftItemRef =
-  | { kind: 'habit'; id: string }
-  | { kind: 'todo'; id: string }
-  | { kind: 'action'; clientKey: string };
-
-export interface DailyPlanDraftItem {
-  itemType: DailyPlanItemType;
-  ref?: DailyPlanDraftItemRef;
-  title: string;
-  notes?: string;
-  scheduledTime: string;
-  estimateMinutes?: number;
-  isOptional?: boolean;
-}
-
-export interface DailyPlanDraft {
-  date: string;
-  rationale?: string;
-  items: DailyPlanDraftItem[];
-}
-
-// Coach action types
-export type CoachAction =
-  | {
-      entity: 'goal';
-      operation: 'add';
-      clientKey?: string;
-      goal: GoalDraft;
-    }
-  | {
-      entity: 'goal';
-      operation: 'edit';
-      goalId: string;
-      changes: Partial<GoalDraft>;
-    }
-  | {
-      entity: 'goal';
-      operation: 'archive';
-      goalId: string;
-    }
-  | {
-      entity: 'habit';
-      operation: 'add';
-      clientKey?: string;
-      habit: CoachHabitDraft;
-    }
-  | {
-      entity: 'habit';
-      operation: 'edit';
-      habitId: string;
-      changes: Partial<CoachHabitDraft>;
-    }
-  | {
-      entity: 'habit';
-      operation: 'archive';
-      habitId: string;
-    }
-  | {
-      entity: 'habit';
-      operation: 'remove';
-      habitId: string;
-    }
-  | {
-      entity: 'todo';
-      operation: 'add';
-      clientKey?: string;
-      todo: TodoDraft;
-    }
-  | {
-      entity: 'todo';
-      operation: 'edit';
-      todoId: string;
-      changes: Partial<TodoDraft>;
-    }
-  | {
-      entity: 'todo';
-      operation: 'schedule';
-      todoId: string;
-      scheduledDate: string;
-      scheduledTime?: string;
-    }
-  | {
-      entity: 'todo';
-      operation: 'unschedule';
-      todoId: string;
-    }
-  | {
-      entity: 'todo';
-      operation: 'complete' | 'cancel' | 'reopen' | 'remove';
-      todoId: string;
-    }
-  | {
-      entity: 'journal' | 'diary';
-      operation: 'create';
-      clientKey?: string;
-      entry: JournalEntryDraft;
-    };
-
-export interface CoachProposal {
-  actions: CoachAction[];
-  dailyPlanDraft?: DailyPlanDraft | null;
-}
-
-export type CoachSkillId =
-  | 'general-coach'
-  | 'day-planning'
-  | 'task-management'
-  | 'habit-design';
-export type CoachingSkillStatus = 'active' | 'paused' | 'completed';
-
-export interface CoachingSkillInstance {
-  id: string;
-  skillId: CoachSkillId;
-  status: CoachingSkillStatus;
-  isLead: boolean;
-  phase: string | null;
-  state: Record<string, unknown>;
-  activatedAt: number;
-  lastUsedAt: number;
-  completedAt: number | null;
-}
-
 // Chat types
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  proposal?: CoachProposal;
-  proposalStatus?: 'pending' | 'applying' | 'applied' | 'dismissed' | 'failed';
   timestamp: number;
-}
-
-// AI response types
-export interface AIResponse {
-  message: string;
-  proposal?: CoachProposal | null;
 }
 
 // Session types
@@ -439,34 +303,22 @@ export interface HabitWithStatus extends Habit {
   todayAmount: number;
 }
 
-// API types
-export interface ChatRequest {
-  sessionId?: string;
-  messages: Array<{
-    role: 'user' | 'assistant';
-    content: string;
-  }>;
-  habits: Habit[];
-  goals?: Goal[];
-  todos?: Todo[];
-  journalEntries?: JournalEntry[];
-  dailyPlan?: DailyPlan | null;
-  memories?: Array<{
-    content: string;
-    category: MemoryCategory;
-  }>;
+// Coach turn API (POST /api/chat, streamed as server-sent events)
+export interface CoachTurnRequest {
+  sessionId: string;
+  /** The user's message, or a skill command such as `/coach` or `/plan-day`. */
+  prompt: string;
+  /** IANA timezone used for "today" and "now". */
+  timezone: string;
   userName?: string;
-  today?: string;
-  timezone?: string;
 }
 
-export interface ChatResponse {
-  message: string;
-  proposal?: CoachProposal | null;
-  leadSkillId?: CoachSkillId;
-  activeSkillIds?: CoachSkillId[];
-  skillPhase?: string | null;
-}
+export type CoachStreamEvent =
+  | { type: 'session'; claudeSessionId: string }
+  | { type: 'text'; delta: string }
+  | { type: 'tool'; name: string }
+  | { type: 'done'; message: string }
+  | { type: 'error'; message: string };
 
 export interface ErrorResponse {
   error: string;
@@ -514,13 +366,11 @@ export interface CoachingSessionSummary {
   endedAt: number | null;
   messageCount: number;
   memoryCount?: number;
-  leadSkillId?: CoachSkillId | null;
 }
 
 export interface CoachingSessionDetail extends CoachingSessionSummary {
   messages: CoachingSessionMessage[];
   memories: Memory[];
-  activeSkills?: CoachingSkillInstance[];
 }
 
 export interface CreateSessionRequest {
@@ -546,70 +396,10 @@ export interface FinalizeSessionRequest {
   extractMemories?: boolean;  // Default true
 }
 
-export interface UpdateSessionSkillRequest {
-  phase?: string | null;
-  status?: CoachingSkillStatus;
-  isLead?: boolean;
-  statePatch?: Record<string, unknown>;
-}
-
 export interface GetSessionsResponse {
   sessions: CoachingSessionSummary[];
 }
 
 export interface GetSessionResponse {
   session: CoachingSessionDetail;
-}
-
-export type HabitAction = Extract<CoachAction, { entity: 'habit' }>;
-
-export type CoachDebugEventType =
-  | 'chat_request_sent'
-  | 'chat_response_received'
-  | 'chat_response_rejected'
-  | 'proposal_received'
-  | 'proposal_apply_started'
-  | 'proposal_apply_succeeded'
-  | 'proposal_apply_failed'
-  | 'session_sync_failed';
-
-export type CoachDebugErrorStage =
-  | 'chat_generation'
-  | 'chat_response_parse'
-  | 'chat_response_validation'
-  | 'proposal_validation'
-  | 'proposal_apply'
-  | 'session_sync'
-  | 'session_finalize'
-  | 'unknown';
-
-export interface CoachDebugEventInput {
-  eventType: CoachDebugEventType;
-  turnIndex?: number;
-  requestPayload?: JsonValue | null;
-  responsePayload?: JsonValue | null;
-  proposalPayload?: CoachProposal | null;
-  errorMessage?: string | null;
-  errorCode?: string | null;
-  errorStage?: CoachDebugErrorStage | null;
-  metadata?: JsonValue | null;
-}
-
-export interface CoachDebugEvent extends CoachDebugEventInput {
-  id: string;
-  sessionId: string;
-  userId: string;
-  createdAt: number;
-}
-
-export interface CreateCoachDebugEventRequest {
-  event: CoachDebugEventInput;
-}
-
-export interface CreateCoachDebugEventResponse {
-  event: CoachDebugEvent;
-}
-
-export interface GetCoachDebugEventsResponse {
-  events: CoachDebugEvent[];
 }

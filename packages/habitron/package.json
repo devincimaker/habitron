@@ -1,22 +1,21 @@
 {
-  "name": "@habits-coach/mcp",
+  "name": "@habits-coach/habitron",
   "version": "1.0.0",
   "private": true,
   "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
   "scripts": {
-    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@habits-coach/habitron": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.30.0",
-    "dotenv": "^16.4.0",
+    "@habits-coach/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.47.0",
     "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "tsx": "^4.19.0",
     "typescript": "~5.9.2",
     "vitest": "^4.0.16"
   }

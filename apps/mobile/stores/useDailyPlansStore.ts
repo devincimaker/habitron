@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import type {
   DailyPlan,
-  DailyPlanDraft,
   DailyPlanItemOutcome,
 } from '@habits-coach/shared';
 import * as dailyPlansService from '../services/dailyPlans';
@@ -10,11 +9,6 @@ interface DailyPlansState {
   plansByDate: Record<string, DailyPlan | null>;
   isLoading: boolean;
   loadPlan: (date: string) => Promise<DailyPlan | null>;
-  saveAcceptedPlan: (
-    draft: DailyPlanDraft,
-    resolvedRefs: Map<string, string>,
-    parentPlanId?: string
-  ) => Promise<DailyPlan>;
   updateItemOutcome: (
     date: string,
     itemId: string,
@@ -70,21 +64,6 @@ export const useDailyPlansStore = create<DailyPlansState>((set, get) => ({
       set({ isLoading: false });
       return null;
     }
-  },
-
-  saveAcceptedPlan: async (draft, resolvedRefs, parentPlanId) => {
-    const plan = await dailyPlansService.saveAcceptedDailyPlan(
-      draft,
-      resolvedRefs,
-      'coach',
-      parentPlanId
-    );
-
-    set((state) => ({
-      plansByDate: { ...state.plansByDate, [draft.date]: plan },
-    }));
-
-    return plan;
   },
 
   updateItemOutcome: async (date, itemId, outcome) => {

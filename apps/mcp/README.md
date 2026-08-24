@@ -2,6 +2,8 @@
 
 Exposes the Habitron data (tasks, habits, daily plans, journal, memories) to any MCP host — Claude Code, Claude Desktop — so day planning can happen in a strong model that also has access to calendar, Linear, and email tools.
 
+It is a thin stdio wrapper: the data layer and the tool definitions live in `packages/habitron`, and the in-app coach (`apps/api`) registers the very same tool list on the Agent SDK's in-process MCP server. One tool surface, two hosts.
+
 It talks to Supabase directly with the service-role key and acts as the single owner account (`HABITRON_USER_ID`). It is local-only; never expose it over a network.
 
 ## Run
@@ -11,7 +13,7 @@ cp apps/mcp/.env.example apps/mcp/.env   # fill in values
 pnpm --filter @habits-coach/mcp start     # stdio server
 ```
 
-The server is registered project-scoped from the `~/Coach` folder (its `.mcp.json` points at this entrypoint), so it loads only for terminals opened there. The coaching skills (`/coach`, `/plan-day`, `/review-day`, `/review-habits`) live in `~/Coach/.claude/skills`, not in this repo — this package is tools only.
+The server is registered project-scoped from the `~/Coach` folder (its `.mcp.json` points at this entrypoint), so it loads only for terminals opened there. The coaching skills (`/coach`, `/plan-day`, `/review-day`, `/review-habits`, `/first-session`) live in `packages/coach-skills`, symlinked into `~/Coach/.claude/skills`.
 
 ## Tools
 
@@ -30,8 +32,9 @@ Tasks can carry a **checklist**: an ordered list of small items ticked off indiv
 
 ## Layout
 
-- `src/db.ts` — Supabase reads/writes, one function per operation
-- `src/context.ts` — builds the compact day packet (`get_day_context`)
-- `src/history.ts` — habit / task / journal history and stats over a window
-- `src/server.ts` — tool registration (zod-validated)
-- `src/time.ts` — timezone-aware "today", weekday, week range helpers
+- `src/index.ts` — stdio server; registers `packages/habitron` tools on an `McpServer`
+- `src/config.ts` — env (`apps/mcp/.env`)
+- `packages/habitron/src/db.ts` — Supabase reads/writes, one function per operation
+- `packages/habitron/src/context.ts` — the compact day packet (`get_day_context`)
+- `packages/habitron/src/history.ts` — habit / task / journal history and stats over a window
+- `packages/habitron/src/tools.ts` — the tool list (zod-validated), shared with the in-app coach

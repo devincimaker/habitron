@@ -1,11 +1,5 @@
-import OpenAI from 'openai';
-import { config } from '../config.js';
-import { getTokenLimitParam } from './openai.js';
 import type { ExtractMemoriesRequest, ExtractMemoriesResponse, MemoryCategory } from '@habits-coach/shared';
-
-const client = new OpenAI({
-  apiKey: config.openai.apiKey,
-});
+import { parseJsonReply, runClaudeText } from '../coach/claude.js';
 
 interface ExistingMemory {
   content: string;
@@ -36,7 +30,7 @@ CRITICAL - Deduplication rules:
   (e.g., "likes morning exercise" duplicates "prefers working out in the morning")
 - Only extract genuinely NEW information not already covered by existing memories
 
-Respond with JSON:
+Respond with JSON only, no prose around it:
 {
   "memories": [
     { "content": "The memory content", "category": "category_name" }
@@ -45,40 +39,41 @@ Respond with JSON:
 
 If no NEW meaningful memories can be extracted, return: { "memories": [] }`;
 
+const MEMORY_CATEGORIES: MemoryCategory[] = ['motivation', 'obstacle', 'preference', 'personal', 'goal', 'general'];
+
 export async function extractMemories(
   messages: ExtractMemoriesRequest['messages'],
   existingMemories: ExistingMemory[] = []
 ): Promise<ExtractMemoriesResponse> {
-  // Format conversation for extraction
   const conversationText = messages
     .map((m) => `${m.role === 'user' ? 'User' : 'Coach'}: ${m.content}`)
     .join('\n');
 
-  // Format existing memories for deduplication context
   const existingMemoriesText =
     existingMemories.length > 0
       ? `\n\nEXISTING MEMORIES (do NOT duplicate these):\n${existingMemories.map((m) => `- [${m.category}] ${m.content}`).join('\n')}`
       : '';
 
-  const response = await client.chat.completions.create({
-    model: config.openai.model,
-    messages: [
-      { role: 'system', content: MEMORY_EXTRACTION_PROMPT },
-      {
-        role: 'user',
-        content: `Extract memories from this conversation:\n\n${conversationText}${existingMemoriesText}`,
-      },
-    ],
-    response_format: { type: 'json_object' },
-    temperature: 0.3,
-    ...getTokenLimitParam(500),
+  const reply = await runClaudeText({
+    system: MEMORY_EXTRACTION_PROMPT,
+    prompt: `Extract memories from this conversation:\n\n${conversationText}${existingMemoriesText}`,
   });
 
-  const content = response.choices[0]?.message?.content;
-  if (!content) {
-    return { memories: [] };
-  }
+  const parsed = parseJsonReply<{ memories?: unknown }>(reply);
+  const memories = Array.isArray(parsed.memories) ? parsed.memories : [];
 
-  const parsed = JSON.parse(content) as ExtractMemoriesResponse;
-  return parsed;
+  return {
+    memories: memories.flatMap((memory) => {
+      if (
+        typeof memory === 'object' &&
+        memory !== null &&
+        typeof (memory as { content?: unknown }).content === 'string' &&
+        MEMORY_CATEGORIES.includes((memory as { category?: MemoryCategory }).category as MemoryCategory)
+      ) {
+        const { content, category } = memory as { content: string; category: MemoryCategory };
+        return [{ content, category }];
+      }
+      return [];
+    }),
+  };
 }

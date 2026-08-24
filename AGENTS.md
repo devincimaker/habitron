@@ -186,14 +186,25 @@ of it standing.
 `master` has no branch protection, so `gh pr merge` will merge a red or unchecked
 commit. The gate is the only thing in front of that.
 
-## 12. MCP server (`apps/mcp`)
+## 12. The coach (`packages/coach-skills`, `packages/habitron`, `apps/mcp`, `apps/api`)
 
-Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio
-MCP server, so day planning can happen in a strong model with calendar, Linear
-and email context. See `apps/mcp/README.md` for the tool surface. The coaching
-skills that drive it live outside this repo in `~/Coach/.claude/skills`, and
-`~/Coach/.mcp.json` registers the server. It needs `apps/mcp/.env` (Supabase
-service role + `HABITRON_USER_ID`).
+One coach, two surfaces. The persona and skills are `packages/coach-skills`
+(`CLAUDE.md` + `.claude/skills/*`); the data layer and the tool list are
+`packages/habitron`. Add or change tools there, never in `apps/mcp` or `apps/api`.
+
+- **Claude Code** (`~/Coach`): symlinks into `packages/coach-skills`;
+  `~/Coach/.mcp.json` registers the stdio MCP server in `apps/mcp` (needs
+  `apps/mcp/.env`: Supabase service role + `HABITRON_USER_ID`). Use it when
+  planning needs calendar, Linear or email context.
+- **In-app** (`apps/api` → `POST /api/chat`): the Claude Agent SDK runs the same
+  skills and the same tools in-process and streams the turn to the app. Auth is
+  the Claude subscription via `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`);
+  locally the Claude Code login is enough.
+  `pnpm --filter @habits-coach/api coach:smoke "<prompt>"` runs one turn against
+  the test account from the terminal.
+
+See `apps/mcp/README.md` for the tool surface and `docs/coach-skill-map.md` for
+the architecture.
 
 ## 13. Conductor
 

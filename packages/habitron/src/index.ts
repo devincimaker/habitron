@@ -1,0 +1,49 @@
+import { createClient } from '@supabase/supabase-js';
+import { buildDayContext } from './context.js';
+import { createDb, type Db } from './db.js';
+import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
+import { createTools, type AnyHabitronTool } from './tools.js';
+
+export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskPatch } from './db.js';
+export type { DayContext, HabitForDay } from './context.js';
+export type { AnyHabitronTool, HabitronTool } from './tools.js';
+export { addDays, isIsoDate, localNow, today, weekRange, weekdayOf, type LocalNow } from './time.js';
+
+export interface HabitronConfig {
+  supabaseUrl: string;
+  serviceRoleKey: string;
+  /** The auth.users id every read and write is scoped to. */
+  userId: string;
+  /** IANA timezone used for "today" and "now". */
+  timezone: string;
+}
+
+export interface Habitron {
+  db: Db;
+  timezone: string;
+  /** The coach's tool surface, host-agnostic (see `HabitronTool`). */
+  tools: AnyHabitronTool[];
+  buildDayContext: (date: string) => ReturnType<typeof buildDayContext>;
+  buildHabitHistory: (args: { days: number; habitId?: string }) => ReturnType<typeof buildHabitHistory>;
+  buildTaskHistory: (args: { days: number }) => ReturnType<typeof buildTaskHistory>;
+  buildJournalHistory: (args: { days: number }) => ReturnType<typeof buildJournalHistory>;
+}
+
+/** Habitron's data and coaching tools for one user, backed by the service-role Supabase client. */
+export function createHabitron(config: HabitronConfig): Habitron {
+  const supabase = createClient(config.supabaseUrl, config.serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const db = createDb(supabase, config.userId);
+  const { timezone } = config;
+
+  return {
+    db,
+    timezone,
+    tools: createTools(db, timezone),
+    buildDayContext: (date) => buildDayContext(db, timezone, date),
+    buildHabitHistory: (args) => buildHabitHistory(db, timezone, args),
+    buildTaskHistory: (args) => buildTaskHistory(db, timezone, args),
+    buildJournalHistory: (args) => buildJournalHistory(db, timezone, args),
+  };
+}

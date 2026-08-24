@@ -1,6 +1,8 @@
+import { fetch as streamingFetch } from 'expo/fetch';
 import { supabase } from './supabase';
-import type { ChatRequest, ChatResponse } from '@habits-coach/shared';
+import type { CoachStreamEvent, CoachTurnRequest } from '@habits-coach/shared';
 import { createApiUrl } from './apiUrl';
+import { createSseParser } from '../utils/sse';
 
 class ApiError extends Error {
   constructor(
@@ -24,13 +26,22 @@ async function getAuthToken(): Promise<string> {
   return session.access_token;
 }
 
-export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
+/**
+ * One coaching turn. Events arrive as the coach works (text deltas, tool
+ * activity) and the turn ends with `done` or `error`; the promise resolves
+ * once the stream closes.
+ */
+export async function streamCoachTurn(
+  request: CoachTurnRequest,
+  onEvent: (event: CoachStreamEvent) => void
+): Promise<void> {
   const token = await getAuthToken();
 
-  const response = await fetch(createApiUrl('/api/chat'), {
+  const response = await streamingFetch(createApiUrl('/api/chat'), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      Accept: 'text/event-stream',
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(request),
@@ -38,13 +49,23 @@ export async function sendMessage(request: ChatRequest): Promise<ChatResponse> {
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    throw new ApiError(
-      error.error || 'Failed to send message',
-      response.status
-    );
+    throw new ApiError(error.error || 'Failed to send message', response.status);
   }
 
-  return response.json();
+  if (!response.body) {
+    throw new ApiError('The coach response had no body', response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const feed = createSseParser(onEvent);
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    feed(decoder.decode(value, { stream: true }));
+  }
+  feed(decoder.decode());
 }
 
 export async function transcribeAudio(audioUri: string): Promise<string> {

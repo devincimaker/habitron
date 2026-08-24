@@ -1,52 +1,23 @@
-# Coach Skill Map
+# Coach architecture
 
-Habitron should not act like one giant prompt. The coach should act like an orchestrator that routes user intent to specialized skills, while tools perform deterministic state reads and mutations.
+One coach, authored in Claude Code, used anywhere.
 
-## Core Model
+## Layers
 
-Three layers:
+1. **Persona and skills** — `packages/coach-skills`. `CLAUDE.md` carries the ground rules (charity, encouraging-not-snarky, tags-as-categories, explicit yes before saving a plan, memory discipline) and the skill index; `.claude/skills/<name>/SKILL.md` are the skills: `coach` (open check-in that routes), `first-session`, `plan-day`, `review-day`, `review-habits`. Judgment, interviewing, prioritising, and synthesis live here.
 
-1. Orchestrator
-   Decides which skill should own the current turn.
+2. **Tools** — `packages/habitron`. One function per concrete read or mutation (`src/db.ts`), the compact day packet (`src/context.ts`), history and stats (`src/history.ts`), and the host-agnostic tool list with zod schemas (`src/tools.ts`). Deterministic state, no coaching opinions.
 
-2. Skills
-   Specialized reasoning bundles, each with its own `SKILL.md` instructions, heuristics, and examples.
+3. **Hosts** — where the model runs the loop.
+   - `apps/mcp`: stdio MCP server for Claude Code (`~/Coach`), where calendar, Linear, and email tools can sit next to the Habitron ones.
+   - `apps/api`: the Claude Agent SDK in-process. `src/coach/agent.ts` runs one turn with `cwd = packages/coach-skills` (so the skills are discovered exactly as Claude Code discovers them), `CLAUDE.md` as the system prompt, and the Habitron tools on an in-process MCP server. `src/coach/events.ts` turns the SDK stream into the events the app renders; `src/routes/chat.ts` streams them as server-sent events. The Agent SDK session id is stored on `coaching_sessions.claude_session_id`, so every turn resumes the coach's own transcript.
 
-3. Tools
-   Concrete app mutations and reads such as creating a task, editing a habit, saving a journal entry, or accepting a plan.
+## Routing
 
-The rule is:
+The `coach` skill is the orchestrator: it loads context, checks in with one grounded question, and routes by intent into the other skills. In the app, a new session opens with `/coach` (or `/plan-day` from the plan-my-day entry point); the user's messages then flow through the same loop. There is no proposal/confirm protocol — the skills' own rules (explicit yes before `save_day_plan`, ask before `create_tag`, confirm before anything destructive) are the confirmation step, and the app refreshes its stores after each turn.
 
-- if the problem needs judgment, interviewing, prioritization, reframing, or synthesis, it is a skill
-- if the problem is a concrete side effect on application state, it is a tool
+## Rules of thumb
 
-## Initial Skill Map
-
-### Day Planning
-
-Shape a day collaboratively, ask intake questions before drafting, draft a realistic plan, revise without losing continuity.
-
-### Task Management
-
-Capture, inspect, clean up, prioritize, and restructure tasks with grounded IDs.
-
-### Habit Design
-
-Create, expand, contract, and archive habits based on fit, not ambition.
-
-## Routing Rules
-
-- "Plan my day" -> `day-planning`
-- "My day changed, help me replan" -> `day-planning`
-- "I keep failing this habit" -> `habit-design`
-- "I have twenty tasks and don't know where to start" -> `task-management`
-
-## Implementation Standard
-
-Use local skill bundles:
-
-- each skill lives in its own folder
-- each skill has a `SKILL.md`
-- supporting examples or rubrics can be added later
-
-The default prompt should remain a thin orchestrator. It should not include every skill body; the runtime loads only the active skill and compact persisted session state.
+- If it needs judgment, it is skill text. If it is a side effect on application state, it is a tool.
+- Edit skills in `packages/coach-skills`; both surfaces change. `~/Coach` is symlinks.
+- Add a tool in `packages/habitron/src/tools.ts`; both hosts pick it up.
