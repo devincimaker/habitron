@@ -18,7 +18,6 @@ export interface HabitronTool<Shape extends z.ZodRawShape = z.ZodRawShape> {
   handler: (args: z.infer<z.ZodObject<Shape>>) => Promise<unknown>;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type AnyHabitronTool = HabitronTool<any>;
 
 function defineTool<Shape extends z.ZodRawShape>(tool: HabitronTool<Shape>): AnyHabitronTool {

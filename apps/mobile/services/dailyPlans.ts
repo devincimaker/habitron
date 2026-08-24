@@ -74,18 +74,6 @@ function mapDbPlanToPlan(plan: DbDailyPlan, items: DbDailyPlanItem[]): DailyPlan
   };
 }
 
-async function getCurrentUserId(): Promise<string> {
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user) {
-    throw new Error('User not authenticated');
-  }
-
-  return user.id;
-}
-
 async function loadPlanItems(planId: string): Promise<DbDailyPlanItem[]> {
   const { data, error } = await supabase
     .from('daily_plan_items')
