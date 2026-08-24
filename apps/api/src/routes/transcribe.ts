@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express';
 import multer from 'multer';
-import { transcribeAudio } from '../services/openai.js';
+import { transcribeAudio } from '../services/transcription.js';
 import { authMiddleware } from '../middleware/auth.js';
 import type { ErrorResponse } from '@habits-coach/shared';
 

@@ -13,16 +13,20 @@ interface SessionState {
   messages: ChatMessage[];
   isLoading: boolean;
   isSyncing: boolean;  // True while syncing to backend
-  isCreatingSession: boolean;  // True while creating backend session
+  startError: string | null;  // Set when the backend session could not be created
 
   // Actions
   startSession: () => Promise<void>;
+  /** The backend session id, creating the session if needed. Throws when the backend is unreachable. */
+  ensureBackendSession: () => Promise<string>;
   endSession: () => Promise<void>;
+  /** Adds a message locally only; returns its id. */
+  addLocalMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
+  /** Adds a message and syncs the transcript to the backend; returns its id. */
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string>;
-  updateMessage: (
-    messageId: string,
-    changes: Partial<Pick<ChatMessage, 'content' | 'proposal' | 'proposalStatus'>>
-  ) => void;
+  appendToMessage: (messageId: string, delta: string) => void;
+  /** Replaces a message's content (e.g. the canonical text after streaming) and syncs. */
+  finalizeMessage: (messageId: string, content: string) => Promise<void>;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
   checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
@@ -40,10 +44,11 @@ function toMessagePayload(messages: ChatMessage[]) {
   }));
 }
 
-const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
-  role: 'assistant',
-  content: "Hi, I'm Habitron - your habits coach. How are things going? What's on your mind today?",
-};
+function hasUserMessages(messages: Pick<ChatMessage, 'role'>[]): boolean {
+  return messages.some((message) => message.role === 'user');
+}
+
+let pendingSessionCreation: Promise<string> | null = null;
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   isActive: false,
@@ -53,29 +58,54 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   messages: [],
   isLoading: false,
   isSyncing: false,
-  isCreatingSession: false,
+  startError: null,
 
   startSession: async () => {
     // Prevent duplicate session starts from rapid taps
     if (get().isActive) return;
 
     const now = Date.now();
-    const welcomeMessage: ChatMessage = {
-      ...INITIAL_MESSAGE,
-      id: generateId(),
-      timestamp: now,
-    };
-
-    // Initialize local state only - backend session created on first user message
-    // This prevents empty sessions from cluttering session history
     set({
       isActive: true,
       sessionId: null,
       startedAt: now,
       lastActiveAt: now,
-      messages: [welcomeMessage],
+      messages: [],
       isLoading: false,
+      startError: null,
     });
+
+    // The coach speaks first, so the backend session exists from the start.
+    try {
+      await get().ensureBackendSession();
+    } catch {
+      // startError is set; the screen offers a retry.
+    }
+  },
+
+  ensureBackendSession: async () => {
+    const existing = get().sessionId;
+    if (existing) return existing;
+
+    if (!pendingSessionCreation) {
+      pendingSessionCreation = sessionsService
+        .createSession()
+        .then(({ id }) => {
+          set({ sessionId: id, startError: null });
+          return id;
+        })
+        .catch((error) => {
+          console.warn('Failed to create session in backend:', error);
+          Sentry.captureException(error, { tags: { feature: 'session' } });
+          set({ startError: error instanceof Error ? error.message : 'Failed to create session' });
+          throw error;
+        })
+        .finally(() => {
+          pendingSessionCreation = null;
+        });
+    }
+
+    return pendingSessionCreation;
   },
 
   endSession: async () => {
@@ -89,48 +119,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       lastActiveAt: null,
       messages: [],
       isLoading: false,
+      startError: null,
     });
 
-    // Only finalize if session was persisted to backend (had user messages)
-    // Sessions without user messages have no sessionId due to lazy creation
-    if (sessionId) {
-      try {
+    if (!sessionId) return;
+
+    try {
+      if (hasUserMessages(messages)) {
         await sessionsService.updateSession(sessionId, {
           messages: toMessagePayload(messages),
         });
         await sessionsService.finalizeSession(sessionId, {
           extractMemories: false,
         });
-      } catch (error) {
-        // Use warn to avoid red screen - session is ended locally regardless
-        console.warn('Failed to finalize session:', error);
-        Sentry.captureException(error, { tags: { feature: 'session' } });
+      } else {
+        // Only the coach's opener happened: nothing worth keeping in history.
+        await sessionsService.deleteSession(sessionId);
       }
+    } catch (error) {
+      // Use warn to avoid red screen - session is ended locally regardless
+      console.warn('Failed to finalize session:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
     }
   },
 
-  addMessage: async (messageData) => {
-    // Create backend session on first user message before we mutate local chat state.
-    // If this fails, callers should treat the send as rejected rather than showing
-    // a fake local-only conversation that cannot be persisted or orchestrated.
-    if (messageData.role === 'user' && !get().sessionId) {
-      if (get().isCreatingSession) {
-        throw new Error('Session creation already in progress');
-      }
-
-      set({ isCreatingSession: true });
-      try {
-        const { id } = await sessionsService.createSession();
-        set({ sessionId: id });
-      } catch (error) {
-        console.warn('Failed to create session in backend:', error);
-        Sentry.captureException(error, { tags: { feature: 'session' } });
-        throw error;
-      } finally {
-        set({ isCreatingSession: false });
-      }
-    }
-
+  addLocalMessage: (messageData) => {
     const message: ChatMessage = {
       ...messageData,
       id: generateId(),
@@ -142,25 +155,32 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       lastActiveAt: Date.now(),
     }));
 
-    // Sync to backend (only if we have a sessionId)
-    if (get().sessionId) {
-      await get().syncMessages();
-    }
-
     return message.id;
   },
 
-  updateMessage: (messageId, changes) => {
+  addMessage: async (messageData) => {
+    const id = get().addLocalMessage(messageData);
+    await get().syncMessages();
+    return id;
+  },
+
+  appendToMessage: (messageId, delta) => {
     set((state) => ({
       messages: state.messages.map((message) =>
-        message.id === messageId
-          ? {
-              ...message,
-              ...changes,
-            }
-          : message
+        message.id === messageId ? { ...message, content: message.content + delta } : message
       ),
+      lastActiveAt: Date.now(),
     }));
+  },
+
+  finalizeMessage: async (messageId, content) => {
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId ? { ...message, content } : message
+      ),
+      lastActiveAt: Date.now(),
+    }));
+    await get().syncMessages();
   },
 
   syncMessages: async () => {
@@ -197,11 +217,15 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       const now = Date.now();
       const elapsed = now - activeSession.updatedAt;
 
-      // Finalize orphaned session - outside 10 minute window
+      // Orphaned session - outside the 10 minute window
       if (elapsed >= SESSION_RECOVERY_WINDOW_MS) {
-        await sessionsService.finalizeSession(activeSession.id, {
-          extractMemories: false,
-        });
+        if (hasUserMessages(activeSession.messages)) {
+          await sessionsService.finalizeSession(activeSession.id, {
+            extractMemories: false,
+          });
+        } else {
+          await sessionsService.deleteSession(activeSession.id);
+        }
         return 'finalized';
       }
 
@@ -220,6 +244,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
         lastActiveAt: activeSession.updatedAt,
         messages,
         isLoading: false,
+        startError: null,
       });
 
       return 'recovered';

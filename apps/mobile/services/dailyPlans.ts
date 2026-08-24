@@ -1,8 +1,6 @@
 import { supabase } from './supabase';
 import type {
   DailyPlan,
-  DailyPlanDraft,
-  DailyPlanDraftItem,
   DailyPlanItem,
   DailyPlanItemOutcome,
   DailyPlanSource,
@@ -88,24 +86,6 @@ async function getCurrentUserId(): Promise<string> {
   return user.id;
 }
 
-async function getLatestPlanVersion(userId: string, date: string): Promise<number> {
-  const { data, error } = await supabase
-    .from('daily_plans')
-    .select('version')
-    .eq('user_id', userId)
-    .eq('plan_date', date)
-    .order('version', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    console.error('Error fetching latest daily plan version:', error);
-    throw error;
-  }
-
-  return data?.version ?? 0;
-}
-
 async function loadPlanItems(planId: string): Promise<DbDailyPlanItem[]> {
   const { data, error } = await supabase
     .from('daily_plan_items')
@@ -142,128 +122,6 @@ export async function getDailyPlan(date: string): Promise<DailyPlan | null> {
 
   const items = await loadPlanItems(data.id);
   return mapDbPlanToPlan(data as DbDailyPlan, items);
-}
-
-export async function saveAcceptedDailyPlan(
-  draft: DailyPlanDraft,
-  resolvedRefs: Map<string, string>,
-  source: DailyPlanSource = 'coach',
-  parentPlanId?: string
-): Promise<DailyPlan> {
-  const userId = await getCurrentUserId();
-  const nextVersion = (await getLatestPlanVersion(userId, draft.date)) + 1;
-
-  const { error: supersedeError } = await supabase
-    .from('daily_plans')
-    .update({ status: 'superseded' })
-    .eq('user_id', userId)
-    .eq('plan_date', draft.date)
-    .in('status', ['accepted', 'draft']);
-
-  if (supersedeError) {
-    console.error('Error superseding daily plans:', supersedeError);
-    throw supersedeError;
-  }
-
-  const { data: planData, error: planError } = await supabase
-    .from('daily_plans')
-    .insert({
-      user_id: userId,
-      plan_date: draft.date,
-      version: nextVersion,
-      status: 'accepted',
-      source,
-      parent_plan_id: parentPlanId ?? null,
-      rationale: draft.rationale ?? null,
-      accepted_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (planError) {
-    console.error('Error creating daily plan:', planError);
-    throw planError;
-  }
-
-  const itemRows = draft.items.map((item, index) => {
-    const resolved = resolveDraftItemReference(item, resolvedRefs);
-    const persistedItemType = resolvePersistedItemType(item, resolved);
-
-    return {
-      plan_id: planData.id,
-      user_id: userId,
-      item_type: persistedItemType,
-      habit_id: persistedItemType === 'habit' ? resolved.habitId : null,
-      todo_id: persistedItemType === 'todo' ? resolved.todoId : null,
-      title_snapshot: item.title,
-      notes_snapshot: item.notes ?? null,
-      scheduled_time: item.scheduledTime,
-      estimate_minutes_snapshot: item.estimateMinutes ?? null,
-      is_optional: item.isOptional ?? false,
-      position: index,
-    };
-  });
-
-  if (itemRows.length > 0) {
-    const { error: itemsError } = await supabase
-      .from('daily_plan_items')
-      .insert(itemRows);
-
-    if (itemsError) {
-      console.error('Error creating daily plan items:', itemsError);
-      throw itemsError;
-    }
-  }
-
-  const items = await loadPlanItems(planData.id);
-  return mapDbPlanToPlan(planData as DbDailyPlan, items);
-}
-
-function resolveDraftItemReference(
-  item: DailyPlanDraftItem,
-  resolvedRefs: Map<string, string>
-): { habitId: string | null; todoId: string | null } {
-  if (!item.ref) {
-    return { habitId: null, todoId: null };
-  }
-
-  if (item.ref.kind === 'habit') {
-    return { habitId: item.ref.id, todoId: null };
-  }
-
-  if (item.ref.kind === 'todo') {
-    return { habitId: null, todoId: item.ref.id };
-  }
-
-  const resolvedId = resolvedRefs.get(item.ref.clientKey);
-  if (!resolvedId) {
-    return { habitId: null, todoId: null };
-  }
-
-  if (item.itemType === 'habit') {
-    return { habitId: resolvedId, todoId: null };
-  }
-
-  if (item.itemType === 'todo') {
-    return { habitId: null, todoId: resolvedId };
-  }
-
-  return { habitId: null, todoId: null };
-}
-
-function resolvePersistedItemType(
-  item: DailyPlanDraftItem,
-  resolved: { habitId: string | null; todoId: string | null }
-): DbDailyPlanItem['item_type'] {
-  if (item.itemType === 'habit' && resolved.habitId) {
-    return 'habit';
-  }
-
-  if (item.itemType === 'todo' && resolved.todoId) {
-    return 'todo';
-  }
-
-  return 'note';
 }
 
 export async function updateDailyPlanItemOutcome(

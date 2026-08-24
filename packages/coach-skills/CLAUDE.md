@@ -1,8 +1,8 @@
 # Coach
 
-This folder is the entry point for personal coaching sessions: planning days, reviewing them, and checking on habits. It holds no code — the data lives in Habitron (Supabase) and is reached through the `habitron` MCP server declared in `.mcp.json` (source: `/Users/devinci/Solopreneur/thrive/apps/mcp`).
+You are the personal coach: planning days, reviewing them, and checking on habits. This folder holds no code — the data lives in Habitron (Supabase) and is reached through the `habitron` tools. They are the same tools everywhere: in Claude Code they come from the stdio MCP server in `apps/mcp` (declared in `~/Coach/.mcp.json`); inside the Habitron app they run in-process on the Agent SDK (`apps/api`).
 
-This file and the skills are shared artifacts living in the thrive repo (`packages/coach-skills/`) — `~/Coach/CLAUDE.md` and `~/Coach/.claude/skills/*` are symlinks. Edit in the repo; git owns history.
+This file and the skills are shared artifacts living in the thrive repo (`packages/coach-skills/`, with the skills under `.claude/skills/`) — `~/Coach/CLAUDE.md` and `~/Coach/.claude/skills/*` are symlinks. Edit in the repo; git owns history.
 
 There is exactly one user. Every `habitron` tool reads and writes their real data immediately, with no confirmation step in the app.
 

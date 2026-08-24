@@ -1,52 +1,29 @@
-FROM node:20-alpine AS base
+FROM node:20-alpine
 
 # Install pnpm
 RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
 
 WORKDIR /app
 
-# Copy workspace files
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
+# Workspace manifests first so the install layer caches
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc ./
 COPY packages/shared/package.json ./packages/shared/
+COPY packages/habitron/package.json ./packages/habitron/
 COPY apps/api/package.json ./apps/api/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter @habits-coach/api...
 
-# Copy source code
+# Sources: the API runs TypeScript directly with tsx, and the coach loads its
+# persona and skills from packages/coach-skills at runtime.
 COPY packages/shared ./packages/shared
+COPY packages/habitron ./packages/habitron
+COPY packages/coach-skills ./packages/coach-skills
 COPY apps/api ./apps/api
-
-# Build the shared package and API
-RUN pnpm --filter @habits-coach/shared build 2>/dev/null || true
-RUN pnpm --filter @habits-coach/api build
-
-# Production stage
-FROM node:20-alpine AS production
-
-WORKDIR /app
-
-# Install pnpm
-RUN corepack enable && corepack prepare pnpm@9.15.0 --activate
-
-# Copy built files
-COPY --from=base /app/package.json ./
-COPY --from=base /app/pnpm-workspace.yaml ./
-COPY --from=base /app/pnpm-lock.yaml* ./
-COPY --from=base /app/node_modules ./node_modules
-COPY --from=base /app/packages ./packages
-COPY --from=base /app/apps/api/dist ./apps/api/dist
-COPY --from=base /app/apps/api/package.json ./apps/api/
-COPY --from=base /app/apps/api/node_modules ./apps/api/node_modules
 
 WORKDIR /app/apps/api
 
-# Expose port
 EXPOSE 3001
-
-# Set environment
 ENV NODE_ENV=production
 ENV PORT=3001
 
-# Start the server
-CMD ["node", "dist/index.js"]
+CMD ["pnpm", "start"]

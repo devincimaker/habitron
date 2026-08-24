@@ -1,13 +1,5 @@
 import type { HabitStatus, HabitWeekday } from '@habits-coach/shared';
-import {
-  listAllTasks,
-  listHabitLogs,
-  listHabits,
-  listPlans,
-  listRecentJournalEntries,
-  type Habit,
-  type HabitLogRecord,
-} from './db.js';
+import type { Db, Habit, HabitLogRecord } from './db.js';
 import { addDays, localNow, weekdayOf } from './time.js';
 
 const WEEKDAYS: HabitWeekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -74,11 +66,10 @@ function computeStreaks(habit: Habit, logsByDate: Map<string, HabitLogRecord>, s
   return { current, longest, lastCompleted };
 }
 
-export async function buildHabitHistory(args: { days: number; habitId?: string }) {
-  const now = localNow();
-  const end = now.date;
+export async function buildHabitHistory(db: Db, timezone: string, args: { days: number; habitId?: string }) {
+  const end = localNow(timezone).date;
   const start = addDays(end, -(args.days - 1));
-  const [habits, logs] = await Promise.all([listHabits(true), listHabitLogs(start, end)]);
+  const [habits, logs] = await Promise.all([db.listHabits(true), db.listHabitLogs(start, end)]);
   const selected = args.habitId ? habits.filter((h) => h.id === args.habitId) : habits.filter((h) => h.active);
   if (args.habitId && selected.length === 0) {
     throw new Error(`Habit not found: ${args.habitId}`);
@@ -162,10 +153,10 @@ function hourBucket(time?: string): 'morning' | 'afternoon' | 'evening' | 'night
   return 'evening';
 }
 
-export async function buildTaskHistory(args: { days: number }) {
-  const end = localNow().date;
+export async function buildTaskHistory(db: Db, timezone: string, args: { days: number }) {
+  const end = localNow(timezone).date;
   const start = addDays(end, -(args.days - 1));
-  const [tasks, plans] = await Promise.all([listAllTasks(), listPlans(start, end)]);
+  const [tasks, plans] = await Promise.all([db.listAllTasks(), db.listPlans(start, end)]);
 
   const completed = tasks
     .filter((t) => t.status === 'completed' && t.completedAt && t.completedAt.slice(0, 10) >= start && t.completedAt.slice(0, 10) <= end)
@@ -252,10 +243,10 @@ export async function buildTaskHistory(args: { days: number }) {
   };
 }
 
-export async function buildJournalHistory(args: { days: number }) {
-  const end = localNow().date;
+export async function buildJournalHistory(db: Db, timezone: string, args: { days: number }) {
+  const end = localNow(timezone).date;
   const start = addDays(end, -(args.days - 1));
-  const entries = (await listRecentJournalEntries(500)).filter((e) => e.entryDate >= start && e.entryDate <= end);
+  const entries = (await db.listRecentJournalEntries(500)).filter((e) => e.entryDate >= start && e.entryDate <= end);
   const moods: Record<string, number> = {};
   for (const e of entries) if (e.mood) moods[e.mood] = (moods[e.mood] ?? 0) + 1;
   return { window: { start, end, days: args.days }, count: entries.length, moodCounts: moods, entries };

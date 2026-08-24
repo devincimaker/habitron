@@ -1,8 +1,5 @@
-import OpenAI from 'openai';
-import { config } from '../config.js';
 import type { CoachingSessionMessage } from '@habits-coach/shared';
-
-const client = new OpenAI({ apiKey: config.openai.apiKey });
+import { runClaudeText } from '../coach/claude.js';
 
 const SUMMARY_PROMPT = `You are summarizing a coaching conversation about habits and personal development.
 
@@ -28,24 +25,16 @@ export async function generateSessionSummary(
     .map((m) => `${m.role === 'user' ? 'User' : 'Coach'}: ${m.content}`)
     .join('\n');
 
-  const response = await client.chat.completions.create({
-    model: config.openai.model,
-    messages: [
-      { role: 'system', content: SUMMARY_PROMPT },
-      { role: 'user', content: `Summarize this conversation:\n\n${conversationText}` },
-    ],
-    temperature: 0.3,
-    max_tokens: 50,
-  });
-
-  let summary = response.choices[0]?.message?.content?.trim();
+  const summary = (
+    await runClaudeText({
+      system: SUMMARY_PROMPT,
+      prompt: `Summarize this conversation:\n\n${conversationText}`,
+    })
+  ).replace(/^["']|["']$/g, '');
 
   if (!summary) {
     throw new Error('Failed to generate summary');
   }
-
-  // Strip any surrounding quotes the AI might add
-  summary = summary.replace(/^["']|["']$/g, '');
 
   return summary;
 }

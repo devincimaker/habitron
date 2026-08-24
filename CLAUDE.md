@@ -85,9 +85,14 @@ xcrun simctl openurl "$UDID" "exp+habits-coach://expo-development-client/?url=ht
 - Expo's deep links can open on any booted simulator with the app installed, not the one you specified. Using `--no-bundler` and launching by UDID ensures the correct simulator.
 - The Dev Client discovers all Metro bundlers on the network. Using `openurl` with the specific port URL forces it to connect to the correct one instead of showing a picker or auto-connecting to the wrong server.
 
-## MCP server (`apps/mcp`)
+## The coach (`packages/coach-skills`, `packages/habitron`, `apps/mcp`, `apps/api`)
 
-Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio MCP server so day planning can happen in a strong model with calendar/Linear/email context. See `apps/mcp/README.md` for the tool surface. The coaching skills that drive it live outside this repo in `~/Coach/.claude/skills`, and `~/Coach/.mcp.json` registers the server. It needs `apps/mcp/.env` (Supabase service role + `HABITRON_USER_ID`).
+One coach, two surfaces. The persona and skills are `packages/coach-skills` (`CLAUDE.md` + `.claude/skills/*`); the data layer and the tool list are `packages/habitron`.
+
+- **Claude Code** (`~/Coach`): symlinks into `packages/coach-skills`; `~/Coach/.mcp.json` registers the stdio MCP server in `apps/mcp` (needs `apps/mcp/.env`: Supabase service role + `HABITRON_USER_ID`). Use it when planning needs calendar/Linear/email context.
+- **In-app** (`apps/api` → `POST /api/chat`): the Claude Agent SDK runs the same skills and the same tools in-process, streaming the turn to the app. Auth is the Claude subscription via `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`); locally the Claude Code login is enough. `pnpm --filter @habits-coach/api coach:smoke` runs one turn against the test account from the terminal.
+
+See `apps/mcp/README.md` for the tool surface and `docs/coach-skill-map.md` for the architecture.
 
 ## Supabase Migrations
 

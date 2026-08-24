@@ -5,20 +5,17 @@
   "type": "module",
   "scripts": {
     "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@habits-coach/shared": "workspace:*",
+    "@habits-coach/habitron": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "@supabase/supabase-js": "^2.47.0",
     "dotenv": "^16.4.0",
-    "zod": "^3.25.0"
+    "zod": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.0",
-    "typescript": "~5.9.2",
-    "vitest": "^4.0.16"
+    "typescript": "~5.9.2"
   }
 }

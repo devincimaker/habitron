@@ -1,9 +1,29 @@
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import { buildDayContext } from './context.js';
-import * as db from './db.js';
+import type { Db, PlanItemInput } from './db.js';
 import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
 import { isIsoDate, today } from './time.js';
+
+/**
+ * One tool definition, independent of the host. `apps/mcp` registers these on a
+ * stdio McpServer for Claude Code; `apps/api` registers the same list on the
+ * Agent SDK's in-process MCP server for the in-app coach.
+ */
+export interface HabitronTool<Shape extends z.ZodRawShape = z.ZodRawShape> {
+  name: string;
+  title: string;
+  description: string;
+  inputSchema: Shape;
+  annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+  handler: (args: z.infer<z.ZodObject<Shape>>) => Promise<unknown>;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type AnyHabitronTool = HabitronTool<any>;
+
+function defineTool<Shape extends z.ZodRawShape>(tool: HabitronTool<Shape>): AnyHabitronTool {
+  return tool;
+}
 
 const dateSchema = z
   .string()
@@ -37,41 +57,24 @@ const outcomeSchema = z.enum([
   'not_done',
 ]);
 
-function json(data: unknown) {
-  return { content: [{ type: 'text' as const, text: JSON.stringify(data, null, 2) }] };
-}
+export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
+  const now = () => today(timezone);
 
-function failure(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error);
-  return { isError: true, content: [{ type: 'text' as const, text: message }] };
-}
+  return [
+    // ------------------------------------------------------------------ reads
 
-type ToolResult = ReturnType<typeof json> | ReturnType<typeof failure>;
-
-function run(fn: () => Promise<unknown>): Promise<ToolResult> {
-  return fn().then(json, failure);
-}
-
-export function createServer(): McpServer {
-  const server = new McpServer({ name: 'habitron', version: '1.0.0' });
-
-  // ------------------------------------------------------------------ reads
-
-  server.registerTool(
-    'get_day_context',
-    {
+    defineTool({
+      name: 'get_day_context',
       title: 'Get day context',
       description:
         'The planning packet for one day: local now, tasks (scheduled for the date, overdue, due soon, unscheduled), active habits with completion signal, the active accepted plan, recent journal entries, memories, and a summary of how the last 14 days of plans went. Call this first before planning, replanning, or reviewing a day.',
       inputSchema: { date: dateSchema.optional().describe('Defaults to today') },
       annotations: { readOnlyHint: true },
-    },
-    ({ date }) => run(() => buildDayContext(date ?? today()))
-  );
+      handler: ({ date }) => buildDayContext(db, timezone, date ?? now()),
+    }),
 
-  server.registerTool(
-    'list_tasks',
-    {
+    defineTool({
+      name: 'list_tasks',
       title: 'List tasks',
       description: 'Filter tasks. All filters are optional and combine with AND.',
       inputSchema: {
@@ -80,115 +83,98 @@ export function createServer(): McpServer {
         scheduledDate: dateSchema.optional(),
         unscheduledOnly: z.boolean().optional(),
         overdueOnly: z.boolean().optional().describe('Open tasks with dueDate before today'),
-        limit: z.number().int().min(1).max(200).optional(),
+        limit: z.int().min(1).max(200).optional(),
       },
       annotations: { readOnlyHint: true },
-    },
-    (args) =>
-      run(async () => {
-        const now = today();
+      handler: async (args) => {
+        const current = now();
         const q = args.query?.trim().toLowerCase();
         const tasks = (await db.listAllTasks()).filter((t) => {
           if (args.status && t.status !== args.status) return false;
           if (args.scheduledDate && t.scheduledDate !== args.scheduledDate) return false;
           if (args.unscheduledOnly && t.scheduledDate) return false;
-          if (args.overdueOnly && !(t.status === 'open' && t.dueDate && t.dueDate < now)) return false;
+          if (args.overdueOnly && !(t.status === 'open' && t.dueDate && t.dueDate < current)) return false;
           if (q && !`${t.title} ${t.notes ?? ''}`.toLowerCase().includes(q)) return false;
           return true;
         });
         return { tasks: tasks.slice(0, args.limit ?? 50), total: tasks.length };
-      })
-  );
+      },
+    }),
 
-  server.registerTool(
-    'list_habits',
-    {
+    defineTool({
+      name: 'list_habits',
       title: 'List habits',
       description: 'Active habits (optionally including archived ones).',
       inputSchema: { includeInactive: z.boolean().optional() },
       annotations: { readOnlyHint: true },
-    },
-    ({ includeInactive }) => run(() => db.listHabits(includeInactive ?? false))
-  );
+      handler: ({ includeInactive }) => db.listHabits(includeInactive ?? false),
+    }),
 
-  server.registerTool(
-    'get_habit_history',
-    {
+    defineTool({
+      name: 'get_habit_history',
       title: 'Get habit history',
       description:
         'How habits have actually gone over a window (default 30 days, max 365): per habit, expected vs completed, completion rate, current/longest streak, first-half vs second-half trend, completion by weekday, quantity totals, and a day-by-day grid. Use for "how are my habits going?", spotting patterns, and deciding what to change.',
       inputSchema: {
-        days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30'),
-        habitId: z.string().uuid().optional().describe('Limit to one habit (includes archived ones)'),
+        days: z.int().min(7).max(365).optional().describe('Window ending today; default 30'),
+        habitId: z.uuid().optional().describe('Limit to one habit (includes archived ones)'),
       },
       annotations: { readOnlyHint: true },
-    },
-    ({ days, habitId }) => run(() => buildHabitHistory({ days: days ?? 30, habitId }))
-  );
+      handler: ({ days, habitId }) => buildHabitHistory(db, timezone, { days: days ?? 30, habitId }),
+    }),
 
-  server.registerTool(
-    'get_task_history',
-    {
+    defineTool({
+      name: 'get_task_history',
       title: 'Get task history',
       description:
         'What got done over a window (default 30 days, max 365): completed/canceled/created counts, completions per weekday and time of day, estimate-vs-actual accuracy, plan outcome tallies, open-task age, and the list of completed tasks with times. Use to understand real capacity and rhythms before planning.',
-      inputSchema: { days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30') },
+      inputSchema: { days: z.int().min(7).max(365).optional().describe('Window ending today; default 30') },
       annotations: { readOnlyHint: true },
-    },
-    ({ days }) => run(() => buildTaskHistory({ days: days ?? 30 }))
-  );
+      handler: ({ days }) => buildTaskHistory(db, timezone, { days: days ?? 30 }),
+    }),
 
-  server.registerTool(
-    'get_journal_history',
-    {
+    defineTool({
+      name: 'get_journal_history',
       title: 'Get journal history',
       description: 'Journal entries and mood counts over a window (default 30 days, max 365).',
-      inputSchema: { days: z.number().int().min(7).max(365).optional().describe('Window ending today; default 30') },
+      inputSchema: { days: z.int().min(7).max(365).optional().describe('Window ending today; default 30') },
       annotations: { readOnlyHint: true },
-    },
-    ({ days }) => run(() => buildJournalHistory({ days: days ?? 30 }))
-  );
+      handler: ({ days }) => buildJournalHistory(db, timezone, { days: days ?? 30 }),
+    }),
 
-  server.registerTool(
-    'get_plan_history',
-    {
+    defineTool({
+      name: 'get_plan_history',
       title: 'Get plan history',
       description:
         'Every plan version (with items and outcomes) for dates in [start, end]. Useful to study how planned days actually went.',
       inputSchema: { start: dateSchema, end: dateSchema },
       annotations: { readOnlyHint: true },
-    },
-    ({ start, end }) => run(() => db.listPlans(start, end))
-  );
+      handler: ({ start, end }) => db.listPlans(start, end),
+    }),
 
-  server.registerTool(
-    'list_tags',
-    {
+    defineTool({
+      name: 'list_tags',
       title: 'List tags',
       description:
         'The task categories (tags). Every task carries at most one tag, naming the part of life it affects (e.g. Health, Work, Relationships). Call before assigning a tag so existing names are reused.',
       inputSchema: {},
       annotations: { readOnlyHint: true },
-    },
-    () => run(() => db.listTags())
-  );
+      handler: () => db.listTags(),
+    }),
 
-  server.registerTool(
-    'list_memories',
-    {
+    defineTool({
+      name: 'list_memories',
       title: 'List memories',
       description: 'Durable facts the coach has learned about the user.',
       inputSchema: {},
       annotations: { readOnlyHint: true },
-    },
-    () => run(() => db.listMemories())
-  );
+      handler: () => db.listMemories(),
+    }),
 
-  // ------------------------------------------------------------------ tasks
+    // ------------------------------------------------------------------ tasks
 
-  server.registerTool(
-    'create_task',
-    {
+    defineTool({
+      name: 'create_task',
       title: 'Create task',
       description:
         'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected.',
@@ -199,65 +185,61 @@ export function createServer(): McpServer {
         dueDate: dateSchema.optional(),
         scheduledDate: dateSchema.optional(),
         scheduledTime: timeSchema.optional(),
-        estimateMinutes: z.number().int().positive().optional(),
-        tagId: z.string().uuid().optional().describe('Category; see list_tags'),
+        estimateMinutes: z.int().positive().optional(),
+        tagId: z.uuid().optional().describe('Category; see list_tags'),
       },
-    },
-    (args) => run(() => db.createTask(args))
-  );
+      handler: (args) => db.createTask(args),
+    }),
 
-  server.registerTool(
-    'update_task',
-    {
+    defineTool({
+      name: 'update_task',
       title: 'Update task',
       description:
         'Edit, schedule, reschedule, unschedule, or re-categorise a task. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
       inputSchema: {
-        id: z.string().uuid(),
+        id: z.uuid(),
         title: z.string().min(1).optional(),
         notes: z.string().nullable().optional(),
         priority: prioritySchema.nullable().optional(),
         dueDate: dateSchema.nullable().optional(),
         scheduledDate: dateSchema.nullable().optional(),
         scheduledTime: timeSchema.nullable().optional(),
-        estimateMinutes: z.number().int().positive().nullable().optional(),
-        tagId: z.string().uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
+        estimateMinutes: z.int().positive().nullable().optional(),
+        tagId: z.uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
       },
-    },
-    ({ id, ...patch }) => run(() => db.updateTask(id, patch))
-  );
+      handler: ({ id, ...patch }) => db.updateTask(id, patch),
+    }),
 
-  server.registerTool(
-    'set_task_status',
-    {
+    defineTool({
+      name: 'set_task_status',
       title: 'Set task status',
       description:
         'Complete, cancel, or reopen a task. When completing, pass actualMinutes if known — it feeds future estimates.',
       inputSchema: {
-        id: z.string().uuid(),
+        id: z.uuid(),
         status: todoStatusSchema,
-        actualMinutes: z.number().int().positive().optional(),
+        actualMinutes: z.int().positive().optional(),
       },
-    },
-    ({ id, status, actualMinutes }) => run(() => db.setTaskStatus(id, status, actualMinutes))
-  );
+      handler: ({ id, status, actualMinutes }) => db.setTaskStatus(id, status, actualMinutes),
+    }),
 
-  server.registerTool(
-    'delete_task',
-    {
+    defineTool({
+      name: 'delete_task',
       title: 'Delete task',
-      description: 'Permanently delete a task (e.g. a duplicate). Prefer cancel for tasks that were real but are no longer wanted.',
-      inputSchema: { id: z.string().uuid() },
+      description:
+        'Permanently delete a task (e.g. a duplicate). Prefer cancel for tasks that were real but are no longer wanted.',
+      inputSchema: { id: z.uuid() },
       annotations: { destructiveHint: true },
-    },
-    ({ id }) => run(async () => ({ deleted: id, ...(await db.deleteTask(id), {}) }))
-  );
+      handler: async ({ id }) => {
+        await db.deleteTask(id);
+        return { deleted: id };
+      },
+    }),
 
-  // ------------------------------------------------------------------- tags
+    // ------------------------------------------------------------------- tags
 
-  server.registerTool(
-    'create_tag',
-    {
+    defineTool({
+      name: 'create_tag',
       title: 'Create tag',
       description:
         'Create a new task category. Prefer reusing an existing tag from list_tags; names are unique per user (case-insensitive).',
@@ -265,34 +247,30 @@ export function createServer(): McpServer {
         name: z.string().min(1),
         color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB').optional(),
       },
-    },
-    ({ name, color }) => run(() => db.createTag(name, color))
-  );
+      handler: ({ name, color }) => db.createTag(name, color),
+    }),
 
-  // ----------------------------------------------------------------- habits
+    // ----------------------------------------------------------------- habits
 
-  server.registerTool(
-    'log_habit',
-    {
+    defineTool({
+      name: 'log_habit',
       title: 'Log habit',
       description:
-        'Mark a habit completed, skipped, or pending for a date (defaults to today). For quantity habits, pass amount (progress in the habit\'s unit).',
+        "Mark a habit completed, skipped, or pending for a date (defaults to today). For quantity habits, pass amount (progress in the habit's unit).",
       inputSchema: {
-        habitId: z.string().uuid(),
+        habitId: z.uuid(),
         status: habitStatusSchema,
         date: dateSchema.optional(),
         amount: z.number().nonnegative().optional(),
       },
-    },
-    ({ habitId, status, date, amount }) =>
-      run(() => db.logHabit({ habitId, status, amount, date: date ?? today() }))
-  );
+      handler: ({ habitId, status, date, amount }) =>
+        db.logHabit({ habitId, status, amount, date: date ?? now() }),
+    }),
 
-  // ------------------------------------------------------------------ plans
+    // ------------------------------------------------------------------ plans
 
-  server.registerTool(
-    'save_day_plan',
-    {
+    defineTool({
+      name: 'save_day_plan',
       title: 'Save day plan',
       description:
         'Accept a plan for a date, superseding any previous plan for that date (versions are kept). Items are executed in the order given: their position in the array is the sequence. Do NOT set scheduledTime unless the item genuinely happens at a fixed time (a class, a meeting, a call, a store that closes) — inventing clock times for ordinary tasks is wrong. Invariant: every todo item is also scheduled on the date, at its scheduledTime when it has one, so the plan and the Tasks screen never drift. Items: todo (todoId), habit (habitId), or note (free text with no backing entity). Call only after the user has agreed to the plan.',
@@ -303,8 +281,8 @@ export function createServer(): McpServer {
           .array(
             z.object({
               itemType: z.enum(['todo', 'habit', 'note']),
-              todoId: z.string().uuid().optional(),
-              habitId: z.string().uuid().optional(),
+              todoId: z.uuid().optional(),
+              habitId: z.uuid().optional(),
               title: z.string().optional().describe('Required for notes; defaults to the entity title otherwise'),
               notes: z.string().optional(),
               scheduledTime: timeSchema
@@ -312,20 +290,18 @@ export function createServer(): McpServer {
                 .describe(
                   'Only for real appointments — a class, meeting, call, or a store that closes. Omit it for everything else; plan items are ordered by their position in this array.'
                 ),
-              estimateMinutes: z.number().int().positive().optional(),
+              estimateMinutes: z.int().positive().optional(),
               isOptional: z.boolean().optional(),
             })
           )
           .min(1),
       },
-    },
-    ({ date, rationale, items }) =>
-      run(async () => {
+      handler: async ({ date, rationale, items }) => {
         const todoIds = items.flatMap((i) => (i.itemType === 'todo' && i.todoId ? [i.todoId] : []));
         const habitIds = items.flatMap((i) => (i.itemType === 'habit' && i.habitId ? [i.habitId] : []));
         const [todos, habits] = await Promise.all([db.getTasksByIds(todoIds), db.getHabitsByIds(habitIds)]);
 
-        const resolved: db.PlanItemInput[] = items.map((item, index) => {
+        const resolved: PlanItemInput[] = items.map((item, index) => {
           if (item.itemType === 'todo') {
             const todo = item.todoId ? todos.get(item.todoId) : undefined;
             if (!todo) throw new Error(`items[${index}]: todo not found (${item.todoId ?? 'missing todoId'})`);
@@ -378,58 +354,53 @@ export function createServer(): McpServer {
         );
 
         return db.saveAcceptedPlan({ date, rationale, items: resolved });
-      })
-  );
+      },
+    }),
 
-  server.registerTool(
-    'set_plan_item_outcome',
-    {
+    defineTool({
+      name: 'set_plan_item_outcome',
       title: 'Set plan item outcome',
       description:
         'Record what happened to a planned item. Use with set_task_status when closing out tasks, and for habit/note items that have no task.',
-      inputSchema: { itemId: z.string().uuid(), outcome: outcomeSchema },
-    },
-    ({ itemId, outcome }) => run(() => db.setPlanItemOutcome(itemId, outcome))
-  );
+      inputSchema: { itemId: z.uuid(), outcome: outcomeSchema },
+      handler: ({ itemId, outcome }) => db.setPlanItemOutcome(itemId, outcome),
+    }),
 
-  // --------------------------------------------------------- journal/memory
+    // --------------------------------------------------------- journal/memory
 
-  server.registerTool(
-    'add_journal_entry',
-    {
+    defineTool({
+      name: 'add_journal_entry',
       title: 'Add journal entry',
-      description: 'Save a short reflective entry (defaults to today). Use for check-ins, end-of-day reviews, or notable context.',
+      description:
+        'Save a short reflective entry (defaults to today). Use for check-ins, end-of-day reviews, or notable context.',
       inputSchema: {
         content: z.string().min(1),
         mood: moodSchema.optional(),
         entryDate: dateSchema.optional(),
       },
-    },
-    ({ content, mood, entryDate }) =>
-      run(() => db.addJournalEntry({ content, mood, entryDate: entryDate ?? today() }))
-  );
+      handler: ({ content, mood, entryDate }) =>
+        db.addJournalEntry({ content, mood, entryDate: entryDate ?? now() }),
+    }),
 
-  server.registerTool(
-    'add_memory',
-    {
+    defineTool({
+      name: 'add_memory',
       title: 'Add memory',
       description:
         'Store a durable fact about the user for future planning (stable preferences, constraints, observed patterns). Not for one-off details.',
       inputSchema: { content: z.string().min(1), category: memoryCategorySchema },
-    },
-    ({ content, category }) => run(() => db.addMemory(content, category))
-  );
+      handler: ({ content, category }) => db.addMemory(content, category),
+    }),
 
-  server.registerTool(
-    'delete_memory',
-    {
+    defineTool({
+      name: 'delete_memory',
       title: 'Delete memory',
       description: 'Remove a memory that is wrong or no longer true.',
-      inputSchema: { id: z.string().uuid() },
+      inputSchema: { id: z.uuid() },
       annotations: { destructiveHint: true },
-    },
-    ({ id }) => run(async () => ({ deleted: id, ...(await db.deleteMemory(id), {}) }))
-  );
-
-  return server;
+      handler: async ({ id }) => {
+        await db.deleteMemory(id);
+        return { deleted: id };
+      },
+    }),
+  ];
 }

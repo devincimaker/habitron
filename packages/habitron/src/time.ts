@@ -1,5 +1,4 @@
 import type { HabitWeekday } from '@habits-coach/shared';
-import { config } from './config.js';
 
 // Sunday-first, matching HABIT_WEEKDAYS in @habits-coach/shared (type-only import:
 // the shared package is CJS, so its runtime values are not visible from ESM).
@@ -11,10 +10,16 @@ export function isIsoDate(value: string): boolean {
   return DATE_RE.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00Z`));
 }
 
-/** Local wall-clock "now" in the configured timezone. */
-export function localNow(): { date: string; time: string; weekday: HabitWeekday } {
+export interface LocalNow {
+  date: string;
+  time: string;
+  weekday: HabitWeekday;
+}
+
+/** Local wall-clock "now" in the given IANA timezone. */
+export function localNow(timezone: string): LocalNow {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: config.timezone,
+    timeZone: timezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -29,8 +34,8 @@ export function localNow(): { date: string; time: string; weekday: HabitWeekday 
   return { date, time: `${hour}:${get('minute')}`, weekday: weekdayOf(date) };
 }
 
-export function today(): string {
-  return localNow().date;
+export function today(timezone: string): string {
+  return localNow(timezone).date;
 }
 
 export function weekdayOf(date: string): HabitWeekday {

@@ -1,16 +1,8 @@
 import type { DailyPlanItemOutcome, HabitStatus } from '@habits-coach/shared';
-import {
-  type Habit,
-  getActivePlan,
-  listAllTasks,
-  listHabitLogs,
-  listHabits,
-  listMemories,
-  listPlans,
-  listRecentJournalEntries,
-  type Task,
-} from './db.js';
+import type { Db, Habit, Task } from './db.js';
 import { addDays, localNow, weekRange, weekdayOf } from './time.js';
+
+export type DayContext = Awaited<ReturnType<typeof buildDayContext>>;
 
 export interface HabitForDay extends Habit {
   dueOnDate: boolean;
@@ -48,19 +40,19 @@ function sortByPriorityThenTime(tasks: Task[]): Task[] {
 }
 
 /** Compact planning packet: everything a planner needs for one day, nothing more. */
-export async function buildDayContext(date: string) {
-  const now = localNow();
+export async function buildDayContext(db: Db, timezone: string, date: string) {
+  const now = localNow(timezone);
   const week = weekRange(date);
   const lookbackStart = addDays(date, -14);
 
   const [tasks, habits, logs, plan, journal, memories, recentPlans] = await Promise.all([
-    listAllTasks(),
-    listHabits(),
-    listHabitLogs(lookbackStart < week.start ? lookbackStart : week.start, week.end),
-    getActivePlan(date),
-    listRecentJournalEntries(5),
-    listMemories(),
-    listPlans(lookbackStart, addDays(date, -1)),
+    db.listAllTasks(),
+    db.listHabits(),
+    db.listHabitLogs(lookbackStart < week.start ? lookbackStart : week.start, week.end),
+    db.getActivePlan(date),
+    db.listRecentJournalEntries(5),
+    db.listMemories(),
+    db.listPlans(lookbackStart, addDays(date, -1)),
   ]);
 
   const open = tasks.filter((t) => t.status === 'open');

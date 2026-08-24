@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState, useEffect, useMemo } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -27,39 +27,24 @@ import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useMemoriesStore, ExtractedMemory } from '../stores/useMemoriesStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import { ChatMessage } from './ChatMessage';
-import {
-  CoachProposalCard,
-  type CoachProposalCardStatus,
-} from './CoachProposalCard';
 import { MemoryReviewCard } from './MemoryReviewCard';
 import { VoiceInputButton } from './VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { sendMessage } from '../services/api';
+import { streamCoachTurn } from '../services/api';
 import {
   getCoachRequestErrorMessage,
   getCoachSessionStartErrorMessage,
 } from '../services/apiUrl';
-import { createSessionDebugEvent } from '../services/sessions';
-import type {
-  ChatMessage as ChatMessageType,
-  ChatRequest,
-  CoachDebugErrorStage,
-} from '@habits-coach/shared';
+import type { ChatMessage as ChatMessageType } from '@habits-coach/shared';
 import {
   SPACING,
   BORDER_RADIUS,
-  TAB_BAR,
   TYPOGRAPHY,
   TOUCH_TARGET,
   type Colors,
 } from '../constants/theme';
-import { applyCoachProposal } from '../utils/applyCoachProposal';
-import {
-  getCoachProposalDebugSummaries,
-  getLatestCoachProposal,
-  getProposalAppliedMessage,
-} from '../utils/coachProposal';
+import { describeCoachActivity } from '../utils/coachActivity';
 import { useThemedStyles } from '../hooks/useColors';
 
 type ReviewState =
@@ -72,37 +57,9 @@ interface CoachSessionScreenProps {
   onDismiss?: () => void;
 }
 
-type ProposalStatus = CoachProposalCardStatus | 'dismissed' | 'superseded';
-
-function getTurnIndexFromMessages(messages: Pick<ChatMessageType, 'role'>[]): number {
-  const userMessageCount = messages.filter((message) => message.role === 'user').length;
-  return Math.max(0, userMessageCount - 1);
-}
-
-function getTurnIndexForMessage(
-  messages: Pick<ChatMessageType, 'id' | 'role'>[],
-  messageId: string
-): number {
-  let userMessageCount = 0;
-
-  for (const message of messages) {
-    if (message.role === 'user') {
-      userMessageCount += 1;
-    }
-
-    if (message.id === messageId) {
-      return Math.max(0, userMessageCount - 1);
-    }
-  }
-
-  return Math.max(0, userMessageCount - 1);
-}
-
-function getProposalErrorStage(error: unknown): Extract<CoachDebugErrorStage, 'proposal_validation' | 'proposal_apply'> {
-  const message = error instanceof Error ? error.message.toLowerCase() : '';
-  return message.includes('must include') || message.includes('valid ')
-    ? 'proposal_validation'
-    : 'proposal_apply';
+/** The skill command that opens a session: the coach speaks first, grounded in the data. */
+function getOpenerCommand(autoPrompt?: string): string {
+  return autoPrompt === 'plan-day' ? '/plan-day' : '/coach';
 }
 
 export function CoachSessionScreen({
@@ -117,55 +74,32 @@ export function CoachSessionScreen({
     sessionId,
     messages,
     isLoading,
+    startError,
     endSession,
+    ensureBackendSession,
+    addLocalMessage,
     addMessage,
+    appendToMessage,
+    finalizeMessage,
     setLoading,
   } = useSessionStore();
 
   const { loadSessions } = useSessionsStore();
-  const { habits, loadHabits, addHabit, updateHabit, archiveHabit, removeHabit } = useHabitsStore();
-  const { goals, loadGoals, addGoal, updateGoal, archiveGoal } = useGoalsStore();
-  const {
-    todos,
-    loadTodos,
-    addTodo,
-    updateTodo,
-    setTodoStatus,
-    removeTodo,
-  } = useTodosStore();
-  const { entries: journalEntries, loadEntries, addEntry } = useJournalStore();
-  const { plansByDate, loadPlan, saveAcceptedPlan } = useDailyPlansStore();
-  const { memories, loadMemories, extractMemories, saveMemories } = useMemoriesStore();
+  const { loadHabits } = useHabitsStore();
+  const { loadGoals } = useGoalsStore();
+  const { loadTodos } = useTodosStore();
+  const { loadEntries } = useJournalStore();
+  const { loadPlan } = useDailyPlansStore();
+  const { loadMemories, extractMemories, saveMemories } = useMemoriesStore();
   const { name: userName } = useProfileStore();
 
   const [inputText, setInputText] = useState('');
-  const [proposalStatuses, setProposalStatuses] = useState<
-    Partial<Record<string, ProposalStatus>>
-  >({});
+  const [activity, setActivity] = useState<string | null>(null);
   const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
   const flatListRef = useRef<FlatList>(null);
-  const hasSentAutoPrompt = useRef(false);
+  const hasSentOpener = useRef(false);
   const isSendingRef = useRef(false);
   const today = getTodayDate();
-  const todayPlan = plansByDate[today] ?? null;
-  const activeHabits = useMemo(
-    () => habits.filter((habit) => habit.active),
-    [habits]
-  );
-  const latestProposal = useMemo(
-    () => getLatestCoachProposal(messages),
-    [messages]
-  );
-  const latestProposalStatus: ProposalStatus | null = latestProposal
-    ? proposalStatuses[latestProposal.messageId] ?? 'pending'
-    : null;
-  const visibleProposal = latestProposalStatus === 'dismissed' || latestProposalStatus === 'superseded'
-    ? null
-    : latestProposal;
-  const proposalActionContext = useMemo(
-    () => ({ goals, habits, todos }),
-    [goals, habits, todos]
-  );
 
   useEffect(() => {
     loadMemories();
@@ -178,165 +112,150 @@ export function CoachSessionScreen({
   const exitSession = useCallback(() => {
     loadSessions();
     setInputText('');
-    setProposalStatuses({});
     setReviewState({ phase: 'none' });
     void endSession();
     onDismiss?.();
   }, [endSession, loadSessions, onDismiss]);
 
-  const setProposalStatus = useCallback((
-    messageId: string | null,
-    status: ProposalStatus | null
-  ) => {
-    if (!messageId) {
-      return;
-    }
-
-    setProposalStatuses((previous) => {
-      const currentStatus = previous[messageId] ?? null;
-
-      if (currentStatus === status) {
-        return previous;
-      }
-
-      if (status === null) {
-        if (!(messageId in previous)) {
-          return previous;
-        }
-
-        const next = { ...previous };
-        delete next[messageId];
-        return next;
-      }
-
-      return {
-        ...previous,
-        [messageId]: status,
-      };
-    });
-  }, []);
-
-  const logSessionDebugEvent = useCallback(
-    async (event: Parameters<typeof createSessionDebugEvent>[1]) => {
-      const currentSessionId = useSessionStore.getState().sessionId ?? sessionId;
-      if (!currentSessionId) {
-        return;
-      }
-
-      try {
-        await createSessionDebugEvent(currentSessionId, event);
-      } catch (error) {
-        console.warn('Failed to create session debug event:', error);
-      }
-    },
-    [sessionId]
-  );
-
-  const sendUserMessage = useCallback(async (text: string): Promise<boolean> => {
-    const trimmedText = text.trim();
-    if (!trimmedText || isSendingRef.current) {
-      return false;
-    }
-
-    isSendingRef.current = true;
-    let didQueueUserMessage = false;
-
+  // The coach reads and writes real data during a turn; pull the app's stores back in line.
+  const refreshData = useCallback(async () => {
     try {
-      await addMessage({ role: 'user', content: trimmedText });
-      didQueueUserMessage = true;
-      if (latestProposalStatus === 'pending') {
-        setProposalStatus(latestProposal?.messageId ?? null, 'superseded');
-      }
-      setLoading(true);
-
-      const allMessages = useSessionStore.getState().messages;
-      const currentSessionId = useSessionStore.getState().sessionId ?? sessionId ?? undefined;
-      const turnIndex = getTurnIndexFromMessages(allMessages);
-      const request: ChatRequest = {
-        messages: allMessages.map((message) => ({
-          role: message.role,
-          content: message.content,
-        })),
-        habits: activeHabits,
-        goals,
-        todos,
-        journalEntries: journalEntries.slice(0, 10),
-        dailyPlan: todayPlan,
-        memories: memories.map((memory) => ({
-          content: memory.content,
-          category: memory.category,
-        })),
-        userName: userName || undefined,
-        today,
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        sessionId: currentSessionId,
-      };
-
-      const response = await sendMessage(request);
-      const assistantMessageId = await addMessage({
-        role: 'assistant',
-        content: response.message,
-        proposal: response.proposal ?? undefined,
-      });
-
-      if (response.proposal) {
-        await logSessionDebugEvent({
-          eventType: 'proposal_received',
-          turnIndex,
-          proposalPayload: response.proposal,
-          metadata: {
-            assistantMessageId: assistantMessageId ?? null,
-            actionCount: response.proposal.actions.length,
-            actionSummaries: getCoachProposalDebugSummaries(response.proposal),
-          },
-        });
-      }
-      return true;
+      await Promise.all([
+        loadHabits(),
+        loadGoals(),
+        loadTodos(),
+        loadEntries(),
+        loadPlan(today),
+        loadMemories(),
+      ]);
     } catch (error) {
-      console.warn('Error sending message:', error);
-      if (!didQueueUserMessage) {
-        Alert.alert('Could not start session', getCoachSessionStartErrorMessage(error));
+      console.warn('Failed to refresh data after coach turn:', error);
+    }
+  }, [loadEntries, loadGoals, loadHabits, loadMemories, loadPlan, loadTodos, today]);
+
+  const runTurn = useCallback(
+    async (prompt: string, options: { echoUser: boolean }): Promise<boolean> => {
+      if (isSendingRef.current) {
         return false;
       }
 
-      Sentry.captureException(error, {
-        tags: {
-          feature: 'coach-session',
-          stage: 'chat_generation',
-          sessionId: useSessionStore.getState().sessionId ?? sessionId ?? 'none',
-        },
-        extra: {
-          inputText: trimmedText,
-        },
-      });
-      await addMessage({
-        role: 'assistant',
-        content: getCoachRequestErrorMessage(error),
-      });
-      return true;
-    } finally {
-      if (didQueueUserMessage) {
+      isSendingRef.current = true;
+      let assistantMessageId: string | null = null;
+      let streamed = '';
+      let finalMessage: string | null = null;
+      let errorMessage: string | null = null;
+
+      try {
+        const currentSessionId = await ensureBackendSession();
+        if (options.echoUser) {
+          await addMessage({ role: 'user', content: prompt });
+        }
+        setLoading(true);
+        setActivity(null);
+
+        try {
+          await streamCoachTurn(
+            {
+              sessionId: currentSessionId,
+              prompt,
+              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              userName: userName || undefined,
+            },
+            (event) => {
+              switch (event.type) {
+                case 'text':
+                  streamed += event.delta;
+                  setActivity(null);
+                  if (assistantMessageId) {
+                    appendToMessage(assistantMessageId, event.delta);
+                  } else {
+                    assistantMessageId = addLocalMessage({ role: 'assistant', content: event.delta });
+                  }
+                  break;
+                case 'tool':
+                  setActivity(describeCoachActivity(event.name));
+                  break;
+                case 'done':
+                  finalMessage = event.message;
+                  break;
+                case 'error':
+                  errorMessage = event.message;
+                  break;
+                case 'session':
+                  break;
+              }
+            }
+          );
+        } catch (error) {
+          console.warn('Error sending message:', error);
+          Sentry.captureException(error, {
+            tags: {
+              feature: 'coach-session',
+              stage: 'chat_generation',
+              sessionId: currentSessionId,
+            },
+            extra: { prompt },
+          });
+          errorMessage = getCoachRequestErrorMessage(error);
+        }
+
+        let content = finalMessage ?? streamed;
+        if (errorMessage) {
+          content = content ? `${content}\n\n${errorMessage}` : errorMessage;
+        }
+        if (assistantMessageId) {
+          await finalizeMessage(assistantMessageId, content);
+        } else if (content) {
+          await addMessage({ role: 'assistant', content });
+        }
+
+        await refreshData();
+        return true;
+      } catch (error) {
+        console.warn('Could not start coaching session:', error);
+        Alert.alert('Could not start session', getCoachSessionStartErrorMessage(error));
+        return false;
+      } finally {
+        setActivity(null);
         setLoading(false);
+        isSendingRef.current = false;
       }
-      isSendingRef.current = false;
+    },
+    [
+      addLocalMessage,
+      addMessage,
+      appendToMessage,
+      ensureBackendSession,
+      finalizeMessage,
+      refreshData,
+      setLoading,
+      userName,
+    ]
+  );
+
+  const sendUserMessage = useCallback(
+    (text: string): Promise<boolean> => {
+      const trimmedText = text.trim();
+      if (!trimmedText) {
+        return Promise.resolve(false);
+      }
+      return runTurn(trimmedText, { echoUser: true });
+    },
+    [runTurn]
+  );
+
+  // The coach opens every new session, grounded in the day's data.
+  useEffect(() => {
+    if (!isActive || !sessionId || messages.length > 0 || hasSentOpener.current) {
+      return;
     }
-  }, [
-    addMessage,
-    latestProposal?.messageId,
-    latestProposalStatus,
-    journalEntries,
-    goals,
-    activeHabits,
-    memories,
-    logSessionDebugEvent,
-    setProposalStatus,
-    setLoading,
-    sessionId,
-    today,
-    todayPlan,
-    todos,
-    userName,
-  ]);
+    if (reviewState.phase !== 'none' || isLoading) {
+      return;
+    }
+
+    hasSentOpener.current = true;
+    void runTurn(getOpenerCommand(autoPrompt), { echoUser: false });
+  }, [autoPrompt, isActive, isLoading, messages.length, reviewState.phase, runTurn, sessionId]);
 
   const performEndSession = useCallback(async () => {
     if (messages.length <= 2) {
@@ -425,182 +344,9 @@ export function CoachSessionScreen({
     }
   }, [inputText, isLoading, sendUserMessage]);
 
-  const handleConfirmProposal = useCallback(async () => {
-    if (!visibleProposal || latestProposalStatus !== 'pending') return;
-
-    const { messageId, proposal } = visibleProposal;
-    const turnIndex = getTurnIndexForMessage(messages, messageId);
-    const actionSummaries = getCoachProposalDebugSummaries(proposal);
-
-    try {
-      setProposalStatus(messageId, 'applying');
-
-      await logSessionDebugEvent({
-        eventType: 'proposal_apply_started',
-        turnIndex,
-        proposalPayload: proposal,
-        metadata: {
-          proposalMessageId: messageId,
-          actionCount: proposal.actions.length,
-          actionSummaries,
-        },
-      });
-
-      await applyCoachProposal(proposal, {
-        addGoal,
-        updateGoal,
-        archiveGoal,
-        addHabit,
-        updateHabit,
-        archiveHabit,
-        removeHabit,
-        addTodo,
-        updateTodo,
-        setTodoStatus,
-        removeTodo,
-        addJournalEntry: addEntry,
-        saveAcceptedPlan,
-        existingPlanId:
-          proposal.dailyPlanDraft?.date === today ? todayPlan?.id : undefined,
-      });
-
-      setProposalStatus(messageId, 'applied');
-    } catch (error) {
-      setProposalStatus(messageId, null);
-
-      console.error('Error executing proposal:', error);
-      Sentry.captureException(error, {
-        tags: {
-          feature: 'coach-session',
-          stage: getProposalErrorStage(error),
-          sessionId: useSessionStore.getState().sessionId ?? sessionId ?? 'none',
-        },
-        extra: {
-          proposalMessageId: messageId,
-          actionSummaries,
-        },
-      });
-      await logSessionDebugEvent({
-        eventType: 'proposal_apply_failed',
-        turnIndex,
-        proposalPayload: proposal,
-        errorMessage: error instanceof Error ? error.message : 'Unknown proposal apply error',
-        errorStage: getProposalErrorStage(error),
-        metadata: {
-          proposalMessageId: messageId,
-          actionCount: proposal.actions.length,
-          actionSummaries,
-        },
-      });
-      await addMessage({
-        role: 'assistant',
-        content: 'Sorry, there was an error. Please try again.',
-      });
-      return;
-    }
-
-    try {
-      const appliedMessageId = await addMessage({
-        role: 'assistant',
-        content: getProposalAppliedMessage(proposal, proposalActionContext),
-      });
-
-      await logSessionDebugEvent({
-        eventType: 'proposal_apply_succeeded',
-        turnIndex,
-        proposalPayload: proposal,
-        metadata: {
-          proposalMessageId: messageId,
-          appliedMessageId: appliedMessageId ?? null,
-          actionCount: proposal.actions.length,
-          actionSummaries,
-        },
-      });
-
-      await Promise.all([
-        loadHabits(),
-        loadGoals(),
-        loadTodos(),
-        loadEntries(),
-        loadPlan(today),
-      ]);
-    } catch (error) {
-      console.error('Error refreshing coach session after proposal apply:', error);
-      Sentry.captureException(error, {
-        tags: {
-          feature: 'coach-session',
-          stage: 'proposal_apply',
-          sessionId: useSessionStore.getState().sessionId ?? sessionId ?? 'none',
-        },
-        extra: {
-          proposalMessageId: messageId,
-          actionSummaries,
-          postApplyRefresh: true,
-        },
-      });
-    }
-  }, [
-    addEntry,
-    addGoal,
-    addHabit,
-    addMessage,
-    addTodo,
-    archiveHabit,
-    archiveGoal,
-    loadHabits,
-    loadEntries,
-    loadGoals,
-    loadPlan,
-    loadTodos,
-    latestProposalStatus,
-    logSessionDebugEvent,
-    messages,
-    proposalActionContext,
-    removeHabit,
-    removeTodo,
-    saveAcceptedPlan,
-    sessionId,
-    setProposalStatus,
-    setTodoStatus,
-    today,
-    todayPlan?.id,
-    updateGoal,
-    updateHabit,
-    updateTodo,
-    visibleProposal,
-  ]);
-
-  const handleDismissProposal = useCallback(() => {
-    if (latestProposalStatus !== 'pending') {
-      return;
-    }
-
-    setProposalStatus(visibleProposal?.messageId ?? null, 'dismissed');
-    void addMessage({
-      role: 'assistant',
-      content: 'No problem! Is there anything else you would like to work on?',
-    });
-  }, [
-    addMessage,
-    latestProposalStatus,
-    setProposalStatus,
-    visibleProposal?.messageId,
-  ]);
-
-  useEffect(() => {
-    if (autoPrompt !== 'plan-day' || hasSentAutoPrompt.current) {
-      return;
-    }
-
-    if (!isActive || reviewState.phase !== 'none' || isLoading) {
-      return;
-    }
-
-    hasSentAutoPrompt.current = true;
-    sendUserMessage(
-      'Plan my day using my goals, habits, tasks, journal, and anything you already know about me.'
-    );
-  }, [autoPrompt, isActive, isLoading, reviewState.phase, sendUserMessage]);
+  const handleRetryStart = useCallback(() => {
+    void ensureBackendSession().catch(() => {});
+  }, [ensureBackendSession]);
 
   const {
     isRecordingMode,
@@ -698,12 +444,35 @@ export function CoachSessionScreen({
     );
   }
 
+  if (isActive && !sessionId && startError) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.sessionHeader}>
+          <TouchableOpacity style={styles.closeButton} onPress={exitSession} activeOpacity={0.7}>
+            <Ionicons name="close" size={32} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
+        <View style={styles.preparingContainer}>
+          <BodyMedium style={styles.preparingText}>
+            {getCoachSessionStartErrorMessage(new Error(startError))}
+          </BodyMedium>
+          <Button title="Try again" onPress={handleRetryStart} size="md" />
+        </View>
+      </View>
+    );
+  }
+
   if (messages.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.sessionHeader}>
+          <TouchableOpacity style={styles.closeButton} onPress={exitSession} activeOpacity={0.7}>
+            <Ionicons name="close" size={32} color={colors.textLight} />
+          </TouchableOpacity>
+        </View>
         <View style={styles.preparingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
-          <BodyMedium style={styles.preparingText}>Loading your coach...</BodyMedium>
+          <BodyMedium style={styles.preparingText}>{activity ?? 'Loading your coach...'}</BodyMedium>
         </View>
       </View>
     );
@@ -736,23 +505,12 @@ export function CoachSessionScreen({
         onContentSizeChange={() => flatListRef.current?.scrollToEnd()}
         onLayout={() => flatListRef.current?.scrollToEnd()}
         ListFooterComponent={
-          <>
-            {isLoading && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator color={colors.primary} />
-                <Text style={styles.loadingText}>Habitron is thinking...</Text>
-              </View>
-            )}
-            {visibleProposal && latestProposalStatus && (
-              <CoachProposalCard
-                proposal={visibleProposal.proposal}
-                status={latestProposalStatus as CoachProposalCardStatus}
-                actionContext={proposalActionContext}
-                onConfirm={handleConfirmProposal}
-                onDismiss={handleDismissProposal}
-              />
-            )}
-          </>
+          isLoading ? (
+            <View style={styles.loadingContainer}>
+              <ActivityIndicator color={colors.primary} />
+              <Text style={styles.loadingText}>{activity ?? 'Habitron is thinking...'}</Text>
+            </View>
+          ) : null
         }
       />
 
