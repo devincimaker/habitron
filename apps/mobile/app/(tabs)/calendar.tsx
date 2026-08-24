@@ -17,6 +17,7 @@ import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
+import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { SectionHeader } from '../../components/SectionHeader';
 import {
   TaskRow,
@@ -38,6 +39,7 @@ import {
 import { useThemedStyles } from '../../hooks/useColors';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
+import { useTodoReschedule } from '../../hooks/useTodoReschedule';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
@@ -82,6 +84,8 @@ export default function CalendarScreen() {
   const { loadPlan } = useDailyPlansStore();
 
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
+  const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
+  const rescheduleTodo = useTodoReschedule();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
@@ -181,15 +185,6 @@ export default function CalendarScreen() {
     [addTodoOptimistic]
   );
 
-  const handleMoveTodo = useCallback(
-    async (todo: Todo, nextDate: string) => {
-      void Haptics.selectionAsync();
-      const previousScheduledDate = todo.scheduledDate;
-      await updateTodo(todo.id, { scheduledDate: nextDate });
-      await syncTodoPlanOutcome(previousScheduledDate, todo.id, 'deferred');
-    },
-    [syncTodoPlanOutcome, updateTodo]
-  );
 
   const openTaskEditor = useCallback((todo?: Todo | null) => {
     setEditingTodo(todo ?? null);
@@ -272,9 +267,9 @@ export default function CalendarScreen() {
         return;
       }
 
-      await handleMoveTodo(todo, dropDate);
+      await rescheduleTodo(todo, dropDate);
     },
-    [getCalendarDropDate, handleMoveTodo]
+    [getCalendarDropDate, rescheduleTodo]
   );
 
   const renderTaskCard = useCallback(
@@ -288,6 +283,7 @@ export default function CalendarScreen() {
             onToggleStatus={handleToggleTodoStatus}
             onRemove={removeTodo}
             onEdit={openTaskEditor}
+            onReschedule={setReschedulingTodo}
             onDragStart={handleTaskDragStart}
             onDragMove={handleTaskDragMove}
             onDragEnd={handleTaskDragEnd}
@@ -393,6 +389,11 @@ export default function CalendarScreen() {
           onClose={() => setShowQuickCreate(false)}
           onSave={handleQuickCreate}
           defaultScheduledDate={selectedDate}
+        />
+
+        <TaskRescheduleModal
+          todo={reschedulingTodo}
+          onClose={() => setReschedulingTodo(null)}
         />
 
         <TodoEditorModal

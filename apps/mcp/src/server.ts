@@ -289,6 +289,45 @@ export function createServer(): McpServer {
     ({ name, color }) => run(() => db.createTag(name, color))
   );
 
+  server.registerTool(
+    'update_tag',
+    {
+      title: 'Update tag',
+      description:
+        'Rename or recolour an existing category. Every task keeps its link, so this is the safe way to fix a category whose name no longer fits. Names are unique per user (case-insensitive).',
+      inputSchema: {
+        id: z.string().uuid(),
+        name: z.string().min(1).optional(),
+        color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB')
+          .nullable()
+          .optional()
+          .describe('null clears the colour'),
+      },
+    },
+    ({ id, name, color }) => run(() => db.updateTag(id, { name, color }))
+  );
+
+  server.registerTool(
+    'delete_tag',
+    {
+      title: 'Delete tag',
+      description:
+        'Delete a category. Tasks are never deleted, but any task still carrying this tag becomes uncategorised — pass reassignToTagId to move them to another category first. Destructive: check list_tags and confirm with the user before calling. The result reports how many tasks were affected.',
+      inputSchema: {
+        id: z.string().uuid(),
+        reassignToTagId: z
+          .string()
+          .uuid()
+          .optional()
+          .describe('Move this tag\'s tasks here before deleting; otherwise they lose their category'),
+      },
+      annotations: { destructiveHint: true },
+    },
+    ({ id, reassignToTagId }) => run(() => db.deleteTag(id, reassignToTagId))
+  );
+
   // ----------------------------------------------------------------- habits
 
   server.registerTool(

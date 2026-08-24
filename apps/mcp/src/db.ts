@@ -410,6 +410,92 @@ export async function createTag(name: string, color?: string): Promise<Tag> {
   return mapTag(row);
 }
 
+export async function updateTag(
+  id: string,
+  patch: { name?: string; color?: string | null }
+): Promise<Tag> {
+  const tags = await listTags();
+  const current = tags.find((t) => t.id === id);
+  if (!current) {
+    throw new Error(`Unknown tag: ${id}. Call list_tags to see the available categories.`);
+  }
+
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) {
+    const trimmed = patch.name.trim();
+    if (!trimmed) throw new Error('Tag name cannot be empty');
+    const clash = tags.find(
+      (t) => t.id !== id && t.name.toLowerCase() === trimmed.toLowerCase()
+    );
+    if (clash) throw new Error(`Tag "${clash.name}" already exists (${clash.id})`);
+    update.name = trimmed;
+  }
+  if (patch.color !== undefined) update.color = patch.color;
+  if (Object.keys(update).length === 0) return current;
+
+  const row = unwrap(
+    await supabase
+      .from('todo_tags')
+      .update(update)
+      .eq('user_id', userId)
+      .eq('id', id)
+      .select('id, name, color')
+      .single()
+  ) as DbTag;
+  return mapTag(row);
+}
+
+export async function countTasksWithTag(tagId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('todos')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('tag_id', tagId);
+  if (error) throw new Error(error.message);
+  return count ?? 0;
+}
+
+export async function deleteTag(
+  id: string,
+  reassignToTagId?: string
+): Promise<{ deleted: Tag; tasksAffected: number; reassignedTo?: Tag }> {
+  const tags = await listTags();
+  const target = tags.find((t) => t.id === id);
+  if (!target) {
+    throw new Error(`Unknown tag: ${id}. Call list_tags to see the available categories.`);
+  }
+
+  let reassignedTo: Tag | undefined;
+  if (reassignToTagId !== undefined) {
+    if (reassignToTagId === id) throw new Error('Cannot reassign a tag to itself');
+    reassignedTo = tags.find((t) => t.id === reassignToTagId);
+    if (!reassignedTo) {
+      throw new Error(
+        `Unknown tag: ${reassignToTagId}. Call list_tags to see the available categories.`
+      );
+    }
+  }
+
+  const tasksAffected = await countTasksWithTag(id);
+  if (reassignedTo) {
+    unwrap(
+      await supabase
+        .from('todos')
+        .update({ tag_id: reassignedTo.id })
+        .eq('user_id', userId)
+        .eq('tag_id', id)
+        .select('id')
+    );
+  }
+
+  // Any task still pointing here is uncategorised by the FK (ON DELETE SET NULL).
+  unwrap(
+    await supabase.from('todo_tags').delete().eq('user_id', userId).eq('id', id).select('id')
+  );
+
+  return { deleted: target, tasksAffected, reassignedTo };
+}
+
 // ---------------------------------------------------------------------------
 // Habits
 // ---------------------------------------------------------------------------

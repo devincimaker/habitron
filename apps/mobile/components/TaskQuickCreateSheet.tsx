@@ -17,10 +17,12 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { TodoDraft } from '@habits-coach/shared';
+import { DatePickerModal } from './DatePickerModal';
 import { BodyMedium } from './ui';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
+import { formatRelativeDateLabel } from '../utils/dateUtils';
 import {
   buildQuickCreateTodoDraft,
   getActiveInlineTagContext,
@@ -39,10 +41,10 @@ interface TaskQuickCreateSheetProps {
 }
 
 const QUICK_ACTIONS = [
-  { icon: 'calendar-outline', label: 'Schedule task' },
-  { icon: 'flag-outline', label: 'Set priority' },
-  { icon: 'pricetag-outline', label: 'Set category' },
-  { icon: 'ellipsis-horizontal', label: 'More task actions' },
+  { icon: 'calendar-outline', label: 'Schedule task', action: 'date' },
+  { icon: 'flag-outline', label: 'Set priority', action: null },
+  { icon: 'pricetag-outline', label: 'Set category', action: 'tag' },
+  { icon: 'ellipsis-horizontal', label: 'More task actions', action: null },
 ] as const;
 
 const INITIAL_SELECTION: TextSelectionRange = { start: 0, end: 0 };
@@ -78,9 +80,11 @@ export function TaskQuickCreateSheet({
   const [title, setTitle] = useState('');
   const [selection, setSelection] = useState<TextSelectionRange>(INITIAL_SELECTION);
   const [isSaving, setIsSaving] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(defaultScheduledDate);
+  const [isPickingDate, setIsPickingDate] = useState(false);
   const saveDraft = useMemo(
-    () => buildQuickCreateTodoDraft(title, defaultScheduledDate),
-    [defaultScheduledDate, title]
+    () => buildQuickCreateTodoDraft(title, scheduledDate),
+    [scheduledDate, title]
   );
   const highlightedTextSegments = useMemo(() => getQuickCreateTextSegments(title), [title]);
   const activeInlineTag = useMemo(
@@ -127,9 +131,12 @@ export function TaskQuickCreateSheet({
       setTitle('');
       setSelection(INITIAL_SELECTION);
       setIsSaving(false);
+      setIsPickingDate(false);
       return;
     }
-  }, [visible]);
+
+    setScheduledDate(defaultScheduledDate);
+  }, [defaultScheduledDate, visible]);
 
   const handleClose = () => {
     if (isSaving) return;
@@ -158,6 +165,16 @@ export function TaskQuickCreateSheet({
     },
     [focusComposer]
   );
+
+  const handleOpenDatePicker = useCallback(() => {
+    Keyboard.dismiss();
+    setIsPickingDate(true);
+  }, []);
+
+  const handleCloseDatePicker = useCallback(() => {
+    setIsPickingDate(false);
+    focusComposer(120);
+  }, [focusComposer]);
 
   const handleSelectionChange = useCallback(
     (event: NativeSyntheticEvent<TextInputSelectionChangeEventData>) => {
@@ -280,33 +297,48 @@ export function TaskQuickCreateSheet({
 
             <View style={styles.actionsRow}>
               <View style={styles.quickActions}>
-                {QUICK_ACTIONS.map((action) => (
-                  <Pressable
-                    key={action.label}
-                    style={[
-                      styles.quickActionButton,
-                      action.icon === 'pricetag-outline' && styles.quickActionButtonEnabled,
-                      action.icon === 'pricetag-outline' && activeInlineTag
-                        ? styles.quickActionButtonActive
-                        : undefined,
-                    ]}
-                    onPress={action.icon === 'pricetag-outline' ? handleInsertTagTrigger : undefined}
-                    accessibilityRole="button"
-                    accessibilityLabel={action.label}
-                    accessibilityState={{ disabled: action.icon !== 'pricetag-outline' }}
-                    disabled={action.icon !== 'pricetag-outline'}
-                  >
-                    <Ionicons
-                      name={action.icon}
-                      size={18}
-                      color={
-                        action.icon === 'pricetag-outline' && activeInlineTag
-                          ? colors.primaryDark
-                          : colors.textSecondary
+                {QUICK_ACTIONS.map((action) => {
+                  const isActive =
+                    (action.action === 'tag' && !!activeInlineTag) ||
+                    (action.action === 'date' && !!scheduledDate);
+
+                  return (
+                    <Pressable
+                      key={action.label}
+                      style={[
+                        styles.quickActionButton,
+                        action.action && styles.quickActionButtonEnabled,
+                        isActive && styles.quickActionButtonActive,
+                      ]}
+                      onPress={
+                        action.action === 'tag'
+                          ? handleInsertTagTrigger
+                          : action.action === 'date'
+                            ? handleOpenDatePicker
+                            : undefined
                       }
-                    />
-                  </Pressable>
-                ))}
+                      accessibilityRole="button"
+                      accessibilityLabel={
+                        action.action === 'date' && scheduledDate
+                          ? `Scheduled ${formatRelativeDateLabel(scheduledDate)}, change date`
+                          : action.label
+                      }
+                      accessibilityState={{ disabled: !action.action }}
+                      disabled={!action.action}
+                    >
+                      <Ionicons
+                        name={action.icon}
+                        size={18}
+                        color={isActive ? colors.primaryDark : colors.textSecondary}
+                      />
+                      {action.action === 'date' && scheduledDate ? (
+                        <Text style={styles.quickActionBadge}>
+                          {formatRelativeDateLabel(scheduledDate)}
+                        </Text>
+                      ) : null}
+                    </Pressable>
+                  );
+                })}
               </View>
 
               <Pressable
@@ -339,6 +371,26 @@ export function TaskQuickCreateSheet({
             </View>
           </View>
         </View>
+
+        <DatePickerModal
+          visible={isPickingDate}
+          title="Schedule task"
+          value={scheduledDate}
+          showQuickOptions
+          onCancel={handleCloseDatePicker}
+          onDone={(date) => {
+            setScheduledDate(date);
+            handleCloseDatePicker();
+          }}
+          onClear={
+            scheduledDate
+              ? () => {
+                  setScheduledDate(undefined);
+                  handleCloseDatePicker();
+                }
+              : undefined
+          }
+        />
       </KeyboardAvoidingView>
     </Modal>
   );
@@ -463,12 +515,20 @@ const createStyles = (colors: Colors) =>
       gap: SPACING.xs,
     },
     quickActionButton: {
-      width: 32,
-      height: 32,
-      borderRadius: BORDER_RADIUS.full,
+      flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
+      gap: 4,
+      minWidth: 32,
+      height: 32,
+      paddingHorizontal: SPACING.xs,
+      borderRadius: BORDER_RADIUS.full,
       opacity: 0.45,
+    },
+    quickActionBadge: {
+      ...TYPOGRAPHY.caption,
+      color: colors.primaryDark,
+      fontWeight: '600',
     },
     quickActionButtonEnabled: {
       opacity: 1,
