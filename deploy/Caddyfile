@@ -1,0 +1,8 @@
+# TLS + reverse proxy for the API. API_HOST comes from /opt/habitron/.env.
+# flush_interval -1 keeps the coach's SSE stream unbuffered.
+{$API_HOST} {
+	encode gzip
+	reverse_proxy api:3001 {
+		flush_interval -1
+	}
+}

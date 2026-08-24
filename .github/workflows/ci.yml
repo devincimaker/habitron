@@ -94,3 +94,46 @@ jobs:
         run: |
           supabase link --project-ref fitklsshlhjwddbxhhdi
           supabase db push
+
+  deploy-api:
+    name: deploy api
+    needs: gate
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency:
+      group: deploy-api
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      # Build the API image here, then stream it to the box over SSH: no registry,
+      # no image visibility to manage, one box to keep in sync.
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          tags: habitron-api:${{ github.sha }}
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Configure SSH
+        env:
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Ship image and deploy
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+        run: |
+          SSH="ssh -i ~/.ssh/deploy_key -o BatchMode=yes deploy@$DEPLOY_HOST"
+          scp -i ~/.ssh/deploy_key -o BatchMode=yes deploy/compose.yml deploy/Caddyfile deploy/deploy.sh "deploy@$DEPLOY_HOST:/opt/habitron/"
+          docker save habitron-api:${{ github.sha }} | gzip | $SSH 'gunzip | docker load'
+          $SSH "bash /opt/habitron/deploy.sh ${{ github.sha }}"
