@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Todo, TodoDraft, TodoList, TodoStatus, TodoTag } from '@habits-coach/shared';
+import { normalizeChecklistDraft } from '@habits-coach/shared';
 import * as todosService from '../services/todos';
 import type { TodoStatusOptions } from '../services/todos';
 import { getTodoTagColor } from '../utils/todoTagColors';
@@ -20,6 +21,7 @@ interface TodosState {
     status: TodoStatus,
     options?: TodoStatusOptions
   ) => Promise<Todo>;
+  setChecklistItemDone: (todoId: string, itemId: string, done: boolean) => Promise<void>;
   removeTodo: (todoId: string) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
@@ -112,8 +114,32 @@ function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: T
     listId: resolveOptimisticListId(state.lists, draft),
     goalId: draft.goalId,
     tag: resolveOptimisticTag(state.tags, draft),
+    checklist: buildOptimisticChecklist(draft),
     createdAt: now,
     updatedAt: now,
+  };
+}
+
+function buildOptimisticChecklist(draft: TodoDraft): Todo['checklist'] {
+  const items = normalizeChecklistDraft(draft.checklist ?? []);
+  if (items.length === 0) {
+    return undefined;
+  }
+
+  return items.map((item, position) => ({
+    id: item.id ?? `optimistic-item-${position}`,
+    title: item.title,
+    done: item.done ?? false,
+    position,
+  }));
+}
+
+function applyChecklistItemDone(todo: Todo, itemId: string, done: boolean): Todo {
+  return {
+    ...todo,
+    checklist: todo.checklist?.map((item) =>
+      item.id === itemId ? { ...item, done } : item
+    ),
   };
 }
 
@@ -241,6 +267,27 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       set((state) => ({
         todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
       }));
+      throw error;
+    }
+  },
+
+  setChecklistItemDone: async (todoId, itemId, done) => {
+    const existingTodo = get().todos.find((todo) => todo.id === todoId);
+
+    set((state) => ({
+      todos: state.todos.map((todo) =>
+        todo.id === todoId ? applyChecklistItemDone(todo, itemId, done) : todo
+      ),
+    }));
+
+    try {
+      await todosService.setChecklistItemDone(itemId, done);
+    } catch (error) {
+      if (existingTodo) {
+        set((state) => ({
+          todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
+        }));
+      }
       throw error;
     }
   },

@@ -248,6 +248,7 @@ export async function buildTaskHistory(args: { days: number }) {
       actualMinutes: t.actualMinutes,
       priority: t.priority,
       tag: t.tag,
+      checklist: t.checklist,
     })),
   };
 }

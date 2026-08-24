@@ -16,6 +16,7 @@ import {
 import { getTodoTagTintColor } from '../utils/todoTagColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
 import { useThemedStyles } from '../hooks/useColors';
+import { useTodosStore } from '../stores/useTodosStore';
 
 export interface TaskStatusToggleOptions {
   actualMinutes?: number;
@@ -63,9 +64,13 @@ export function TaskRow({
   const [styles, colors] = useThemedStyles(createStyles);
   const rowRef = useRef<View>(null);
   const swipeableRef = useRef<Swipeable>(null);
+  const setChecklistItemDone = useTodosStore((state) => state.setChecklistItemDone);
+  const [isChecklistExpanded, setIsChecklistExpanded] = useState(false);
   const [askingActualMinutes, setAskingActualMinutes] = useState<number | null>(null);
   const isAsking = askingActualMinutes !== null;
   const isCompleted = todo.status === 'completed';
+  const checklist = todo.checklist ?? [];
+  const checklistDone = checklist.filter((item) => item.done).length;
   const estimateLabel = todo.estimateMinutes ? formatDurationMinutes(todo.estimateMinutes) : null;
   const completedDelta =
     isCompleted && todo.estimateMinutes && todo.actualMinutes
@@ -365,7 +370,51 @@ export function TaskRow({
                     </Caption>
                   </View>
                 ) : null}
+                {checklist.length > 0 ? (
+                  <Pressable
+                    style={styles.checklistProgress}
+                    onPress={() => setIsChecklistExpanded((current) => !current)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Checklist, ${checklistDone} of ${checklist.length} done`}
+                    hitSlop={6}
+                  >
+                    <Ionicons
+                      name={isChecklistExpanded ? 'chevron-down' : 'list-outline'}
+                      size={12}
+                      color={colors.textLight}
+                    />
+                    <Caption color={colors.textLight}>
+                      {checklistDone}/{checklist.length}
+                    </Caption>
+                  </Pressable>
+                ) : null}
               </View>
+              {isChecklistExpanded && checklist.length > 0 ? (
+                <View style={styles.checklistItems}>
+                  {checklist.map((item) => (
+                    <Pressable
+                      key={item.id}
+                      style={styles.checklistItemRow}
+                      onPress={() => void setChecklistItemDone(todo.id, item.id, !item.done)}
+                      accessibilityRole="checkbox"
+                      accessibilityState={{ checked: item.done }}
+                      accessibilityLabel={item.title}
+                    >
+                      <Ionicons
+                        name={item.done ? 'checkmark-circle' : 'ellipse-outline'}
+                        size={18}
+                        color={item.done ? colors.success : colors.textLight}
+                      />
+                      <Caption
+                        color={item.done ? colors.textLight : colors.text}
+                        style={item.done ? styles.checklistItemDone : undefined}
+                      >
+                        {item.title}
+                      </Caption>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
             </Pressable>
           </View>
           )}
@@ -474,6 +523,24 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   doneButtonText: {
     fontWeight: '600',
+  },
+  checklistProgress: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  checklistItems: {
+    marginTop: 6,
+    gap: 2,
+  },
+  checklistItemRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingVertical: 4,
+  },
+  checklistItemDone: {
+    textDecorationLine: 'line-through',
   },
   tagPill: {
     borderRadius: BORDER_RADIUS.full,

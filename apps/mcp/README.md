@@ -18,11 +18,13 @@ The server is registered project-scoped from the `~/Coach` folder (its `.mcp.jso
 | Read | Write |
 | --- | --- |
 | `get_day_context` (the planning packet) | `create_task`, `update_task`, `set_task_status`, `delete_task` |
-| `list_tasks`, `list_habits`, `list_tags`, `list_memories` | `create_tag`, `log_habit` |
+| `list_tasks`, `list_habits`, `list_tags`, `list_memories` | `create_tag`, `log_habit`, `set_checklist_item_done` |
 | `get_habit_history`, `get_task_history`, `get_journal_history`, `get_plan_history` (learning from the past) | `save_day_plan`, `set_plan_item_outcome` |
 | | `add_journal_entry`, `add_memory`, `delete_memory` |
 
 Tags are categories: every task carries at most one (`tag` on every task returned by `list_tasks`, `get_day_context`, and `get_task_history`, whose `summary.byTag` breaks completed work down per category). `create_task` / `update_task` take a `tagId` (null clears it) and reject unknown ids.
+
+Tasks can carry a **checklist**: an ordered list of small items ticked off individually ("I need milk, eggs and bread" is one task with three items, not three tasks). `create_task` / `update_task` take `checklist: string[]` — on update it replaces the full list (`[]` clears it) but keeps done state for items whose title matches. `set_checklist_item_done { itemId, done }` ticks one item. Every task returned by `list_tasks`, `get_day_context`, and `get_task_history` includes `checklist` (id, title, done, position); `get_day_context` tasks with a checklist also get `checklistProgress: { done, total }`.
 
 `save_day_plan` enforces the invariant from `docs/v1-coach-planning-implementation-plan.md`: every todo item in an accepted plan is also scheduled on that date at the item's time, so the plan and the Tasks screen never drift. Saving again for the same date supersedes the previous version and links it via `parentPlanId`.
 

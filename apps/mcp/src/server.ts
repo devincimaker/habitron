@@ -191,7 +191,7 @@ export function createServer(): McpServer {
     {
       title: 'Create task',
       description:
-        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected.',
+        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -201,6 +201,10 @@ export function createServer(): McpServer {
         scheduledTime: timeSchema.optional(),
         estimateMinutes: z.number().int().positive().optional(),
         tagId: z.string().uuid().optional().describe('Category; see list_tags'),
+        checklist: z
+          .array(z.string().min(1))
+          .optional()
+          .describe('Checklist item titles in order (e.g. ["milk", "eggs", "bread"])'),
       },
     },
     (args) => run(() => db.createTask(args))
@@ -222,9 +226,25 @@ export function createServer(): McpServer {
         scheduledTime: timeSchema.nullable().optional(),
         estimateMinutes: z.number().int().positive().nullable().optional(),
         tagId: z.string().uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
+        checklist: z
+          .array(z.string().min(1))
+          .optional()
+          .describe(
+            'Replaces the full checklist in order ([] clears it). Items whose title matches an existing one keep their done state.'
+          ),
       },
     },
     ({ id, ...patch }) => run(() => db.updateTask(id, patch))
+  );
+
+  server.registerTool(
+    'set_checklist_item_done',
+    {
+      title: 'Set checklist item done',
+      description: 'Tick or untick one checklist item on a task. Item ids come from the task\'s checklist.',
+      inputSchema: { itemId: z.string().uuid(), done: z.boolean() },
+    },
+    ({ itemId, done }) => run(() => db.setChecklistItemDone(itemId, done))
   );
 
   server.registerTool(

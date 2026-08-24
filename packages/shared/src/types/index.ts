@@ -162,6 +162,20 @@ export interface TodoTag {
 
 export type TodoStatus = 'open' | 'completed' | 'canceled';
 
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  done: boolean;
+  position: number;
+}
+
+export interface ChecklistItemDraft {
+  /** Present when editing an existing item; omitted for new ones. */
+  id?: string;
+  title: string;
+  done?: boolean;
+}
+
 export interface Todo {
   id: string;
   title: string;
@@ -181,6 +195,8 @@ export interface Todo {
   goalId?: string;
   /** The single category this task belongs to. */
   tag?: TodoTag;
+  /** Ordered checklist items; a task has a checklist iff this is non-empty. */
+  checklist?: ChecklistItem[];
   createdAt: number;
   updatedAt: number;
 }
@@ -200,6 +216,11 @@ export interface TodoDraft {
   tagId?: string | null;
   /** Category by name; created if it doesn't exist yet. */
   tagName?: string | null;
+  /**
+   * Full checklist in order; plain strings create items. On update the array
+   * replaces the existing list ([] clears it); items with an id are kept.
+   */
+  checklist?: string[] | ChecklistItemDraft[];
 }
 
 // Journal types

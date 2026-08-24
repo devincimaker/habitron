@@ -33,7 +33,7 @@ function unwrap<T>(result: { data: T | null; error: { message: string } | null }
 // ---------------------------------------------------------------------------
 
 const TODO_COLUMNS =
-  'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at, tag_id, todo_tags(id, name, color)';
+  'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at, tag_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
 
 interface DbTodo {
   id: string;
@@ -54,6 +54,7 @@ interface DbTodo {
   updated_at: string;
   tag_id: string | null;
   todo_tags: DbTag | null;
+  todo_checklist_items: DbChecklistItem[];
 }
 
 /** A task's category. Every task carries at most one. */
@@ -73,6 +74,28 @@ function mapTag(row: DbTag): Tag {
   return { id: row.id, name: row.name, color: row.color ?? undefined };
 }
 
+/** One entry of a task's checklist (e.g. "milk" on a groceries task). */
+export interface ChecklistItem {
+  id: string;
+  title: string;
+  done: boolean;
+  position: number;
+}
+
+interface DbChecklistItem {
+  id: string;
+  title: string;
+  done: boolean;
+  position: number;
+}
+
+function mapChecklist(rows: DbChecklistItem[]): ChecklistItem[] | undefined {
+  if (rows.length === 0) return undefined;
+  return [...rows]
+    .sort((a, b) => a.position - b.position)
+    .map((row) => ({ id: row.id, title: row.title, done: row.done, position: row.position }));
+}
+
 export interface Task {
   id: string;
   title: string;
@@ -88,6 +111,8 @@ export interface Task {
   canceledAt?: string;
   /** Category (at most one per task). */
   tag?: Tag;
+  /** Ordered checklist; present iff the task has at least one item. */
+  checklist?: ChecklistItem[];
   createdAt: string;
   updatedAt: string;
 }
@@ -107,6 +132,7 @@ function mapTodo(row: DbTodo): Task {
     completedAt: row.completed_at ?? undefined,
     canceledAt: row.canceled_at ?? undefined,
     tag: row.todo_tags ? mapTag(row.todo_tags) : undefined,
+    checklist: mapChecklist(row.todo_checklist_items),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -171,6 +197,64 @@ export interface TaskInput {
   scheduledTime?: string;
   estimateMinutes?: number;
   tagId?: string;
+  /** Checklist item titles in order. */
+  checklist?: string[];
+}
+
+/**
+ * Replaces the task's checklist with `titles` (in order). Items whose title
+ * matches an existing one (case-insensitive) keep their done state, so a
+ * coach edit doesn't untick things.
+ */
+async function replaceChecklist(todoId: string, titles: string[]): Promise<void> {
+  const existing = unwrap(
+    await supabase
+      .from('todo_checklist_items')
+      .select('id, title, done')
+      .eq('user_id', userId)
+      .eq('todo_id', todoId)
+  ) as Array<{ id: string; title: string; done: boolean }>;
+
+  const doneByTitle = new Map(existing.map((item) => [item.title.trim().toLowerCase(), item.done]));
+
+  unwrap(
+    await supabase
+      .from('todo_checklist_items')
+      .delete()
+      .eq('user_id', userId)
+      .eq('todo_id', todoId)
+  );
+
+  const items = titles.map((title) => title.trim()).filter((title) => title.length > 0);
+  if (items.length > 0) {
+    unwrap(
+      await supabase.from('todo_checklist_items').insert(
+        items.map((title, position) => ({
+          user_id: userId,
+          todo_id: todoId,
+          title,
+          done: doneByTitle.get(title.toLowerCase()) ?? false,
+          position,
+        }))
+      )
+    );
+  }
+}
+
+export async function setChecklistItemDone(itemId: string, done: boolean): Promise<ChecklistItem> {
+  const row = unwrap(
+    await supabase
+      .from('todo_checklist_items')
+      .update({ done })
+      .eq('user_id', userId)
+      .eq('id', itemId)
+      .select('id, title, done, position')
+      .maybeSingle()
+  ) as DbChecklistItem | null;
+  if (!row) {
+    throw new Error(`Checklist item not found: ${itemId}`);
+  }
+  return { id: row.id, title: row.title, done: row.done, position: row.position };
 }
 
 async function assertTagExists(tagId: string): Promise<void> {
@@ -204,6 +288,10 @@ export async function createTask(input: TaskInput): Promise<Task> {
       .select(TODO_COLUMNS)
       .single()
   ) as unknown as DbTodo;
+  if (input.checklist?.length) {
+    await replaceChecklist(row.id, input.checklist);
+    return getTask(row.id);
+  }
   return mapTodo(row);
 }
 
@@ -217,10 +305,17 @@ export interface TaskPatch {
   scheduledTime?: string | null;
   estimateMinutes?: number | null;
   tagId?: string | null;
+  /** Full replacement of the checklist; [] clears it. Done state survives for matching titles. */
+  checklist?: string[];
 }
 
 export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
   if (patch.tagId) await assertTagExists(patch.tagId);
+  if (patch.checklist !== undefined) {
+    // Ensure the task exists (and belongs to the user) before touching items.
+    await getTask(id);
+    await replaceChecklist(id, patch.checklist);
+  }
   const update: Record<string, unknown> = {};
   if (patch.title !== undefined) update.title = patch.title;
   if (patch.notes !== undefined) update.notes = patch.notes;
@@ -231,6 +326,10 @@ export async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
   if (patch.estimateMinutes !== undefined) update.estimate_minutes = patch.estimateMinutes;
   if (patch.tagId !== undefined) update.tag_id = patch.tagId;
   if (patch.scheduledDate === null) update.scheduled_time = null;
+
+  if (Object.keys(update).length === 0) {
+    return getTask(id);
+  }
 
   const row = unwrap(
     await supabase

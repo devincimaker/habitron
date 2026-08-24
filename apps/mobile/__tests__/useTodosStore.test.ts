@@ -7,6 +7,7 @@ jest.mock('../services/todos', () => ({
   addTodo: jest.fn(),
   updateTodo: jest.fn(),
   setTodoStatus: jest.fn(),
+  setChecklistItemDone: jest.fn(),
   removeTodo: jest.fn(),
   createTodoList: jest.fn(),
   createTodoTag: jest.fn(),
@@ -328,5 +329,56 @@ describe('useTodosStore selectors', () => {
 
     await expect(pendingStatusUpdate).rejects.toThrow('status failed');
     expect(useTodosStore.getState().todos).toEqual([baseTodo]);
+  });
+
+  it('builds optimistic checklist items from quick-create strings', async () => {
+    (todosService.addTodo as jest.Mock).mockImplementation(
+      () => new Promise<Todo>(() => undefined)
+    );
+
+    void useTodosStore.getState().addTodoOptimistic({
+      title: 'Groceries',
+      checklist: ['milk', ' eggs ', ''],
+    });
+
+    expect(useTodosStore.getState().todos).toEqual([
+      expect.objectContaining({
+        title: 'Groceries',
+        checklist: [
+          expect.objectContaining({ title: 'milk', done: false, position: 0 }),
+          expect.objectContaining({ title: 'eggs', done: false, position: 1 }),
+        ],
+      }),
+    ]);
+  });
+
+  it('ticks a checklist item optimistically and rolls back on failure', async () => {
+    const todoWithChecklist: Todo = {
+      ...baseTodo,
+      checklist: [
+        { id: 'item-1', title: 'milk', done: false, position: 0 },
+        { id: 'item-2', title: 'eggs', done: false, position: 1 },
+      ],
+    };
+
+    useTodosStore.setState({ todos: [todoWithChecklist] });
+
+    (todosService.setChecklistItemDone as jest.Mock).mockResolvedValue(undefined);
+    await useTodosStore.getState().setChecklistItemDone(baseTodo.id, 'item-1', true);
+
+    expect(useTodosStore.getState().todos[0].checklist).toEqual([
+      expect.objectContaining({ id: 'item-1', done: true }),
+      expect.objectContaining({ id: 'item-2', done: false }),
+    ]);
+
+    (todosService.setChecklistItemDone as jest.Mock).mockRejectedValue(new Error('tick failed'));
+    await expect(
+      useTodosStore.getState().setChecklistItemDone(baseTodo.id, 'item-2', true)
+    ).rejects.toThrow('tick failed');
+
+    expect(useTodosStore.getState().todos[0].checklist).toEqual([
+      expect.objectContaining({ id: 'item-1', done: true }),
+      expect.objectContaining({ id: 'item-2', done: false }),
+    ]);
   });
 });

@@ -275,9 +275,6 @@ export function TaskQuickCreateSheet({
                 multiline
                 textAlignVertical="top"
                 showSoftInputOnFocus
-                returnKeyType="done"
-                blurOnSubmit
-                onSubmitEditing={handleSave}
               />
             </View>
 
