@@ -11,7 +11,7 @@ import type { JournalEntry } from '@habits-coach/shared';
 import { BodyLarge, BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { JOURNAL_MOOD_BY_VALUE, JOURNAL_MOOD_STYLES } from '../constants/journal';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;

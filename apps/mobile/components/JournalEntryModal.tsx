@@ -22,7 +22,7 @@ import { VoiceInputButton } from './VoiceInputButton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { JOURNAL_MOODS, JOURNAL_PROMPTS } from '../constants/journal';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 interface JournalEntryModalProps {
   visible: boolean;

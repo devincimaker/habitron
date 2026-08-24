@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
-import { SPACING, BORDER_RADIUS, SHADOWS, CARD, type Colors } from '../../constants/theme';
+import { SHADOWS, CARD, type Colors } from '../../constants/theme';
 import { useColors } from '../../hooks/useColors';
 
 type CardVariant = 'default' | 'surface' | 'outlined';

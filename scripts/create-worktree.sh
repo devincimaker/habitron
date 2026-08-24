@@ -4,12 +4,22 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  scripts/create-worktree.sh [--skip-install] [--base <ref>] <branch-name> [worktree-name]
+  scripts/create-worktree.sh [--db] [--no-sim] [--skip-install] [--base <ref>] <branch-name> [worktree-name]
 
 Examples:
   scripts/create-worktree.sh feature/habit-skill
+  scripts/create-worktree.sh --db feature/hab-80-streak-table
+  scripts/create-worktree.sh --no-sim chore/hab-81-dead-code
   scripts/create-worktree.sh --base origin/master feature/habit-skill
   scripts/create-worktree.sh --skip-install fix/coach-crash coach-crash
+
+Routing:
+  --db      give the branch its own hosted Supabase branch database. Choose this
+            when the work implies schema: migrations, RLS, RPCs, triggers, new
+            tables or columns. Costs money and minutes; ambiguous means shared.
+  --no-sim  skip the simulator. Choose this when nothing on screen changes.
+
+  Both are cheap to reverse later: pnpm wt:setup --db / --sim.
 
 Environment:
   WORKTREE_ROOT         Override the parent directory used for new worktrees.
@@ -152,11 +162,16 @@ readarray_fallback() {
 
 SKIP_INSTALL=${WORKTREE_SKIP_INSTALL:-0}
 BASE_REF_ARG=""
+SETUP_FLAGS=()
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --skip-install)
       SKIP_INSTALL=1
+      shift
+      ;;
+    --db|--no-db|--sim|--no-sim)
+      SETUP_FLAGS+=("$1")
       shift
       ;;
     -b|--base)
@@ -231,17 +246,20 @@ WORKTREE_CREATED=0
 SETUP_COMPLETED=0
 BRANCH_CREATED=0
 
+# A worktree that exists is never deleted on failure. Setup is idempotent and
+# prints its own retry line, and by the time it can fail it may already own a
+# billable Supabase branch recorded only in that worktree's ledger — deleting
+# the directory would orphan it.
 cleanup_on_exit() {
   local exit_code=$1
 
   if [ "$exit_code" -ne 0 ] && [ "$WORKTREE_CREATED" = "1" ] && [ "$SETUP_COMPLETED" = "0" ]; then
     echo ""
-    echo "Setup failed. Removing incomplete worktree..."
-    git -C "$MAIN_REPO" worktree remove --force "$WORKTREE_PATH" >/dev/null 2>&1 || true
-
-    if [ "$BRANCH_CREATED" = "1" ] && git -C "$MAIN_REPO" show-ref --verify --quiet "refs/heads/$BRANCH_NAME"; then
-      git -C "$MAIN_REPO" branch -D "$BRANCH_NAME" >/dev/null 2>&1 || true
-    fi
+    echo "The worktree was created but setup did not finish. It is left in place."
+    echo "Finish it with:"
+    echo "  pnpm wt:setup $WORKTREE_PATH ${SETUP_FLAGS[*]-}"
+    echo "Or reclaim it entirely with:"
+    echo "  pnpm wt:rm $BRANCH_NAME --force"
   fi
 }
 
@@ -273,17 +291,13 @@ WORKTREE_CREATED=1
 
 echo ""
 echo "Configuring worktree resources..."
-if [ "$SKIP_INSTALL" = "1" ]; then
-  (
-    cd "$WORKTREE_PATH"
-    WORKTREE_SKIP_INSTALL=1 "$SETUP_SCRIPT"
-  )
-else
-  (
-    cd "$WORKTREE_PATH"
-    "$SETUP_SCRIPT"
-  )
-fi
+(
+  cd "$WORKTREE_PATH"
+  if [ "$SKIP_INSTALL" = "1" ]; then
+    export WORKTREE_SKIP_INSTALL=1
+  fi
+  "$SETUP_SCRIPT" "${SETUP_FLAGS[@]-}"
+)
 SETUP_COMPLETED=1
 
 MOBILE_ENV="$WORKTREE_PATH/apps/mobile/.env"
@@ -291,6 +305,7 @@ API_ENV="$WORKTREE_PATH/apps/api/.env"
 IOS_SIMULATOR=$(read_env_value "$MOBILE_ENV" "IOS_SIMULATOR")
 EXPO_PORT=$(read_env_value "$MOBILE_ENV" "EXPO_PORT")
 API_PORT=$(read_env_value "$API_ENV" "PORT")
+DB_MODE=$(read_env_value "$WORKTREE_PATH/.env.worktree" "WT_DB_MODE")
 
 echo ""
 echo "========================================="
@@ -301,4 +316,7 @@ echo " Branch:        $BRANCH_NAME"
 echo " API PORT:      ${API_PORT:-unknown}"
 echo " EXPO_PORT:     ${EXPO_PORT:-unknown}"
 echo " IOS_SIMULATOR: ${IOS_SIMULATOR:-unknown}"
+echo " DB mode:       ${DB_MODE:-unknown}"
 echo "========================================="
+echo ""
+echo " cd $WORKTREE_PATH && pnpm dev"

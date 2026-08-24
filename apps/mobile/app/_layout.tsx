@@ -47,7 +47,7 @@ Sentry.init({
 
 export default Sentry.wrap(function RootLayout() {
   const colors = useColorsValue();
-  const { session, isInitialized, initialize } = useAuthStore();
+  const { session, initialize } = useAuthStore();
   const loadHabits = useHabitsStore((state) => state.loadHabits);
   const clearHabits = useHabitsStore((state) => state.clearHabits);
   const loadGoals = useGoalsStore((state) => state.loadGoals);

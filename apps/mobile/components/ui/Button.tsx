@@ -1,4 +1,4 @@
-import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle, TextStyle } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, ActivityIndicator, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, type Colors } from '../../constants/theme';
 import { useColors } from '../../hooks/useColors';

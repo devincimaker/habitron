@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { View, Text, TextInput, StyleSheet, StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, INPUT_HEIGHTS, type Colors } from '../../constants/theme';
-import { useThemedStyles, useColors } from '../../hooks/useColors';
+import { useThemedStyles } from '../../hooks/useColors';
 
 type InputSize = 'sm' | 'md' | 'lg';
 

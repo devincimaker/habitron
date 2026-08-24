@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import type { DailyPlan } from '@habits-coach/shared';
 import { BodyMedium, Button, Card, Caption, HeadingLarge, Label } from './ui';
 import { SPACING, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 import { compareTodoScheduledTimes, formatTodoScheduledTime } from '../utils/todoTime';
 
 interface DailyPlanCardProps {

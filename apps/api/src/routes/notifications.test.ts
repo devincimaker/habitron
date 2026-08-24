@@ -28,7 +28,7 @@ describe('POST /api/notifications/first-skip handler', () => {
     mockSchedule.mockResolvedValue({ scheduled: true });
 
     // Import the router to access the handler
-    const notificationsRouter = await import('./notifications.js');
+    await import('./notifications.js');
 
     // The route handler is the third argument in router.post()
     // We'll just verify the mock behavior

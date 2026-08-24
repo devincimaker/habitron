@@ -10,7 +10,7 @@ export function createMockSupabase() {
   const mockCount: Record<string, number> = {};
 
   const createQueryBuilder = () => {
-    let tableName = '';
+    const tableName = '';
 
     const builder = {
       select: vi.fn().mockReturnThis(),

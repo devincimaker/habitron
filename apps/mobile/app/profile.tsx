@@ -8,7 +8,7 @@ import { useMemoriesStore } from '../stores/useMemoriesStore';
 import type { Memory } from '@habits-coach/shared';
 import { Button, Input, Avatar, Card, HeadingLarge, BodyMedium, BodySmall } from '../components/ui';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, CATEGORY_COLORS, CATEGORY_LABELS, TOUCH_TARGET, type Colors } from '../constants/theme';
-import { useThemedStyles, useColors } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 
 export default function ProfileScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
