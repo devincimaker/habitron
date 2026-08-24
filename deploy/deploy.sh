@@ -13,6 +13,15 @@ if ! docker image inspect "habitron-api:$API_TAG" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Later `docker compose` invocations (a Caddy restart, a reboot) must resolve
+# the same image, so pin the tag in .env and keep `latest` pointing at it.
+docker tag "habitron-api:$API_TAG" habitron-api:latest
+if grep -q '^API_TAG=' .env; then
+  sed -i "s/^API_TAG=.*/API_TAG=$API_TAG/" .env
+else
+  printf 'API_TAG=%s\n' "$API_TAG" >> .env
+fi
+
 docker compose up -d --remove-orphans
 
 for _ in $(seq 1 30); do

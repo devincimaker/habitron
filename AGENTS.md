@@ -206,7 +206,23 @@ One coach, two surfaces. The persona and skills are `packages/coach-skills`
 See `apps/mcp/README.md` for the tool surface and `docs/coach-skill-map.md` for
 the architecture.
 
-## 13. Conductor
+## 13. Hosting (`deploy/`)
+
+The API runs on a Hetzner CX23 (`habitron-api`, 91.98.45.41, 4 GB — a coach
+turn peaks around 650 MB in the container, so 512 MB PaaS tiers OOM) behind
+Caddy at `https://91.98.45.41.nip.io`. `ci.yml` → `deploy-api` builds
+`apps/api/Dockerfile` after the gate, streams the image over SSH
+(`docker save | docker load`, no registry) and runs `deploy/deploy.sh`, which
+brings up `deploy/compose.yml` and waits for `/health`.
+
+On the box: `/opt/habitron/.env` holds `API_HOST`, the Supabase service role,
+`OPENAI_API_KEY` (Whisper), `CLAUDE_CODE_OAUTH_TOKEN` and `API_TAG`. Deploy
+credentials are the `DEPLOY_SSH_KEY` / `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS`
+repo secrets (user `deploy`). Logs: `ssh deploy@91.98.45.41 'cd /opt/habitron
+&& docker compose logs -f api'`. `pnpm --filter @habits-coach/mobile
+build:device` bakes the API URL into the phone build.
+
+## 14. Conductor
 
 Conductor stores repo settings in its own database, not in a repo-level config
 file. Configure once in the Conductor app (Repo settings → Scripts):
