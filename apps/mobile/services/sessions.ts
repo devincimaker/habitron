@@ -5,7 +5,8 @@ import type {
   CoachDebugEvent,
   CoachingSessionSummary,
   CoachingSessionDetail,
-  CoachingSessionMessage,
+  CreateSessionRequest,
+  UpdateSessionRequest,
   UpdateSessionSkillRequest,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
@@ -34,28 +35,6 @@ export async function getSessions(): Promise<CoachingSessionSummary[]> {
   return data.sessions;
 }
 
-export async function getActiveSession(): Promise<{
-  id: string;
-  name?: string | null;
-  startedAt: number;
-  messages: CoachingSessionMessage[];
-  updatedAt: number;
-  leadSkillId?: CoachSkillId | null;
-} | null> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl('/api/sessions/active'), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    await handleFetchError(response, 'Failed to fetch active session');
-  }
-
-  const data = await response.json();
-  return data.session;
-}
-
 export async function getSession(id: string): Promise<CoachingSessionDetail> {
   const token = await getAuthToken();
 
@@ -71,7 +50,9 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
   return data.session;
 }
 
-export async function createSession(): Promise<{ id: string; startedAt: number }> {
+export async function createSession(
+  request: CreateSessionRequest = {}
+): Promise<{ id: string; startedAt: number }> {
   const token = await getAuthToken();
 
   const response = await fetch(createApiUrl('/api/sessions'), {
@@ -80,6 +61,7 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    body: JSON.stringify(request),
   });
 
   if (!response.ok) {
@@ -92,11 +74,7 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
 
 export async function updateSession(
   id: string,
-  updates: {
-    messages?: CoachingSessionMessage[];
-    name?: string;
-    endedAt?: number;
-  }
+  updates: UpdateSessionRequest
 ): Promise<void> {
   const token = await getAuthToken();
 

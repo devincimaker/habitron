@@ -512,7 +512,6 @@ export interface CoachingSessionSummary {
   name: string | null;
   startedAt: number;
   endedAt: number | null;
-  messageCount: number;
   memoryCount?: number;
   leadSkillId?: CoachSkillId | null;
 }
@@ -525,6 +524,7 @@ export interface CoachingSessionDetail extends CoachingSessionSummary {
 
 export interface CreateSessionRequest {
   startedAt?: number;  // Optional, defaults to now
+  name?: string;  // Provisional name; finalize replaces it with a generated summary
 }
 
 export interface CreateSessionResponse {
@@ -537,7 +537,7 @@ export interface CreateSessionResponse {
 export interface UpdateSessionRequest {
   messages?: CoachingSessionMessage[];
   name?: string;
-  endedAt?: number;
+  endedAt?: number | null;  // null reopens a finalized session
   isProcessed?: boolean;
 }
 

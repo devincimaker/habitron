@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -15,33 +15,35 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionsStore } from '../stores/useSessionsStore';
+import { useMemoriesStore } from '../stores/useMemoriesStore';
 import { SessionListItem } from './SessionListItem';
-import { SessionDetailModal } from './SessionDetailModal';
-import { SHADOWS, SPACING, FONT_SIZES, TAB_BAR, type Colors } from '../constants/theme';
+import {
+  BORDER_RADIUS,
+  SHADOWS,
+  SPACING,
+  FONT_SIZES,
+  TAB_BAR,
+  TYPOGRAPHY,
+  type Colors,
+} from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { buildMemoryWarning, sortSessions } from '../utils/coachSessions';
 
-function buildMemoryWarning(memoryCount: number | undefined): string {
-  if (!memoryCount) return '';
-  const noun = memoryCount === 1 ? 'memory' : 'memories';
-  return `\n\nThis will also delete ${memoryCount} associated ${noun}.`;
-}
+const NEW_SESSION_PILL_HEIGHT = 48;
 
 export function CoachHubScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const {
-    sessions,
-    isLoading,
-    loadSessions,
-    loadSessionDetail,
-    selectedSession,
-    clearSelectedSession,
-    deleteSession,
-  } = useSessionsStore();
+  const { sessions, isLoading, loadSessions, deleteSession } = useSessionsStore();
+  const { memories, loadMemories } = useMemoriesStore();
 
-  const [showSessionDetail, setShowSessionDetail] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const sortedSessions = useMemo(() => sortSessions(sessions), [sessions]);
+
+  useEffect(() => {
+    void loadMemories();
+  }, [loadMemories]);
 
   useFocusEffect(
     useCallback(() => {
@@ -52,28 +54,16 @@ export function CoachHubScreen() {
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await loadSessions();
+      await Promise.all([loadSessions(), loadMemories()]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadSessions]);
+  }, [loadSessions, loadMemories]);
 
   const handleSessionPress = useCallback((id: string) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    void loadSessionDetail(id);
-    setShowSessionDetail(true);
-  }, [loadSessionDetail]);
-
-  const handleCloseSessionDetail = useCallback(() => {
-    setShowSessionDetail(false);
-    clearSelectedSession();
-  }, [clearSelectedSession]);
-
-  const handleDeleteSession = useCallback(async () => {
-    if (!selectedSession) return;
-    await deleteSession(selectedSession.id);
-    handleCloseSessionDetail();
-  }, [selectedSession, deleteSession, handleCloseSessionDetail]);
+    router.push({ pathname: '/session', params: { sessionId: id } });
+  }, [router]);
 
   const handleSwipeDelete = useCallback((session: CoachingSessionSummary) => {
     const sessionName = session.name || 'Untitled Session';
@@ -93,75 +83,90 @@ export function CoachHubScreen() {
     );
   }, [deleteSession]);
 
-  const handleStartSession = useCallback(() => {
+  const handleNewSession = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     router.push('/session');
+  }, [router]);
+
+  const handleOpenMemories = useCallback(() => {
+    router.push('/memories');
   }, [router]);
 
   const bottomOffset = TAB_BAR.height + insets.bottom + SPACING.lg;
 
   return (
     <View style={styles.container}>
-      {sessions.length === 0 ? (
-        <View style={styles.emptyState}>
-          {isLoading ? (
-            <>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={[
+          styles.content,
+          { paddingBottom: bottomOffset + NEW_SESSION_PILL_HEIGHT + SPACING.lg },
+        ]}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={handleRefresh}
+            tintColor={colors.primary}
+          />
+        }
+      >
+        {sortedSessions.length === 0 ? (
+          <View style={styles.emptyState}>
+            {isLoading ? (
               <ActivityIndicator size="large" color={colors.primary} />
-              <Text style={styles.loadingText}>Loading your coaching history...</Text>
-            </>
-          ) : (
-            <>
-              <View style={styles.emptyIconContainer}>
-                <Feather name="message-circle" size={48} color={colors.textLight} />
-              </View>
-              <Text style={styles.emptyTitle}>No Sessions Yet</Text>
-              <Text style={styles.emptySubtitle}>
-                Start a coaching session to review what is working, adjust your habits, and build momentum.
-              </Text>
-            </>
-          )}
-        </View>
-      ) : (
-        <ScrollView
-          style={styles.scrollView}
-          contentContainerStyle={[
-            styles.content,
-            { paddingBottom: bottomOffset + 72 },
-          ]}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              tintColor={colors.primary}
-            />
-          }
-        >
-          {sessions.map((session) => (
+            ) : (
+              <>
+                <View style={styles.emptyIconContainer}>
+                  <Feather name="message-circle" size={40} color={colors.textLight} />
+                </View>
+                <Text style={styles.emptyTitle}>No sessions yet</Text>
+                <Text style={styles.emptySubtitle}>
+                  Start one to review what is working, adjust your habits, or plan the day.
+                </Text>
+              </>
+            )}
+          </View>
+        ) : (
+          sortedSessions.map((session) => (
             <SessionListItem
               key={session.id}
               session={session}
               onPress={handleSessionPress}
               onDelete={handleSwipeDelete}
             />
-          ))}
-        </ScrollView>
-      )}
+          ))
+        )}
+
+        <Pressable
+          style={styles.memoriesRow}
+          onPress={handleOpenMemories}
+          accessibilityRole="button"
+          accessibilityLabel="What Habitron remembers"
+        >
+          <View style={styles.memoriesIcon}>
+            <Feather name="database" size={18} color={colors.textSecondary} />
+          </View>
+          <Text style={styles.memoriesLabel}>What Habitron remembers</Text>
+          {memories.length > 0 && (
+            <Text style={styles.memoriesCount}>{memories.length}</Text>
+          )}
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        </Pressable>
+      </ScrollView>
 
       <Pressable
-        style={[styles.fab, { bottom: bottomOffset }]}
-        onPress={handleStartSession}
+        style={({ pressed }) => [
+          styles.newSessionPill,
+          { bottom: bottomOffset },
+          pressed && styles.newSessionPillPressed,
+        ]}
+        onPress={handleNewSession}
         accessibilityRole="button"
-        accessibilityLabel="Start a new coaching session"
+        accessibilityLabel="New session"
       >
-        <Ionicons name="add" size={28} color={colors.white} />
+        <Ionicons name="add" size={22} color={colors.white} />
+        <Text style={styles.newSessionLabel}>New session</Text>
       </Pressable>
-
-      <SessionDetailModal
-        visible={showSessionDetail}
-        session={selectedSession}
-        onClose={handleCloseSessionDetail}
-        onDelete={handleDeleteSession}
-      />
     </View>
   );
 }
@@ -179,15 +184,14 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingTop: SPACING.sm,
   },
   emptyState: {
-    flex: 1,
-    justifyContent: 'center',
     alignItems: 'center',
-    padding: SPACING.xl,
+    paddingVertical: SPACING.xxl,
+    paddingHorizontal: SPACING.xl,
   },
   emptyIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
@@ -206,21 +210,54 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     lineHeight: 22,
     maxWidth: 280,
   },
-  loadingText: {
+  memoriesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
     marginTop: SPACING.md,
-    fontSize: FONT_SIZES.sm + 1,
-    color: colors.textSecondary,
-    textAlign: 'center',
+    paddingVertical: SPACING.sm + 2,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 12,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.hairline,
   },
-  fab: {
-    position: 'absolute',
-    right: SPACING.lg,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    backgroundColor: colors.primary,
+  memoriesIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.controlFill,
     alignItems: 'center',
     justifyContent: 'center',
+    marginRight: 12,
+  },
+  memoriesLabel: {
+    flex: 1,
+    ...TYPOGRAPHY.bodyMedium,
+    color: colors.text,
+  },
+  memoriesCount: {
+    ...TYPOGRAPHY.caption,
+    color: colors.textSecondary,
+    marginRight: SPACING.xs,
+  },
+  newSessionPill: {
+    position: 'absolute',
+    alignSelf: 'center',
+    height: NEW_SESSION_PILL_HEIGHT,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    paddingLeft: SPACING.md,
+    paddingRight: SPACING.lg,
+    borderRadius: BORDER_RADIUS.xl,
+    backgroundColor: colors.primary,
     ...SHADOWS.medium,
+  },
+  newSessionPillPressed: {
+    opacity: 0.85,
+  },
+  newSessionLabel: {
+    ...TYPOGRAPHY.label,
+    fontSize: FONT_SIZES.body,
+    color: colors.white,
   },
 });

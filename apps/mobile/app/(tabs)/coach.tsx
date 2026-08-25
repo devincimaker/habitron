@@ -1,5 +1,5 @@
-import { Redirect } from 'expo-router';
+import { CoachHubScreen } from '../../components/CoachHubScreen';
 
-export default function CoachTabRedirect() {
-  return <Redirect href="/session" />;
+export default function CoachScreen() {
+  return <CoachHubScreen />;
 }

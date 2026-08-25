@@ -92,7 +92,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
   try {
     const { data: sessions, error } = await supabase
       .from('coaching_sessions')
-      .select('id, name, messages, started_at, ended_at')
+      .select('id, name, started_at, ended_at')
       .eq('user_id', req.user!.id)
       .order('started_at', { ascending: false })
       .limit(50);
@@ -101,7 +101,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
 
     const sessionRows = (sessions ?? []) as Pick<
       DbSession,
-      'id' | 'name' | 'messages' | 'started_at' | 'ended_at'
+      'id' | 'name' | 'started_at' | 'ended_at'
     >[];
     const sessionIds = sessionRows.map((session) => session.id);
 
@@ -150,7 +150,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       name: session.name,
       startedAt: new Date(session.started_at).getTime(),
       endedAt: session.ended_at ? new Date(session.ended_at).getTime() : null,
-      messageCount: session.messages?.length || 0,
       memoryCount: memoryCountMap.get(session.id) || 0,
       leadSkillId: leadSkillMap.get(session.id) ?? null,
     }));
@@ -159,48 +158,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
   } catch (error) {
     console.error('Get sessions error:', error);
     res.status(500).json({ error: 'Failed to fetch sessions' } satisfies ErrorResponse);
-  }
-});
-
-// GET /api/sessions/active - Get active session if exists
-router.get('/active', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { data, error } = await supabase
-      .from('coaching_sessions')
-      .select('*')
-      .eq('user_id', req.user!.id)
-      .eq('is_processed', false)
-      .is('ended_at', null)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .single();
-
-    if (error && error.code !== 'PGRST116') throw error;
-
-    if (!data) {
-      res.json({ session: null });
-      return;
-    }
-
-    const session = data as DbSession;
-    const skills = await getSessionSkillInstances(session.id, req.user!.id);
-    const leadSkill = skills.find((skill) => skill.isLead) ?? skills[0] ?? null;
-
-    res.json({
-      session: {
-        id: session.id,
-        name: session.name,
-        startedAt: new Date(session.started_at).getTime(),
-        endedAt: null,
-        messageCount: session.messages?.length || 0,
-        messages: session.messages || [],
-        updatedAt: new Date(session.updated_at).getTime(),
-        leadSkillId: leadSkill?.skillId ?? null,
-      },
-    });
-  } catch (error) {
-    console.error('Get active session error:', error);
-    res.status(500).json({ error: 'Failed to fetch active session' } satisfies ErrorResponse);
   }
 });
 
@@ -287,7 +244,6 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
         name: s.name,
         startedAt: new Date(s.started_at).getTime(),
         endedAt: s.ended_at ? new Date(s.ended_at).getTime() : null,
-        messageCount: s.messages?.length || 0,
         messages: s.messages || [],
         memories: ((memories ?? []) as DbMemory[]).map((memory) => ({
           id: memory.id,
@@ -313,12 +269,13 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 // POST /api/sessions - Create new session
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { startedAt } = req.body as CreateSessionRequest;
+    const { startedAt, name } = req.body as CreateSessionRequest;
 
     const { data, error } = await supabase
       .from('coaching_sessions')
       .insert({
         user_id: req.user!.id,
+        name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : null,
         started_at: startedAt ? new Date(startedAt).toISOString() : new Date().toISOString(),
         messages: [],
       })
@@ -348,7 +305,9 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
     const updates: Record<string, unknown> = {};
     if (messages !== undefined) updates.messages = messages;
     if (name !== undefined) updates.name = name;
-    if (endedAt !== undefined) updates.ended_at = new Date(endedAt).toISOString();
+    if (endedAt !== undefined) {
+      updates.ended_at = endedAt === null ? null : new Date(endedAt).toISOString();
+    }
     if (isProcessed !== undefined) updates.is_processed = isProcessed;
 
     const { data, error } = await supabase
@@ -426,7 +385,9 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
     const messages = s.messages || [];
     let sessionName = s.name;
 
-    if (!sessionName && generateSummary && messages.length > 2) {
+    // Open sessions carry a provisional name taken from the first user message;
+    // finalize always replaces it with a real summary when asked to.
+    if (generateSummary && messages.length > 2) {
       try {
         sessionName = await generateSessionSummary(messages);
       } catch (err) {

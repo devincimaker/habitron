@@ -1,33 +1,52 @@
 /**
- * Session Store Tests - Lazy Session Creation
+ * Session Store Tests
  *
- * These tests verify that sessions are only persisted to the backend
- * when the user sends their first message, preventing empty sessions
- * from cluttering the session history.
+ * Sessions are only persisted to the backend when the user sends their first
+ * message, so empty sessions never clutter the hub. A session opened from the
+ * hub is hydrated in place, left open when you leave, and reopened if you
+ * keep talking in a finalized one.
  */
 
 // Mock sessions service before importing the store
 const mockCreateSession = jest.fn();
 const mockUpdateSession = jest.fn();
 const mockFinalizeSession = jest.fn();
-const mockGetActiveSession = jest.fn();
 
 jest.mock('../services/sessions', () => ({
-  createSession: () => mockCreateSession(),
+  createSession: (...args: unknown[]) => mockCreateSession(...args),
   updateSession: (...args: unknown[]) => mockUpdateSession(...args),
   finalizeSession: (...args: unknown[]) => mockFinalizeSession(...args),
-  getActiveSession: () => mockGetActiveSession(),
 }));
 
+import type { CoachingSessionDetail } from '@habits-coach/shared';
 import { useSessionStore } from '../stores/useSessionStore';
 
-describe('useSessionStore - Lazy Session Creation', () => {
+function buildDetail(overrides: Partial<CoachingSessionDetail> = {}): CoachingSessionDetail {
+  return {
+    id: 'past-session',
+    name: 'Morning routine',
+    startedAt: 1_700_000_000_000,
+    endedAt: 1_700_000_600_000,
+    memoryCount: 1,
+    leadSkillId: 'habit-design',
+    messages: [
+      { role: 'assistant', content: 'Hi', timestamp: 1_700_000_000_000 },
+      { role: 'user', content: 'Help me with mornings', timestamp: 1_700_000_100_000 },
+      { role: 'assistant', content: 'Sure', timestamp: 1_700_000_200_000 },
+    ],
+    memories: [],
+    ...overrides,
+  };
+}
+
+describe('useSessionStore', () => {
   beforeEach(() => {
     // Reset store state before each test
     useSessionStore.setState({
       isActive: false,
       sessionId: null,
       startedAt: null,
+      endedAt: null,
       lastActiveAt: null,
       messages: [],
       isLoading: false,
@@ -78,6 +97,25 @@ describe('useSessionStore - Lazy Session Creation', () => {
     expect(mockCreateSession).toHaveBeenCalledTimes(1);
     expect(useSessionStore.getState().sessionId).toBe('test-session-id');
     expect(mockUpdateSession).toHaveBeenCalled();
+  });
+
+  /**
+   * Test: The backend session is born with a provisional name
+   *
+   * Open sessions would otherwise read "Untitled Session" in the hub until
+   * finalize generates a summary.
+   */
+  it('names the backend session after the first user message', async () => {
+    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockUpdateSession.mockResolvedValue(undefined);
+
+    await useSessionStore.getState().startSession();
+    await useSessionStore.getState().addMessage({
+      role: 'user',
+      content: '  I keep skipping my evening walk  ',
+    });
+
+    expect(mockCreateSession).toHaveBeenCalledWith({ name: 'I keep skipping my evening walk' });
   });
 
   /**
@@ -234,6 +272,94 @@ describe('useSessionStore - Lazy Session Creation', () => {
         .messages
         .find((message) => message.id === proposalMessage!.id)?.proposalStatus
     ).toBe('applied');
+  });
+
+  describe('sessions opened from the hub', () => {
+    it('hydrates messages and identity from a session detail', () => {
+      useSessionStore.getState().hydrateSession(buildDetail({ endedAt: null }));
+
+      const state = useSessionStore.getState();
+      expect(state.isActive).toBe(true);
+      expect(state.sessionId).toBe('past-session');
+      expect(state.startedAt).toBe(1_700_000_000_000);
+      expect(state.endedAt).toBeNull();
+      expect(state.messages.map((m) => [m.role, m.content])).toEqual([
+        ['assistant', 'Hi'],
+        ['user', 'Help me with mornings'],
+        ['assistant', 'Sure'],
+      ]);
+      expect(new Set(state.messages.map((m) => m.id)).size).toBe(3);
+    });
+
+    it('seeds the welcome message when the stored transcript is empty', () => {
+      useSessionStore.getState().hydrateSession(buildDetail({ messages: [] }));
+
+      expect(useSessionStore.getState().messages).toHaveLength(1);
+      expect(useSessionStore.getState().messages[0].role).toBe('assistant');
+    });
+
+    it('leaving syncs messages and clears state without finalizing', async () => {
+      mockUpdateSession.mockResolvedValue(undefined);
+      useSessionStore.getState().hydrateSession(buildDetail({ endedAt: null }));
+
+      await useSessionStore.getState().leaveSession();
+
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledWith('past-session', {
+        messages: expect.arrayContaining([
+          expect.objectContaining({ role: 'user', content: 'Help me with mornings' }),
+        ]),
+      });
+      expect(mockFinalizeSession).not.toHaveBeenCalled();
+      expect(useSessionStore.getState().isActive).toBe(false);
+      expect(useSessionStore.getState().sessionId).toBeNull();
+      expect(useSessionStore.getState().messages).toEqual([]);
+    });
+
+    it('continues an open session in place on the next message', async () => {
+      mockUpdateSession.mockResolvedValue(undefined);
+      useSessionStore.getState().hydrateSession(buildDetail({ endedAt: null }));
+
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'More' });
+
+      expect(mockCreateSession).not.toHaveBeenCalled();
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledWith('past-session', {
+        messages: expect.any(Array),
+      });
+      expect(useSessionStore.getState().messages).toHaveLength(4);
+    });
+
+    it('reopens a finalized session on the first new user message', async () => {
+      mockUpdateSession.mockResolvedValue(undefined);
+      useSessionStore.getState().hydrateSession(buildDetail());
+      expect(useSessionStore.getState().endedAt).not.toBeNull();
+
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'One more thing' });
+
+      expect(mockCreateSession).not.toHaveBeenCalled();
+      expect(mockUpdateSession.mock.calls[0]).toEqual([
+        'past-session',
+        { endedAt: null, isProcessed: false },
+      ]);
+      expect(mockUpdateSession.mock.calls[1][1]).toEqual({ messages: expect.any(Array) });
+      expect(useSessionStore.getState().endedAt).toBeNull();
+
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'And another' });
+      expect(mockUpdateSession).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects the message when reopening fails', async () => {
+      mockUpdateSession.mockRejectedValueOnce(new Error('Network error'));
+      useSessionStore.getState().hydrateSession(buildDetail());
+
+      await expect(
+        useSessionStore.getState().addMessage({ role: 'user', content: 'One more thing' })
+      ).rejects.toThrow('Network error');
+
+      expect(useSessionStore.getState().endedAt).not.toBeNull();
+      expect(useSessionStore.getState().messages).toHaveLength(3);
+    });
   });
 
   it('returns the created message id from addMessage', async () => {

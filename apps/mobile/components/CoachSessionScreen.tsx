@@ -49,11 +49,13 @@ import type {
 import {
   SPACING,
   BORDER_RADIUS,
+  FONT_SIZES,
   TYPOGRAPHY,
   TOUCH_TARGET,
   type Colors,
 } from '../constants/theme';
 import { applyCoachProposal } from '../utils/applyCoachProposal';
+import { formatSessionStatus } from '../utils/coachSessions';
 import {
   getCoachProposalDebugSummaries,
   getLatestCoachProposal,
@@ -67,8 +69,7 @@ type ReviewState =
   | { phase: 'reviewing'; memories: ExtractedMemory[]; selected: Set<number> };
 
 interface CoachSessionScreenProps {
-  autoPrompt?: string;
-  onDismiss?: () => void;
+  onDismiss: () => void;
 }
 
 type ProposalStatus = CoachProposalCardStatus | 'dismissed' | 'superseded';
@@ -104,16 +105,14 @@ function getProposalErrorStage(error: unknown): Extract<CoachDebugErrorStage, 'p
     : 'proposal_apply';
 }
 
-export function CoachSessionScreen({
-  autoPrompt,
-  onDismiss,
-}: CoachSessionScreenProps) {
+export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
 
   const {
-    isActive,
     sessionId,
+    startedAt,
+    endedAt,
     messages,
     isLoading,
     endSession,
@@ -143,7 +142,6 @@ export function CoachSessionScreen({
   >({});
   const [reviewState, setReviewState] = useState<ReviewState>({ phase: 'none' });
   const flatListRef = useRef<FlatList>(null);
-  const hasSentAutoPrompt = useRef(false);
   const isSendingRef = useRef(false);
   const today = getTodayDate();
   const todayPlan = plansByDate[today] ?? null;
@@ -174,13 +172,14 @@ export function CoachSessionScreen({
     loadPlan(today);
   }, [loadEntries, loadGoals, loadMemories, loadPlan, loadTodos, today]);
 
+  // Ending is the deliberate act: finalize, then leave. Leaving on its own is
+  // just onDismiss — the route keeps the session open on unmount.
   const exitSession = useCallback(() => {
-    loadSessions();
     setInputText('');
     setProposalStatuses({});
     setReviewState({ phase: 'none' });
-    void endSession();
-    onDismiss?.();
+    void endSession().then(loadSessions);
+    onDismiss();
   }, [endSession, loadSessions, onDismiss]);
 
   const setProposalStatus = useCallback((
@@ -586,21 +585,6 @@ export function CoachSessionScreen({
     visibleProposal?.messageId,
   ]);
 
-  useEffect(() => {
-    if (autoPrompt !== 'plan-day' || hasSentAutoPrompt.current) {
-      return;
-    }
-
-    if (!isActive || reviewState.phase !== 'none' || isLoading) {
-      return;
-    }
-
-    hasSentAutoPrompt.current = true;
-    sendUserMessage(
-      'Plan my day using my goals, habits, tasks, journal, and anything you already know about me.'
-    );
-  }, [autoPrompt, isActive, isLoading, reviewState.phase, sendUserMessage]);
-
   const {
     isRecordingMode,
     voiceInputProps,
@@ -716,12 +700,36 @@ export function CoachSessionScreen({
     >
       <View style={styles.sessionHeader}>
         <TouchableOpacity
-          style={styles.closeButton}
-          onPress={handleEndSession}
+          style={styles.headerButton}
+          onPress={onDismiss}
           activeOpacity={0.7}
+          accessibilityRole="button"
+          accessibilityLabel="Back"
         >
-          <Ionicons name="close" size={32} color={colors.textLight} />
+          <Ionicons name="chevron-back" size={28} color={colors.text} />
         </TouchableOpacity>
+
+        {startedAt !== null && (
+          <View style={styles.statusPill}>
+            <Text style={styles.statusText} numberOfLines={1}>
+              {formatSessionStatus(startedAt, endedAt)}
+            </Text>
+          </View>
+        )}
+
+        {endedAt === null ? (
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={handleEndSession}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="End session"
+          >
+            <Text style={styles.endText}>End</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerButton} />
+        )}
       </View>
 
       <FlatList
@@ -812,17 +820,34 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   sessionHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     backgroundColor: colors.background,
   },
-  closeButton: {
-    width: TOUCH_TARGET.min,
+  headerButton: {
+    minWidth: TOUCH_TARGET.min,
     height: TOUCH_TARGET.min,
+    paddingHorizontal: SPACING.xs,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statusPill: {
+    flexShrink: 1,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 1,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: colors.controlFill,
+  },
+  statusText: {
+    ...TYPOGRAPHY.caption,
+    color: colors.textSecondary,
+  },
+  endText: {
+    ...TYPOGRAPHY.label,
+    fontSize: FONT_SIZES.body,
+    color: colors.primary,
   },
   messageListContainer: {
     flex: 1,

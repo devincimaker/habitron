@@ -1,14 +1,14 @@
 import { create } from 'zustand';
-import { ChatMessage } from '@habits-coach/shared';
+import type { ChatMessage, CoachingSessionDetail } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
-
-const SESSION_RECOVERY_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+import { deriveSessionName } from '../utils/sessionName';
 
 interface SessionState {
   isActive: boolean;
   sessionId: string | null;  // Backend session ID
   startedAt: number | null;
+  endedAt: number | null;  // Set when a finalized session was opened from the hub
   lastActiveAt: number | null;
   messages: ChatMessage[];
   isLoading: boolean;
@@ -17,6 +17,8 @@ interface SessionState {
 
   // Actions
   startSession: () => Promise<void>;
+  hydrateSession: (session: CoachingSessionDetail) => void;
+  leaveSession: () => Promise<void>;
   endSession: () => Promise<void>;
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string>;
   updateMessage: (
@@ -25,7 +27,6 @@ interface SessionState {
   ) => void;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
-  checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
 }
 
 function generateId(): string {
@@ -45,13 +46,21 @@ const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
   content: "Hi, I'm Habitron - your habits coach. How are things going? What's on your mind today?",
 };
 
-export const useSessionStore = create<SessionState>((set, get) => ({
+const EMPTY_STATE: Pick<
+  SessionState,
+  'isActive' | 'sessionId' | 'startedAt' | 'endedAt' | 'lastActiveAt' | 'messages' | 'isLoading'
+> = {
   isActive: false,
   sessionId: null,
   startedAt: null,
+  endedAt: null,
   lastActiveAt: null,
   messages: [],
   isLoading: false,
+};
+
+export const useSessionStore = create<SessionState>((set, get) => ({
+  ...EMPTY_STATE,
   isSyncing: false,
   isCreatingSession: false,
 
@@ -69,27 +78,46 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     // Initialize local state only - backend session created on first user message
     // This prevents empty sessions from cluttering session history
     set({
+      ...EMPTY_STATE,
       isActive: true,
-      sessionId: null,
       startedAt: now,
       lastActiveAt: now,
       messages: [welcomeMessage],
-      isLoading: false,
     });
+  },
+
+  hydrateSession: (session) => {
+    const messages: ChatMessage[] = session.messages.map((m, i) => ({
+      id: `${session.id}-${i}-${m.timestamp}`,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+
+    set({
+      ...EMPTY_STATE,
+      isActive: true,
+      sessionId: session.id,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      lastActiveAt: messages[messages.length - 1]?.timestamp ?? session.startedAt,
+      messages: messages.length > 0
+        ? messages
+        : [{ ...INITIAL_MESSAGE, id: generateId(), timestamp: session.startedAt }],
+    });
+  },
+
+  leaveSession: async () => {
+    // Leaving is not ending: persist what was said and let the session stay open.
+    await get().syncMessages();
+    set(EMPTY_STATE);
   },
 
   endSession: async () => {
     const { sessionId, messages } = get();
 
     // Clear local state
-    set({
-      isActive: false,
-      sessionId: null,
-      startedAt: null,
-      lastActiveAt: null,
-      messages: [],
-      isLoading: false,
-    });
+    set(EMPTY_STATE);
 
     // Only finalize if session was persisted to backend (had user messages)
     // Sessions without user messages have no sessionId due to lazy creation
@@ -110,20 +138,29 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   addMessage: async (messageData) => {
-    // Create backend session on first user message before we mutate local chat state.
-    // If this fails, callers should treat the send as rejected rather than showing
-    // a fake local-only conversation that cannot be persisted or orchestrated.
-    if (messageData.role === 'user' && !get().sessionId) {
+    // The backend session is created on the first user message, and a finalized
+    // session opened from the hub is reopened on the first new one. If either
+    // fails, callers should treat the send as rejected rather than showing a
+    // local-only turn that cannot be persisted or orchestrated.
+    if (messageData.role === 'user' && (!get().sessionId || get().endedAt !== null)) {
       if (get().isCreatingSession) {
         throw new Error('Session creation already in progress');
       }
 
       set({ isCreatingSession: true });
       try {
-        const { id } = await sessionsService.createSession();
-        set({ sessionId: id });
+        const { sessionId } = get();
+        if (sessionId) {
+          await sessionsService.updateSession(sessionId, { endedAt: null, isProcessed: false });
+          set({ endedAt: null });
+        } else {
+          const { id } = await sessionsService.createSession({
+            name: deriveSessionName(messageData.content) ?? undefined,
+          });
+          set({ sessionId: id });
+        }
       } catch (error) {
-        console.warn('Failed to create session in backend:', error);
+        console.warn('Failed to open session in backend:', error);
         Sentry.captureException(error, { tags: { feature: 'session' } });
         throw error;
       } finally {
@@ -184,51 +221,5 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setLoading: (loading) => {
     set({ isLoading: loading });
-  },
-
-  checkAndRecoverSession: async () => {
-    try {
-      const activeSession = await sessionsService.getActiveSession();
-
-      if (!activeSession) {
-        return 'none';
-      }
-
-      const now = Date.now();
-      const elapsed = now - activeSession.updatedAt;
-
-      // Finalize orphaned session - outside 10 minute window
-      if (elapsed >= SESSION_RECOVERY_WINDOW_MS) {
-        await sessionsService.finalizeSession(activeSession.id, {
-          extractMemories: false,
-        });
-        return 'finalized';
-      }
-
-      // Recover session - within 10 minute window
-      const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
-        id: `recovered-${i}-${m.timestamp}`,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-      }));
-
-      set({
-        isActive: true,
-        sessionId: activeSession.id,
-        startedAt: activeSession.startedAt,
-        lastActiveAt: activeSession.updatedAt,
-        messages,
-        isLoading: false,
-      });
-
-      return 'recovered';
-    } catch (error) {
-      // Use warn instead of error to avoid red screen in dev mode
-      // This is not critical - we can just start a new session
-      console.warn('Failed to check/recover session:', error);
-      Sentry.captureException(error, { tags: { feature: 'session' } });
-      return 'none';
-    }
   },
 }));

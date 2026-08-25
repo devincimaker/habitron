@@ -1,9 +1,7 @@
-import { Tabs, useRouter } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { StyleSheet } from 'react-native';
-import * as Haptics from 'expo-haptics';
 import { CustomTabBar } from '../../components/CustomTabBar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
-import { useSessionStore } from '../../stores/useSessionStore';
 import { HEADER, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
@@ -13,8 +11,6 @@ export const unstable_settings = {
 
 export default function TabLayout() {
   const [styles] = useThemedStyles(createStyles);
-  const router = useRouter();
-  const { isActive, startSession } = useSessionStore();
 
   return (
     <Tabs
@@ -52,16 +48,6 @@ export default function TabLayout() {
           title: 'Coach',
           headerTitle: 'Coach',
         }}
-        listeners={{
-          tabPress: (event) => {
-            event.preventDefault();
-            if (!isActive) {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              startSession();
-            }
-            router.push('/session');
-          },
-        }}
       />
       <Tabs.Screen
         name="habits"
@@ -81,14 +67,6 @@ export default function TabLayout() {
       <Tabs.Screen
         name="diary"
         options={{
-          href: null,
-        }}
-      />
-      <Tabs.Screen
-        name="sessions"
-        options={{
-          title: 'Coach History',
-          headerTitle: 'Coach History',
           href: null,
         }}
       />
