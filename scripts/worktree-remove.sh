@@ -77,7 +77,18 @@ wt_step "Releasing claimed resources"
 # --- remove ------------------------------------------------------------------
 
 wt_step "Removing the worktree"
-git -C "$primary" worktree remove "$target" --force
+if ! git -C "$primary" worktree remove "$target" --force; then
+  # git walks the tree and deletes as it goes, so anything still writing in
+  # there makes the final rmdir fail with ENOTEMPTY. Teardown above is what
+  # stops those, but a half-reclaim is the worst of the three outcomes: the
+  # directory survives where `wt:list` cannot see it, and the branch below
+  # outlives its own merge. Finish by hand rather than leave that.
+  [ -n "$target" ] && [ "$target" != "$primary" ] && [ "$target" != "/" ] \
+    || wt_die "Refusing to force-remove '$target'"
+  wt_info "git could not remove it — deleting the directory and pruning"
+  rm -rf "$target"
+  git -C "$primary" worktree prune
+fi
 wt_info "removed $target"
 
 if git -C "$primary" rev-parse --verify --quiet "refs/heads/$branch" >/dev/null 2>&1; then
