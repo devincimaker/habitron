@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   gate:
-    name: typecheck + lint + test
+    name: typecheck + lint + knip + test
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -35,6 +35,10 @@ jobs:
       # Errors fail the gate; react-hooks/exhaustive-deps warnings do not yet.
       # Raise this to --max-warnings 0 once those are worked through.
       - run: pnpm lint
+
+      # Whole-import-graph dead code: the question ESLint cannot answer, since
+      # it sees one file at a time.
+      - run: pnpm knip
 
       - run: pnpm test
 

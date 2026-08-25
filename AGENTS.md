@@ -53,6 +53,7 @@ pnpm dev          # mobile app + API, on this checkout's ports and simulator
 pnpm typecheck    # tsc across every package
 pnpm lint         # eslint, one flat config at the root
 pnpm test         # jest (mobile) + vitest (api, mcp)
+pnpm knip         # dead files, exports and dependencies, across the import graph
 ```
 
 `pnpm dev` reads `apps/mobile/.env` for `IOS_SIMULATOR` and `EXPO_PORT` and
@@ -170,8 +171,8 @@ it here when it is the same kind of work, otherwise raise a Linear issue.
 
 ## 9. The gate, and verification that matches the change
 
-`pnpm typecheck && pnpm lint && pnpm test` before a PR, and after logic changes.
-Not after every four-word edit. Say what you skipped.
+`pnpm typecheck && pnpm lint && pnpm knip && pnpm test` before a PR, and after
+logic changes. Not after every four-word edit. Say what you skipped.
 
 Two conventions the gate enforces beyond the obvious:
 
@@ -181,8 +182,11 @@ Two conventions the gate enforces beyond the obvious:
   issue that will, so every exception has an owner and an end.
 - **`pnpm knip`** resolves the whole import graph and finds dead files, dead
   exports and unused dependencies — the question ESLint cannot answer, since it
-  sees one file at a time. Configured in `knip.json`; not in the gate or CI yet,
-  because HAB-90 is still clearing its first report.
+  sees one file at a time. Configured in `knip.json`. A symbol it reports is
+  deleted, or loses its `export` when its own file still uses it. `knip.json`
+  masks two things and nothing else, each saying why on its own entry: code that
+  really is reached without an import, and — like a `max-lines` disable — code
+  parked on purpose, named with the issue that will delete it or use it.
 
 | The change is… | The proof is… |
 | --- | --- |

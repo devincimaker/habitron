@@ -63,7 +63,7 @@ export function formatDurationMinutes(minutes: number): string {
 }
 
 // Step scales with the value: 5m under an hour, 15m up to four hours, 30m beyond.
-export function getDurationStep(minutes: number): number {
+function getDurationStep(minutes: number): number {
   if (minutes < 60) return 5;
   if (minutes < 240) return 15;
   return 30;

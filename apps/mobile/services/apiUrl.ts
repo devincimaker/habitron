@@ -62,7 +62,7 @@ function getRuntimeScriptUrl(): string | null {
   return sourceCode?.getConstants?.().scriptURL ?? sourceCode?.scriptURL ?? null;
 }
 
-export const API_BASE_URL = resolveApiBaseUrl(
+const API_BASE_URL = resolveApiBaseUrl(
   process.env.EXPO_PUBLIC_API_URL || LOCAL_API_FALLBACK,
   getRuntimeScriptUrl(),
   IS_DEV

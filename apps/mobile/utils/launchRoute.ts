@@ -1,6 +1,6 @@
 import type { ProfileLoadStatus } from '../stores/useProfileStore';
 
-export type LaunchRoute = '/(auth)/login' | '/(onboarding)/tour' | '/(tabs)/tasks';
+type LaunchRoute = '/(auth)/login' | '/(onboarding)/tour' | '/(tabs)/tasks';
 
 export type LaunchDecision =
   | { kind: 'wait' }

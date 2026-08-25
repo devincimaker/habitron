@@ -40,7 +40,7 @@ function getDateParts(dateStr: string): { year: number; month: number; day: numb
   };
 }
 
-export function buildTaskCalendarCell(
+function buildTaskCalendarCell(
   dateStr: string,
   displayYear: number,
   displayMonth: number

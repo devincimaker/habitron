@@ -6,9 +6,9 @@
 import { addDays } from '@habits-coach/habitron';
 import type { Priority } from '@habits-coach/shared';
 
-export type SeedTaskStatus = 'open' | 'completed';
+type SeedTaskStatus = 'open' | 'completed';
 
-export interface SeedTask {
+interface SeedTask {
   title: string;
   dueDate: string | null;
   scheduledDate: string | null;
@@ -22,12 +22,12 @@ export interface SeedTask {
   tag?: string;
 }
 
-export interface SeedTag {
+interface SeedTag {
   name: string;
   color: string;
 }
 
-export interface SeedHabit {
+interface SeedHabit {
   name: string;
   frequency: 'daily' | 'weekly' | 'interval';
   goalType: 'boolean' | 'quantity';
@@ -39,13 +39,13 @@ export interface SeedHabit {
   recordIncrement?: number;
 }
 
-export interface SeedHabitLog {
+interface SeedHabitLog {
   habit: string;
   date: string;
   amount?: number;
 }
 
-export interface SeedJournalEntry {
+interface SeedJournalEntry {
   entryDate: string;
   content: string;
   mood: 'good' | 'neutral';
@@ -68,7 +68,7 @@ function at(date: string, time: string): string {
 }
 
 /** Every habit starts the same distance back, so the histories below all fit inside it. */
-export const HABIT_START_DAYS_AGO = 30;
+const HABIT_START_DAYS_AGO = 30;
 
 export function buildFixtures(today: string): SeedFixtures {
   const day = (offset: number) => addDays(today, offset);

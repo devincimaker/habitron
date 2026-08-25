@@ -126,13 +126,6 @@ export const AVATAR_SIZES = {
   lg: { size: 80, fontSize: 32, borderRadius: 40 },
 } as const;
 
-// Icon button sizes
-export const ICON_BUTTON_SIZES = {
-  sm: 32,
-  md: 40,
-  lg: 48,
-} as const;
-
 // Category colors (centralized from profile.tsx and MemoryReviewCard.tsx)
 export const CATEGORY_COLORS: Record<string, string> = {
   motivation: "#4CAF50",
@@ -164,12 +157,6 @@ export const INPUT_HEIGHTS = {
   md: 44, // iOS minimum touch target
   lg: 48,
   xl: 56,
-} as const;
-
-// Screen padding
-export const SCREEN_PADDING = {
-  horizontal: SPACING.md,
-  vertical: SPACING.lg,
 } as const;
 
 // List item margins

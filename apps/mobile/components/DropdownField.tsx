@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
-export interface DropdownOption<T extends string> {
+interface DropdownOption<T extends string> {
   label: string;
   value: T;
 }

@@ -1,6 +1,4 @@
 /** @type {import('next').NextConfig} */
-const nextConfig = {
-  transpilePackages: ['@habits-coach/shared'],
-};
+const nextConfig = {};
 
 module.exports = nextConfig;

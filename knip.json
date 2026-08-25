@@ -6,9 +6,11 @@
   // import graph and answers the question ESLint cannot: is anything still
   // reaching this?
   //
-  // Everything excluded below is code that *is* reached, just not through an
-  // import knip can follow. Real dead code is deleted (AGENTS.md §2), never
-  // masked here.
+  // Two things are excluded below and nothing else. Most entries are code that
+  // *is* reached, just not through an import knip can follow. The rest is code
+  // parked on purpose — the `max-lines` bargain: it names what will delete it or
+  // use it, so the exception has an owner and an end. Real dead code with no
+  // owner is deleted (AGENTS.md §2), never masked here.
 
   "workspaces": {
     ".": {
@@ -21,6 +23,13 @@
     },
 
     "apps/mobile": {
+      // Parked, not reached: HAB-90 keeps this one file because goals are coming
+      // back to the app. Note that docs/native-rewrite-plan.md (2026-08-20) says
+      // the opposite — it cuts Goals entirely — and HAB-90 (2026-08-25) is the
+      // newer of the two. HAB-131 reconciles them; whichever way it lands, this
+      // entry goes with it.
+      "ignore": ["components/GoalEditorModal.tsx"],
+
       "ignoreDependencies": [
         // Inferred by knip's Expo plugin from app.json keys rather than from
         // any import, and neither is installed: `userInterfaceStyle` implies
@@ -43,5 +52,14 @@
   // The Supabase CLI is deliberately not a dependency: CI pins it with
   // supabase/setup-cli and locally it comes from npx. Declaring it in
   // package.json would give us a second version to keep in sync with that pin.
+  // Deliberately not set, and worth knowing: knip's default
+  // `includeEntryExports: false` means a symbol re-exported from a package
+  // barrel is never checked, so packages/shared and packages/habitron's public
+  // surfaces sit outside this report — `pnpm knip --include-entry-exports`
+  // finds 29 there. Writing the key in explicitly, even as `false`, would be
+  // worse than leaving it out: a value in the config overrides that flag, so
+  // the one command that reveals the gap would silently report clean.
+  // HAB-132 owns turning it on, which is the only way "the whole import graph"
+  // is true.
   "ignoreBinaries": ["supabase"]
 }

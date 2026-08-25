@@ -15,13 +15,6 @@ export function setSupabaseClient(client: SupabaseClient): void {
 }
 
 /**
- * Get the current Supabase client.
- */
-export function getSupabaseClient(): SupabaseClient {
-  return supabase;
-}
-
-/**
  * Schedule a first-skip notification for a user.
  * This checks if the user has already received a first-skip notification,
  * and if not, schedules one for 9 AM the next morning in their timezone.

@@ -11,7 +11,6 @@ import {
   HabitSection,
   HabitStatus,
   HabitWeekday,
-  getTodayDate,
 } from '@habits-coach/shared';
 import { normalizeHabitName } from '../utils/habitNames';
 
@@ -347,10 +346,6 @@ export async function getLogsForDate(date: string): Promise<Map<string, HabitLog
   return logsMap;
 }
 
-export async function getTodayLogs(): Promise<Map<string, HabitLogEntry>> {
-  return getLogsForDate(getTodayDate());
-}
-
 export async function setHabitLog(
   habitId: string,
   date: string,
@@ -376,6 +371,3 @@ export async function setHabitLog(
     throw error;
   }
 }
-
-// Re-export getTodayDate for convenience
-export { getTodayDate };

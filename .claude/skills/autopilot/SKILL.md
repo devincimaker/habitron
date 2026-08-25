@@ -286,7 +286,7 @@ Exactly what the issue says, at the class's rules. Then the gate, in the
 worktree (AGENTS.md §9):
 
 ```bash
-pnpm typecheck && pnpm lint && pnpm test
+pnpm typecheck && pnpm lint && pnpm knip && pnpm test
 ```
 
 A tick that touched `packages/coach-skills` or the `packages/habitron` tool

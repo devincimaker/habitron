@@ -10,7 +10,7 @@ import {
 import { SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
-export interface WheelOption<T extends string | number> {
+interface WheelOption<T extends string | number> {
   label: string;
   value: T;
 }
