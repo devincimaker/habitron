@@ -338,9 +338,13 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     if (!text || isLoading) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    // The turn resolves only when the whole reply has streamed, so clear on send
+    // and put the text back if the send never started — never over what was typed
+    // in the meantime.
+    setInputText('');
     const didSend = await sendUserMessage(text);
-    if (didSend) {
-      setInputText('');
+    if (!didSend) {
+      setInputText((current) => current || text);
     }
   }, [inputText, isLoading, sendUserMessage]);
 
