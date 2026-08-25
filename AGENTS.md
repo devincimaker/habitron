@@ -131,6 +131,10 @@ prompts.
 Do not kill another project's Metro. If a port is taken, `pnpm wt:setup` hands
 out a new one.
 
+The **`simulator-driving`** skill drives the UI: tap by accessibility label
+(`simctl` cannot tap — `idb` can), read the screen, and clear the two blockers
+that trap agents here, the Expo dev-menu sheet and the SpringBoard alert.
+
 ## 8. Branches, commits, PRs
 
 Branch names are `feat|fix|chore|refactor/hab-NN-<short-slug>`, not Linear's
@@ -147,6 +151,17 @@ it here when it is the same kind of work, otherwise raise a Linear issue.
 
 `pnpm typecheck && pnpm lint && pnpm test` before a PR, and after logic changes.
 Not after every four-word edit. Say what you skipped.
+
+Two conventions the gate enforces beyond the obvious:
+
+- **`max-lines`, 300, code only.** A file over it is doing more than one thing.
+  Splitting it is the fix; moving styles out to duck the cap is not. A file that
+  cannot come under carries a file-level `eslint-disable max-lines` naming the
+  issue that will, so every exception has an owner and an end.
+- **`pnpm knip`** resolves the whole import graph and finds dead files, dead
+  exports and unused dependencies — the question ESLint cannot answer, since it
+  sees one file at a time. Configured in `knip.json`; not in the gate or CI yet,
+  because HAB-90 is still clearing its first report.
 
 | The change is… | The proof is… |
 | --- | --- |
@@ -222,7 +237,28 @@ repo secrets (user `deploy`). Logs: `ssh deploy@91.98.45.41 'cd /opt/habitron
 && docker compose logs -f api'`. `pnpm --filter @habits-coach/mobile
 build:device` bakes the API URL into the phone build.
 
-## 14. Conductor
+## 14. App errors: Sentry first
+
+When the user reports an error seen in the app ("trouble processing", a crash,
+a blank screen), the answer is already in Sentry: the mobile app reports every
+caught failure with tags (`feature`, `stage`) and the real exception message.
+Org `thrive-aq` (EU region, `https://de.sentry.io`), project id
+`4510715469561936`; the coach tags its chat failures `stage:chat_generation`.
+
+- **Go to Sentry before anything else.** Read the latest event for the tag,
+  then reason from the real error. Do not reconstruct the error from server
+  logs, Caddy logs, or a simulator repro — those are hours, Sentry is seconds.
+- The `SENTRY_AUTH_TOKEN` in the shell is the source-map upload token
+  (`org:ci` only) and **cannot read events** (403 on every org endpoint). If no
+  token with `event:read` + `org:read` + `project:read` is at hand, **stop and
+  ask the user for one immediately**, in the first reply — never fall back to a
+  longer path without asking. Store it as `SENTRY_READ_TOKEN`, separate from
+  the upload token.
+- API: `curl -H "Authorization: Bearer $SENTRY_READ_TOKEN"
+  "https://de.sentry.io/api/0/organizations/thrive-aq/issues/?query=stage:chat_generation&statsPeriod=24h"`
+  then `/api/0/issues/<id>/events/latest/` for the exception and breadcrumbs.
+
+## 15. Conductor
 
 Conductor stores repo settings in its own database, not in a repo-level config
 file. Configure once in the Conductor app (Repo settings → Scripts):
@@ -233,3 +269,25 @@ file. Configure once in the Conductor app (Repo settings → Scripts):
 
 Both scripts are the same ones `wt:*` calls, so a Conductor workspace and a
 `pnpm wt:new` worktree are the same thing and appear together in `pnpm wt:list`.
+
+## 16. Unattended work: hunt and autopilot
+
+Two skills feed and drain a queue that runs without supervision. Both were
+ported from planazo, loosened for the fact that this app has exactly one user.
+
+- **`hunt`** — finds *one* qualified improvement, reports it, and stops. Filing
+  it and starting work happen only on your say-so.
+- **`autopilot`** — drains Linear's **Ready** state, one issue per tick: build,
+  gate, review, merge from inside the worktree, record, stop. `Ready` is the
+  approval, so promoting an issue is the decision; `/autopilot sweep` files
+  candidates into Backlog and `/autopilot ready <numbers>` promotes them.
+  `/loop /autopilot` keeps it draining.
+
+Work is classed **A swap · B fix · C extract · D slice**, and the class picks
+the proof (§9). A change to `packages/coach-skills` or the `packages/habitron`
+tool surface adds `coach:smoke` to its proof, whatever its class.
+
+What a tick may do freely: bigger slices, whole-screen visual work, additive
+schema. What it never does: two concerns in one commit, a merge on red or
+unchecked CI, a merge from outside the worktree, or a destructive migration —
+those park for you, because a revert does not bring data back.

@@ -1,10 +1,13 @@
 name: Daily Code Improvement
 
 on:
-  schedule:
-    # Runs at 9am UTC every day (adjust to your timezone)
-    - cron: '0 9 * * *'
-  workflow_dispatch: # Allow manual trigger
+  # Scheduled runs are off: /autopilot now drains Linear's Ready state from a
+  # worktree, and two automations opening PRs against the same repo collide.
+  # Uncomment the cron to bring this one back.
+  #
+  # schedule:
+  #   - cron: '0 9 * * *'   # 9am UTC daily
+  workflow_dispatch: # Manual trigger only
 
 permissions:
   contents: write
