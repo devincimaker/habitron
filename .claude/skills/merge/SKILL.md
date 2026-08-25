@@ -15,22 +15,23 @@ that returned zero proves nothing on its own.
 
 ## Ground rules
 
-- **Merge from inside the worktree.** A `PostToolUse` hook on `gh pr merge`
-  (`.claude/settings.json` → `scripts/worktree-reap.sh`) reclaims *the worktree
-  the merge command ran in*. Run `gh pr merge 54` from the main checkout and it
-  exits early by design: worktree, simulator and branch DB all survive, and
-  nothing warns you. If this session is standing in the main checkout and the PR
-  belongs to a worktree, `cd` into that worktree first, or hand the merge to the
-  session that owns it.
-- **The merge deletes the directory you are standing in.** That is the hook
-  working, not a fault — but a session pinned inside the worktree loses its
-  workspace at the moment it succeeds, and everything from Phase 4 on lives in
-  the main checkout: the CI watch, `tmp/autopilot-run.json`, the next
-  `pnpm wt:new`. So drive the worktree with `cd` from a session rooted in the
-  main checkout (the hook reads the merge command's cwd, so `cd <worktree> &&
-  gh pr merge` still fires it), and if the session did enter the worktree, leave
-  it the moment the merge returns. A loop that merges from inside and stays
-  there ends its own run on a green merge.
+- **The session itself must be in the worktree — a `cd` is not enough.** A
+  `PostToolUse` hook on `gh pr merge` (`.claude/settings.json` →
+  `scripts/worktree-reap.sh`) does the reclaim, and it reads `.cwd` from the
+  **tool payload**, which is the session's working directory. A `cd <worktree>
+  && gh pr merge` still reports the session's directory, so the hook sees the
+  main checkout, takes its `[ "$here" != "$primary" ] || exit 0` branch, and
+  says nothing at all. The worktree, its simulator and its branch DB all
+  survive, and the only sign is `pnpm wt:list` flagging the branch MERGED later.
+  So `EnterWorktree` before merging, or hand the merge to the session that owns
+  the worktree.
+- **Then leave, because the merge deletes the directory you are standing in.**
+  That is the hook working, not a fault — but a session still pinned inside the
+  worktree loses its workspace at the moment it succeeds, and everything from
+  Phase 4 on lives in the main checkout: the CI watch,
+  `tmp/autopilot-run.json`, the next `pnpm wt:new`. `ExitWorktree` the moment
+  the merge returns. A loop that merges from inside and stays there ends its own
+  run on a green merge.
 - **A browser merge skips the hook entirely.** It only fires on the Bash tool
   call. When you arrive at a PR that is already `MERGED`, skip Phase 3 and do the
   reclaim by hand (Phase 6 covers it).
@@ -104,12 +105,10 @@ Then **read the hook's message before doing anything else.** It reports one of:
 
 The last two are yours to finish. The hook never retries itself.
 
-Then get out of the worktree, before Phase 4 and before anything else. It has
-just been deleted underneath you: a shell still sitting there has no repository,
-`git -C` cannot reach the main checkout from a session pinned to it, and the
-remaining phases all need the main checkout. Returning costs nothing when the
-merge ran via `cd` from the main checkout in the first place — which is why the
-ground rules ask for that.
+Then `ExitWorktree` — before Phase 4 and before anything else. The directory has
+just been deleted underneath you: a session still sitting there has no
+repository, and `git -C` cannot reach the main checkout from a session pinned to
+it. Every remaining phase runs in the main checkout.
 
 ## Phase 4 — Watch what the merge started
 
@@ -172,7 +171,7 @@ Two follow-ups belong here and nowhere else:
 | Symptom | What it means | Do this |
 | --- | --- | --- |
 | CI is green but for an older SHA | the rollup was read before the newest run registered | re-read `statusCheckRollup` and match it against `gh pr view --json headRefOid`. Pending is a wait, not a pass |
-| Hook said nothing at all | the merge did not run from a worktree, or `gh` exited non-zero *after* merging | check `gh pr view <n> --json state` first: `MERGED` means the merge landed and only the cleanup failed. Reclaim by hand: `pnpm wt:rm <branch>` from the main checkout |
+| Hook said nothing at all | the session was not *in* the worktree (a `cd` in the command does not count — the hook reads the session's cwd), or `gh` exited non-zero *after* merging | check `gh pr view <n> --json state` first: `MERGED` means the merge landed and only the cleanup failed. Reclaim by hand: `pnpm wt:rm <branch>` from the main checkout |
 | `fatal: 'master' is already used by worktree at …` | `--delete-branch` slipped back into the merge command | the merge itself landed. Reclaim by hand, and drop the flag — Phase 3 says why |
 | "Worktree kept: the PR for '<branch>' is OPEN" | `gh pr merge <n>` merged a *different* PR than this worktree's branch | merge this branch's PR from this worktree, or reclaim by hand |
 | "Could not reclaim … Uncommitted work" | uncommitted work in the worktree | commit or stash it, then `pnpm wt:rm <branch>` |
