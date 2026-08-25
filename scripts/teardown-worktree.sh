@@ -4,7 +4,7 @@ set -uo pipefail
 # Release everything the worktree you are standing in has claimed.
 #
 # - Deletes its Supabase branch database, if it has one
-# - Kills Metro / the API server on its claimed ports
+# - Kills every process running out of this directory, then its claimed ports
 # - Deletes the simulator it created for itself
 # - Releases the cross-repo reservation in ~/.conductor/state/resources.json
 # - Deletes its .env files and its .env.worktree ledger
@@ -98,6 +98,72 @@ kill_port() {
   kill -KILL $pids 2>/dev/null || true
 }
 
+# Every descendant of a pid, children before parents. `next-server` carries no
+# path in its command line at all — it is only ever reachable as a child.
+descendants() {
+  local child
+  for child in $(pgrep -P "$1" 2>/dev/null || true); do
+    descendants "$child"
+    echo "$child"
+  done
+}
+
+# This process and everything that spawned it, so a path match can never kill
+# the shell running the teardown.
+ancestry() {
+  local pid=$$ parent
+  while [ -n "$pid" ] && [ "$pid" -gt 1 ]; do
+    echo "$pid"
+    parent=$(ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' ')
+    pid=$parent
+  done
+}
+
+# Anything running out of this directory, whether or not it took a claimed port.
+# `pnpm dev` runs turbo, which starts the `dev` script in every package —
+# including apps/web's `next dev`, on a port the ledger never claimed. Left
+# alive it outlives the reclaim and rewrites apps/web/.next inside a directory
+# that is being deleted, so `git worktree remove` loses a race it should never
+# have been in. The port list will always miss whatever `dev` starts next; the
+# worktree path cannot.
+kill_under_path() {
+  local path=$1 safe="" pid pids="" alive
+  safe=" $(ancestry | tr '\n' ' ') "
+
+  # The trailing slash matters: without it a worktree at .../feat-hab-115 would
+  # match every process of .../feat-hab-115-seedable-test-account.
+  for pid in $(pgrep -f "$path/" 2>/dev/null || true); do
+    case "$safe" in *" $pid "*) continue ;; esac
+    pids="$pids $(descendants "$pid" | tr '\n' ' ') $pid"
+  done
+
+  # Deduplicated: a pid reachable from two roots is walked twice. Order does not
+  # matter — the whole set is signalled at once.
+  # shellcheck disable=SC2086
+  set -- $(printf '%s\n' $pids | sort -u)
+  [ "$#" -eq 0 ] && return 0
+  echo "  Killing PID(s) under $path: $*"
+  kill -TERM "$@" 2>/dev/null || true
+  for _ in 1 2 3; do
+    sleep 1
+    # One pid at a time: `kill -0 a b c` reports failure when *any* of them is
+    # gone, which would call the whole set dead as soon as the first one died.
+    alive=""
+    for pid in "$@"; do
+      kill -0 "$pid" 2>/dev/null && alive=1
+    done
+    [ -z "$alive" ] && return 0
+  done
+  kill -KILL "$@" 2>/dev/null || true
+}
+
+echo ""
+echo "Stopping processes running out of this worktree..."
+kill_under_path "$CURRENT_DIR"
+
+# The port pass still runs: it is what frees the numbers for the registry
+# release below, and it catches anything that took a port without naming the
+# worktree in its command line.
 echo ""
 echo "Stopping processes on claimed ports..."
 kill_port "$CLAIMED_EXPO_PORT"
