@@ -1,13 +1,8 @@
 import { supabase } from './supabase';
 import type {
-  CoachSkillId,
-  CoachDebugEventInput,
-  CoachDebugEvent,
   CoachingSessionSummary,
   CoachingSessionDetail,
-  CreateSessionRequest,
   UpdateSessionRequest,
-  UpdateSessionSkillRequest,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
 import { createApiUrl } from './apiUrl';
@@ -50,9 +45,7 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
   return data.session;
 }
 
-export async function createSession(
-  request: CreateSessionRequest = {}
-): Promise<{ id: string; startedAt: number }> {
+export async function createSession(): Promise<{ id: string; startedAt: number }> {
   const token = await getAuthToken();
 
   const response = await fetch(createApiUrl('/api/sessions'), {
@@ -61,7 +54,6 @@ export async function createSession(
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify(request),
   });
 
   if (!response.ok) {
@@ -112,50 +104,6 @@ export async function finalizeSession(
   }
 
   return response.json();
-}
-
-export async function updateSessionSkill(
-  sessionId: string,
-  skillId: CoachSkillId,
-  updates: UpdateSessionSkillRequest
-): Promise<void> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${sessionId}/skills/${skillId}`), {
-    method: 'PUT',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(updates),
-  });
-
-  if (!response.ok) {
-    await handleFetchError(response, 'Failed to update session skill');
-  }
-}
-
-export async function createSessionDebugEvent(
-  sessionId: string,
-  event: CoachDebugEventInput
-): Promise<CoachDebugEvent> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl(`/api/sessions/${sessionId}/debug-events`), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ event }),
-  });
-
-  if (!response.ok) {
-    await handleFetchError(response, 'Failed to create session debug event');
-  }
-
-  const data = await response.json();
-  return data.event;
 }
 
 export async function deleteSession(id: string): Promise<void> {

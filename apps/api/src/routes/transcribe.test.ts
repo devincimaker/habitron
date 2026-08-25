@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Request, Response, NextFunction } from 'express';
 
 // Mock the transcribeAudio service
-vi.mock('../services/openai.js', () => ({
+vi.mock('../services/transcription.js', () => ({
   transcribeAudio: vi.fn(),
 }));
 
@@ -14,7 +14,7 @@ vi.mock('../middleware/auth.js', () => ({
   },
 }));
 
-import { transcribeAudio } from '../services/openai.js';
+import { transcribeAudio } from '../services/transcription.js';
 
 describe('transcribe route', () => {
   beforeEach(() => {

@@ -7,10 +7,8 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "declaration": true
+    "noEmit": true
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test"]
+  "include": ["src/**/*", "scripts/**/*"],
+  "exclude": ["node_modules", "src/**/*.test.ts", "src/test"]
 }

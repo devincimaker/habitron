@@ -186,16 +186,43 @@ of it standing.
 `master` has no branch protection, so `gh pr merge` will merge a red or unchecked
 commit. The gate is the only thing in front of that.
 
-## 12. MCP server (`apps/mcp`)
+## 12. The coach (`packages/coach-skills`, `packages/habitron`, `apps/mcp`, `apps/api`)
 
-Habitron's data is exposed to Claude Code / Claude Desktop through a local stdio
-MCP server, so day planning can happen in a strong model with calendar, Linear
-and email context. See `apps/mcp/README.md` for the tool surface. The coaching
-skills that drive it live outside this repo in `~/Coach/.claude/skills`, and
-`~/Coach/.mcp.json` registers the server. It needs `apps/mcp/.env` (Supabase
-service role + `HABITRON_USER_ID`).
+One coach, two surfaces. The persona and skills are `packages/coach-skills`
+(`CLAUDE.md` + `.claude/skills/*`); the data layer and the tool list are
+`packages/habitron`. Add or change tools there, never in `apps/mcp` or `apps/api`.
 
-## 13. Conductor
+- **Claude Code** (`~/Coach`): symlinks into `packages/coach-skills`;
+  `~/Coach/.mcp.json` registers the stdio MCP server in `apps/mcp` (needs
+  `apps/mcp/.env`: Supabase service role + `HABITRON_USER_ID`). Use it when
+  planning needs calendar, Linear or email context.
+- **In-app** (`apps/api` → `POST /api/chat`): the Claude Agent SDK runs the same
+  skills and the same tools in-process and streams the turn to the app. Auth is
+  the Claude subscription via `CLAUDE_CODE_OAUTH_TOKEN` (`claude setup-token`);
+  locally the Claude Code login is enough.
+  `pnpm --filter @habits-coach/api coach:smoke "<prompt>"` runs one turn against
+  the test account from the terminal.
+
+See `apps/mcp/README.md` for the tool surface and `docs/coach-skill-map.md` for
+the architecture.
+
+## 13. Hosting (`deploy/`)
+
+The API runs on a Hetzner CX23 (`habitron-api`, 91.98.45.41, 4 GB — a coach
+turn peaks around 650 MB in the container, so 512 MB PaaS tiers OOM) behind
+Caddy at `https://91.98.45.41.nip.io`. `ci.yml` → `deploy-api` builds
+`apps/api/Dockerfile` after the gate, streams the image over SSH
+(`docker save | docker load`, no registry) and runs `deploy/deploy.sh`, which
+brings up `deploy/compose.yml` and waits for `/health`.
+
+On the box: `/opt/habitron/.env` holds `API_HOST`, the Supabase service role,
+`OPENAI_API_KEY` (Whisper), `CLAUDE_CODE_OAUTH_TOKEN` and `API_TAG`. Deploy
+credentials are the `DEPLOY_SSH_KEY` / `DEPLOY_HOST` / `DEPLOY_KNOWN_HOSTS`
+repo secrets (user `deploy`). Logs: `ssh deploy@91.98.45.41 'cd /opt/habitron
+&& docker compose logs -f api'`. `pnpm --filter @habits-coach/mobile
+build:device` bakes the API URL into the phone build.
+
+## 14. Conductor
 
 Conductor stores repo settings in its own database, not in a repo-level config
 file. Configure once in the Conductor app (Repo settings → Scripts):

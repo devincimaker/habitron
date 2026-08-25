@@ -4,29 +4,14 @@ import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
-import {
-  listCoachDebugEvents,
-  logCoachDebugEvent,
-  sessionBelongsToUser,
-} from '../services/coachDebugEvents.js';
-import { isCoachSkillId } from '../coach/registry.js';
-import {
-  getSessionSkillInstances,
-  updateSessionSkillInstance,
-} from '../coach/runtime.js';
 import type {
-  CoachSkillId,
-  CreateCoachDebugEventRequest,
-  CreateCoachDebugEventResponse,
   CoachingSessionMessage,
   CoachingSessionSummary,
   CreateSessionRequest,
   UpdateSessionRequest,
   FinalizeSessionRequest,
   ErrorResponse,
-  GetCoachDebugEventsResponse,
   MemoryCategory,
-  UpdateSessionSkillRequest,
 } from '@habits-coach/shared';
 
 const router: Router = Router();
@@ -54,39 +39,6 @@ interface DbMemory {
   updated_at: string;
 }
 
-interface DbSkillSummary {
-  session_id: string;
-  skill_id: CoachSkillId;
-  status: 'active' | 'paused' | 'completed';
-  is_lead: boolean;
-}
-
-function getLeadSkillId(
-  skills: DbSkillSummary[]
-): CoachSkillId | null {
-  const lead = skills.find((skill) => skill.is_lead && skill.status === 'active');
-  if (lead) {
-    return lead.skill_id;
-  }
-
-  const fallback = skills.find((skill) => skill.status === 'active');
-  return fallback?.skill_id ?? null;
-}
-
-async function ensureSessionOwnership(
-  sessionId: string,
-  userId: string,
-  res: Response
-): Promise<boolean> {
-  const belongsToUser = await sessionBelongsToUser(sessionId, userId);
-  if (belongsToUser) {
-    return true;
-  }
-
-  res.status(404).json({ error: 'Session not found' } satisfies ErrorResponse);
-  return false;
-}
-
 // GET /api/sessions - List sessions (last 50)
 router.get('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
@@ -106,21 +58,14 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
     const sessionIds = sessionRows.map((session) => session.id);
 
     let memoryCountMap = new Map<string, number>();
-    let leadSkillMap = new Map<string, CoachSkillId | null>();
 
     if (sessionIds.length > 0) {
-      const [{ data: memoryCounts, error: countError }, { data: skillRows, error: skillError }] =
-        await Promise.all([
-          supabase.from('memories').select('session_id').in('session_id', sessionIds),
-          supabase
-            .from('coaching_skill_instances')
-            .select('session_id, skill_id, status, is_lead')
-            .eq('user_id', req.user!.id)
-            .in('session_id', sessionIds),
-        ]);
+      const { data: memoryCounts, error: countError } = await supabase
+        .from('memories')
+        .select('session_id')
+        .in('session_id', sessionIds);
 
       if (countError) throw countError;
-      if (skillError) throw skillError;
 
       memoryCountMap = (memoryCounts || []).reduce((map, memory) => {
         const sessionId = memory.session_id as string | null;
@@ -129,20 +74,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
         }
         return map;
       }, new Map<string, number>());
-
-      const skillsBySession = ((skillRows ?? []) as DbSkillSummary[]).reduce((map, skill) => {
-        const sessionSkills = map.get(skill.session_id) ?? [];
-        sessionSkills.push(skill);
-        map.set(skill.session_id, sessionSkills);
-        return map;
-      }, new Map<string, DbSkillSummary[]>());
-
-      leadSkillMap = new Map(
-        Array.from(skillsBySession.entries()).map(([sessionId, sessionSkills]) => [
-          sessionId,
-          getLeadSkillId(sessionSkills),
-        ])
-      );
     }
 
     const result: CoachingSessionSummary[] = sessionRows.map((session) => ({
@@ -151,7 +82,6 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       startedAt: new Date(session.started_at).getTime(),
       endedAt: session.ended_at ? new Date(session.ended_at).getTime() : null,
       memoryCount: memoryCountMap.get(session.id) || 0,
-      leadSkillId: leadSkillMap.get(session.id) ?? null,
     }));
 
     res.json({ sessions: result });
@@ -161,52 +91,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
   }
 });
 
-// GET /api/sessions/:id/debug-events - List session debug events
-router.get('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-
-    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
-      return;
-    }
-
-    const events = await listCoachDebugEvents(id, req.user!.id);
-    res.json({ events } satisfies GetCoachDebugEventsResponse);
-  } catch (error) {
-    console.error('Get session debug events error:', error);
-    res.status(500).json({ error: 'Failed to fetch session debug events' } satisfies ErrorResponse);
-  }
-});
-
-// POST /api/sessions/:id/debug-events - Create a session debug event
-router.post('/:id/debug-events', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id } = req.params;
-    const { event } = req.body as CreateCoachDebugEventRequest;
-
-    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
-      return;
-    }
-
-    if (!event || typeof event.eventType !== 'string') {
-      res.status(400).json({ error: 'Invalid request: eventType is required' } satisfies ErrorResponse);
-      return;
-    }
-
-    const createdEvent = await logCoachDebugEvent({
-      sessionId: id,
-      userId: req.user!.id,
-      event,
-    });
-
-    res.json({ event: createdEvent } satisfies CreateCoachDebugEventResponse);
-  } catch (error) {
-    console.error('Create session debug event error:', error);
-    res.status(500).json({ error: 'Failed to create session debug event' } satisfies ErrorResponse);
-  }
-});
-
-// GET /api/sessions/:id - Get session detail with memories and active skills
+// GET /api/sessions/:id - Get session detail with memories
 router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
@@ -224,19 +109,15 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
       return;
     }
 
-    const [{ data: memories, error: memError }, activeSkills] = await Promise.all([
-      supabase
-        .from('memories')
-        .select('*')
-        .eq('session_id', id)
-        .order('created_at', { ascending: true }),
-      getSessionSkillInstances(id, req.user!.id),
-    ]);
+    const { data: memories, error: memError } = await supabase
+      .from('memories')
+      .select('*')
+      .eq('session_id', id)
+      .order('created_at', { ascending: true });
 
     if (memError) throw memError;
 
     const s = session as DbSession;
-    const leadSkill = activeSkills.find((skill) => skill.isLead) ?? activeSkills[0] ?? null;
 
     res.json({
       session: {
@@ -256,8 +137,6 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
           createdAt: new Date(memory.created_at).getTime(),
           updatedAt: new Date(memory.updated_at).getTime(),
         })),
-        activeSkills,
-        leadSkillId: leadSkill?.skillId ?? null,
       },
     });
   } catch (error) {
@@ -269,13 +148,12 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 // POST /api/sessions - Create new session
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { startedAt, name } = req.body as CreateSessionRequest;
+    const { startedAt } = req.body as CreateSessionRequest;
 
     const { data, error } = await supabase
       .from('coaching_sessions')
       .insert({
         user_id: req.user!.id,
-        name: typeof name === 'string' && name.trim().length > 0 ? name.trim() : null,
         started_at: startedAt ? new Date(startedAt).toISOString() : new Date().toISOString(),
         messages: [],
       })
@@ -328,34 +206,6 @@ router.put('/:id', authMiddleware, async (req: Request, res: Response): Promise<
   } catch (error) {
     console.error('Update session error:', error);
     res.status(500).json({ error: 'Failed to update session' } satisfies ErrorResponse);
-  }
-});
-
-// PUT /api/sessions/:id/skills/:skillId - Update session skill instance
-router.put('/:id/skills/:skillId', authMiddleware, async (req: Request, res: Response): Promise<void> => {
-  try {
-    const { id, skillId } = req.params;
-
-    if (!(await ensureSessionOwnership(id, req.user!.id, res))) {
-      return;
-    }
-
-    if (!isCoachSkillId(skillId)) {
-      res.status(400).json({ error: 'Invalid coach skill id' } satisfies ErrorResponse);
-      return;
-    }
-
-    const skill = await updateSessionSkillInstance({
-      sessionId: id,
-      userId: req.user!.id,
-      skillId,
-      updates: req.body as UpdateSessionSkillRequest,
-    });
-
-    res.json({ skill });
-  } catch (error) {
-    console.error('Update session skill error:', error);
-    res.status(500).json({ error: 'Failed to update session skill' } satisfies ErrorResponse);
   }
 });
 
@@ -450,7 +300,7 @@ router.post('/:id/finalize', authMiddleware, async (req: Request, res: Response)
   }
 });
 
-// DELETE /api/sessions/:id - Delete session (cascades to memories and skill instances)
+// DELETE /api/sessions/:id - Delete session (cascades to memories)
 router.delete('/:id', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { ChatMessage, CoachingSessionDetail } from '@habits-coach/shared';
+import type { ChatMessage, CoachingSessionDetail, UpdateSessionRequest } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
 import { deriveSessionName } from '../utils/sessionName';
@@ -7,24 +7,31 @@ import { deriveSessionName } from '../utils/sessionName';
 interface SessionState {
   isActive: boolean;
   sessionId: string | null;  // Backend session ID
+  name: string | null;  // Provisional until finalize generates a summary
   startedAt: number | null;
   endedAt: number | null;  // Set when a finalized session was opened from the hub
   lastActiveAt: number | null;
   messages: ChatMessage[];
   isLoading: boolean;
   isSyncing: boolean;  // True while syncing to backend
-  isCreatingSession: boolean;  // True while creating backend session
+  startError: string | null;  // Set when the backend session could not be created
 
   // Actions
   startSession: () => Promise<void>;
+  /** Opens a session from the hub in place: transcript, identity, and whether it was ended. */
   hydrateSession: (session: CoachingSessionDetail) => void;
+  /** The backend session id, creating the session if needed. Throws when the backend is unreachable. */
+  ensureBackendSession: () => Promise<string>;
+  /** Leaves without ending: the transcript is persisted and the session stays open. */
   leaveSession: () => Promise<void>;
   endSession: () => Promise<void>;
+  /** Adds a message locally only; returns its id. */
+  addLocalMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
+  /** Adds a message and syncs the transcript to the backend; returns its id. */
   addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => Promise<string>;
-  updateMessage: (
-    messageId: string,
-    changes: Partial<Pick<ChatMessage, 'content' | 'proposal' | 'proposalStatus'>>
-  ) => void;
+  appendToMessage: (messageId: string, delta: string) => void;
+  /** Replaces a message's content (e.g. the canonical text after streaming) and syncs. */
+  finalizeMessage: (messageId: string, content: string) => Promise<void>;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
 }
@@ -41,49 +48,57 @@ function toMessagePayload(messages: ChatMessage[]) {
   }));
 }
 
-const INITIAL_MESSAGE: Omit<ChatMessage, 'id' | 'timestamp'> = {
-  role: 'assistant',
-  content: "Hi, I'm Habitron - your habits coach. How are things going? What's on your mind today?",
-};
+function hasUserMessages(messages: Pick<ChatMessage, 'role'>[]): boolean {
+  return messages.some((message) => message.role === 'user');
+}
+
+let pendingSessionCreation: Promise<string> | null = null;
 
 const EMPTY_STATE: Pick<
   SessionState,
-  'isActive' | 'sessionId' | 'startedAt' | 'endedAt' | 'lastActiveAt' | 'messages' | 'isLoading'
+  | 'isActive'
+  | 'sessionId'
+  | 'name'
+  | 'startedAt'
+  | 'endedAt'
+  | 'lastActiveAt'
+  | 'messages'
+  | 'isLoading'
+  | 'startError'
 > = {
   isActive: false,
   sessionId: null,
+  name: null,
   startedAt: null,
   endedAt: null,
   lastActiveAt: null,
   messages: [],
   isLoading: false,
+  startError: null,
 };
 
 export const useSessionStore = create<SessionState>((set, get) => ({
   ...EMPTY_STATE,
   isSyncing: false,
-  isCreatingSession: false,
 
   startSession: async () => {
     // Prevent duplicate session starts from rapid taps
     if (get().isActive) return;
 
     const now = Date.now();
-    const welcomeMessage: ChatMessage = {
-      ...INITIAL_MESSAGE,
-      id: generateId(),
-      timestamp: now,
-    };
-
-    // Initialize local state only - backend session created on first user message
-    // This prevents empty sessions from cluttering session history
     set({
       ...EMPTY_STATE,
       isActive: true,
       startedAt: now,
       lastActiveAt: now,
-      messages: [welcomeMessage],
     });
+
+    // The coach speaks first, so the backend session exists from the start.
+    try {
+      await get().ensureBackendSession();
+    } catch {
+      // startError is set; the screen offers a retry.
+    }
   },
 
   hydrateSession: (session) => {
@@ -98,76 +113,88 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       ...EMPTY_STATE,
       isActive: true,
       sessionId: session.id,
+      name: session.name,
       startedAt: session.startedAt,
       endedAt: session.endedAt,
       lastActiveAt: messages[messages.length - 1]?.timestamp ?? session.startedAt,
-      messages: messages.length > 0
-        ? messages
-        : [{ ...INITIAL_MESSAGE, id: generateId(), timestamp: session.startedAt }],
+      messages,
     });
   },
 
+  ensureBackendSession: async () => {
+    const existing = get().sessionId;
+    if (existing) return existing;
+
+    if (!pendingSessionCreation) {
+      pendingSessionCreation = sessionsService
+        .createSession()
+        .then(({ id }) => {
+          set({ sessionId: id, startError: null });
+          return id;
+        })
+        .catch((error) => {
+          console.warn('Failed to create session in backend:', error);
+          Sentry.captureException(error, { tags: { feature: 'session' } });
+          set({ startError: error instanceof Error ? error.message : 'Failed to create session' });
+          throw error;
+        })
+        .finally(() => {
+          pendingSessionCreation = null;
+        });
+    }
+
+    return pendingSessionCreation;
+  },
+
   leaveSession: async () => {
-    // Leaving is not ending: persist what was said and let the session stay open.
-    await get().syncMessages();
+    const { sessionId, messages } = get();
+
     set(EMPTY_STATE);
+
+    if (!sessionId) return;
+
+    try {
+      if (hasUserMessages(messages)) {
+        await sessionsService.updateSession(sessionId, {
+          messages: toMessagePayload(messages),
+        });
+      } else {
+        // Only the coach's opener happened: nothing worth keeping open.
+        await sessionsService.deleteSession(sessionId);
+      }
+    } catch (error) {
+      console.warn('Failed to leave session:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
+    }
   },
 
   endSession: async () => {
     const { sessionId, messages } = get();
 
-    // Clear local state
     set(EMPTY_STATE);
 
-    // Only finalize if session was persisted to backend (had user messages)
-    // Sessions without user messages have no sessionId due to lazy creation
-    if (sessionId) {
-      try {
+    if (!sessionId) return;
+
+    try {
+      if (hasUserMessages(messages)) {
         await sessionsService.updateSession(sessionId, {
           messages: toMessagePayload(messages),
         });
         await sessionsService.finalizeSession(sessionId, {
           extractMemories: false,
         });
-      } catch (error) {
-        // Use warn to avoid red screen - session is ended locally regardless
-        console.warn('Failed to finalize session:', error);
-        Sentry.captureException(error, { tags: { feature: 'session' } });
+      } else {
+        // Only the coach's opener happened: nothing worth keeping in history.
+        await sessionsService.deleteSession(sessionId);
       }
+    } catch (error) {
+      // Use warn to avoid red screen - session is ended locally regardless
+      console.warn('Failed to finalize session:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
     }
   },
 
-  addMessage: async (messageData) => {
-    // The backend session is created on the first user message, and a finalized
-    // session opened from the hub is reopened on the first new one. If either
-    // fails, callers should treat the send as rejected rather than showing a
-    // local-only turn that cannot be persisted or orchestrated.
-    if (messageData.role === 'user' && (!get().sessionId || get().endedAt !== null)) {
-      if (get().isCreatingSession) {
-        throw new Error('Session creation already in progress');
-      }
-
-      set({ isCreatingSession: true });
-      try {
-        const { sessionId } = get();
-        if (sessionId) {
-          await sessionsService.updateSession(sessionId, { endedAt: null, isProcessed: false });
-          set({ endedAt: null });
-        } else {
-          const { id } = await sessionsService.createSession({
-            name: deriveSessionName(messageData.content) ?? undefined,
-          });
-          set({ sessionId: id });
-        }
-      } catch (error) {
-        console.warn('Failed to open session in backend:', error);
-        Sentry.captureException(error, { tags: { feature: 'session' } });
-        throw error;
-      } finally {
-        set({ isCreatingSession: false });
-      }
-    }
-
+  addLocalMessage: (messageData) => {
     const message: ChatMessage = {
       ...messageData,
       id: generateId(),
@@ -179,25 +206,57 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       lastActiveAt: Date.now(),
     }));
 
-    // Sync to backend (only if we have a sessionId)
-    if (get().sessionId) {
-      await get().syncMessages();
-    }
-
     return message.id;
   },
 
-  updateMessage: (messageId, changes) => {
+  addMessage: async (messageData) => {
+    // The first user message names the session so it reads in the hub while
+    // open, and reopens a finalized session that was resumed from the hub. If
+    // that write fails the send is rejected, so the turn never runs against a
+    // session the backend still considers closed.
+    const { sessionId, endedAt, name } = get();
+    if (messageData.role === 'user' && sessionId && (endedAt !== null || name === null)) {
+      const updates: UpdateSessionRequest = {};
+      if (endedAt !== null) {
+        updates.endedAt = null;
+        updates.isProcessed = false;
+      }
+      if (name === null) {
+        updates.name = deriveSessionName(messageData.content) ?? undefined;
+      }
+
+      try {
+        await sessionsService.updateSession(sessionId, updates);
+        set({ endedAt: null, name: updates.name ?? name });
+      } catch (error) {
+        console.warn('Failed to open session in backend:', error);
+        Sentry.captureException(error, { tags: { feature: 'session' } });
+        throw error;
+      }
+    }
+
+    const id = get().addLocalMessage(messageData);
+    await get().syncMessages();
+    return id;
+  },
+
+  appendToMessage: (messageId, delta) => {
     set((state) => ({
       messages: state.messages.map((message) =>
-        message.id === messageId
-          ? {
-              ...message,
-              ...changes,
-            }
-          : message
+        message.id === messageId ? { ...message, content: message.content + delta } : message
       ),
+      lastActiveAt: Date.now(),
     }));
+  },
+
+  finalizeMessage: async (messageId, content) => {
+    set((state) => ({
+      messages: state.messages.map((message) =>
+        message.id === messageId ? { ...message, content } : message
+      ),
+      lastActiveAt: Date.now(),
+    }));
+    await get().syncMessages();
   },
 
   syncMessages: async () => {
