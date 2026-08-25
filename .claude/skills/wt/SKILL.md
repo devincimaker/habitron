@@ -30,7 +30,8 @@ reasons: `feat/hab-83-day-ratings · --db (new table) · no simulator (coach-onl
 
 - **`--db` (own branch database)** whenever the work implies a schema change:
   migrations, RLS or policies, RPCs, triggers, new tables/columns/indexes,
-  `SECURITY DEFINER`.
+  `SECURITY DEFINER`. Setup seeds the test account into the new database
+  (`pnpm seed`), so there is someone to sign in as; `pnpm wt:db:reset` re-seeds.
 - **shared (default)** for everything else: UI, copy, styling, navigation,
   state, API route logic, tests, config. Free and instant.
 - Genuinely ambiguous → **shared**. Upgrading later is one command

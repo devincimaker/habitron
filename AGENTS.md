@@ -117,6 +117,10 @@ is a production schema change, not a dev convenience.
   what `pnpm wt:db:reset` is for, on a branch DB.
 - **Never push migrations to production by hand.** The CI `deploy` job does it on
   merge to `master`, after tests pass.
+- A branch database starts with an empty `auth.users`, so `wt:setup --db` seeds
+  the test account into it (`pnpm seed`) once the migrations are applied, and
+  `pnpm wt:db:reset` re-seeds after every reset. Shared mode is never seeded
+  automatically.
 - A branch database bills hourly for as long as it exists. `pnpm wt:list` flags
   orphans; the merge hook reclaims the worktree you merged from.
 
@@ -133,6 +137,20 @@ prompts.
 
 Do not kill another project's Metro. If a port is taken, `pnpm wt:setup` hands
 out a new one.
+
+A worktree's simulator is a fresh install, so it always starts **signed out**.
+The account is `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` in `apps/api/.env`
+(gitignored, and copied into every worktree by `wt:setup`);
+`python3 .claude/skills/simulator-driving/sim.py login` signs in with it and
+says `already signed in` when there is nothing to do.
+
+`pnpm seed` puts that account into a known state — 2 overdue, 2 open and 2
+completed tasks today, 4 habits with history, 2 journal entries — so a visual
+proof has something to photograph. It deletes and rewrites only the fixture
+tables, and only that account's rows. **In shared mode it is the live project
+and every shared-mode simulator is signed into that same account**, so a run
+changes what all of them are looking at; run it when your proof needs the
+fixture state, not by habit.
 
 The **`simulator-driving`** skill drives the UI: tap by accessibility label
 (`simctl` cannot tap — `idb` can), read the screen, and clear the two blockers

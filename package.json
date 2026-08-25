@@ -21,6 +21,7 @@
     "test": "turbo test",
     "test:coverage": "turbo test:coverage",
     "clean": "turbo clean && rm -rf node_modules",
+    "seed": "pnpm --filter @habits-coach/api seed",
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",

@@ -270,6 +270,17 @@ else
   wt_step "Database: dedicated Supabase branch"
   branch_name=${branch_name:-$slug}
 
+  # Before anything billable: a branch database has an empty auth.users, so the
+  # seed below is not optional, and failing it after provisioning would leave a
+  # branch running with no account and this worktree's env half-written.
+  for var in TEST_USER_EMAIL TEST_USER_PASSWORD; do
+    [ -n "$(wt_read_value "$target/apps/api/.env" "$var" 2>/dev/null || true)" ] \
+      || wt_die "$var is not set in $target/apps/api/.env, and a branch database needs it
+to create the account to sign in as. Add it there (and to the main checkout's
+apps/api/.env, which every new worktree is copied from), then re-run:
+  $retry_hint"
+  done
+
   branch_created=""
   if wt_branch_exists "$branch_name"; then
     wt_info "branch '$branch_name' already exists — reusing"
@@ -362,6 +373,30 @@ else
   if [ -n "$flagged" ]; then
     wt_info "Supabase still reports $flagged for this branch. Its schema is complete"
     wt_info "(checked above), so that status is noise here, not a problem to fix."
+  fi
+
+  # Point this worktree's env at its own database *before* seeding. Until this
+  # runs, apps/api/.env is still the copy of the main checkout's — i.e. the live
+  # project — and the seed deletes rows. The env section below rewrites the same
+  # two values idempotently.
+  wt_upsert_env "$target/apps/api/.env" "SUPABASE_URL" "$supabase_url"
+  wt_upsert_env "$target/apps/api/.env" "SUPABASE_SERVICE_ROLE_KEY" "$service_key"
+
+  # A brand new branch database starts with an empty auth.users, so there is
+  # nobody to sign in as until this runs. Only a brand new one: the seed deletes
+  # the account's fixture rows, and wt:setup is re-run to repair a worktree or
+  # flip --sim, which must not wipe work done against a branch DB that already
+  # exists.
+  if [ -n "$branch_created" ]; then
+    wt_step "Seeding the test account"
+    (cd "$target" && pnpm --filter @habits-coach/api seed) \
+      || wt_die "Seeding failed. Fix apps/api/.env (TEST_USER_EMAIL / TEST_USER_PASSWORD), then re-run:
+  cd $target && pnpm --filter @habits-coach/api seed"
+  else
+    wt_step "Seeding: skipped"
+    wt_info "this branch database already existed, and seeding deletes the account's rows."
+    wt_info "Run it yourself when you want the fixture state back:"
+    wt_info "  cd $target && pnpm --filter @habits-coach/api seed"
   fi
 fi
 

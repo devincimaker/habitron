@@ -4,7 +4,8 @@
  *   pnpm --filter @habits-coach/api coach:smoke [prompt]   (default: /coach)
  *
  * Needs apps/api/.env (Supabase + CLAUDE_CODE_OAUTH_TOKEN or a local Claude login)
- * and COACH_SMOKE_USER_ID (defaults to the simulator test account).
+ * and COACH_SMOKE_USER_ID (defaults to the account TEST_USER_EMAIL names,
+ * looked up by email so a --db worktree's own copy resolves too).
  *
  * COACH_SMOKE_MODE=instruct runs the turn the way /api/instruct does: only the
  * `instruct` skill, read-only tools unless the prompt is the apply prompt.
@@ -12,8 +13,9 @@
  */
 import { INSTRUCT_SKILLS, runCoachTurn } from '../src/coach/agent.js';
 import { APPLY_PROMPT } from '../src/routes/instruct.js';
+import { resolveTestUserId } from './seed/test-user.js';
 
-const userId = process.env.COACH_SMOKE_USER_ID || 'f59b2da9-c260-4930-bf50-686eb9c2d1e5';
+const userId = process.env.COACH_SMOKE_USER_ID || (await resolveTestUserId());
 const prompt = process.argv.slice(2).join(' ') || '/coach';
 const claudeSessionId = process.env.COACH_SMOKE_RESUME || null;
 const instruct = process.env.COACH_SMOKE_MODE === 'instruct';
