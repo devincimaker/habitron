@@ -207,7 +207,7 @@ export default function TasksScreen() {
               defaultExpanded={false}
               dimContent
             >
-              {completedTodos.map((todo, index) => (
+              {() => completedTodos.map((todo, index) => (
                 <TaskRow
                   key={`completed-${todo.id}`}
                   todo={todo}

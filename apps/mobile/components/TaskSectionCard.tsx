@@ -13,7 +13,11 @@ interface TaskSectionCardProps {
   defaultExpanded?: boolean;
   /** Dims the body only. The header stays at full opacity so its label and count remain readable. */
   dimContent?: boolean;
-  children: ReactNode;
+  /**
+   * A function when the body is expensive: the Tasks tab's Completed list is every
+   * completed task ever, and it starts collapsed, so it must not be built to be thrown away.
+   */
+  children: ReactNode | (() => ReactNode);
 }
 
 export function TaskSectionCard({
@@ -29,36 +33,33 @@ export function TaskSectionCard({
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   const showBody = !collapsible || expanded;
-  const header = title ? (
-    <>
-      <SectionLabel>{title}</SectionLabel>
-      <View style={styles.headerRight}>
-        {count !== undefined ? <Caption>{count}</Caption> : null}
-        {collapsible ? (
-          <Ionicons
-            name={expanded ? 'chevron-down' : 'chevron-forward'}
-            size={18}
-            color={colors.textLight}
-          />
-        ) : null}
-      </View>
-    </>
-  ) : null;
+  const HeaderContainer = collapsible ? Pressable : View;
+  const headerProps = collapsible
+    ? {
+        onPress: () => setExpanded((current) => !current),
+        accessibilityRole: 'button' as const,
+        accessibilityState: { expanded },
+        accessibilityLabel: `${expanded ? 'Collapse' : 'Expand'} ${title?.toLowerCase()} tasks, ${count ?? 0} items`,
+      }
+    : {};
 
   return (
     <Card variant="outlined" noPadding noMargin style={styles.card}>
-      {title && collapsible ? (
-        <Pressable
-          style={[styles.header, styles.headerCollapsible]}
-          onPress={() => setExpanded((current) => !current)}
-          accessibilityRole="button"
-          accessibilityState={{ expanded }}
-          accessibilityLabel={`${expanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} tasks, ${count ?? 0} items`}
-        >
-          {header}
-        </Pressable>
+      {title ? (
+        <HeaderContainer style={[styles.header, collapsible && styles.headerCollapsible]} {...headerProps}>
+          <SectionLabel>{title}</SectionLabel>
+          <View style={styles.headerRight}>
+            {count !== undefined ? <Caption>{count}</Caption> : null}
+            {collapsible ? (
+              <Ionicons
+                name={expanded ? 'chevron-down' : 'chevron-forward'}
+                size={18}
+                color={colors.textLight}
+              />
+            ) : null}
+          </View>
+        </HeaderContainer>
       ) : null}
-      {title && !collapsible ? <View style={styles.header}>{header}</View> : null}
       {showBody ? (
         <View
           style={[
@@ -67,7 +68,7 @@ export function TaskSectionCard({
             dimContent && styles.bodyDimmed,
           ]}
         >
-          {children}
+          {typeof children === 'function' ? children() : children}
         </View>
       ) : null}
     </Card>
@@ -92,7 +93,6 @@ const styles = StyleSheet.create({
   },
   headerCollapsible: {
     minHeight: TOUCH_TARGET.min,
-    paddingVertical: 10,
   },
   headerRight: {
     flexDirection: 'row',

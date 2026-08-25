@@ -92,6 +92,12 @@ export default function CalendarScreen() {
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragHoverDate, setDragHoverDate] = useState<string | null>(null);
+  // Dragging a task re-renders this screen every pointer frame, so keep the
+  // date formatting off that path.
+  const selectedDateLabel = useMemo(
+    () => formatRelativeDateLabel(selectedDate),
+    [selectedDate],
+  );
   const headerTitle = useMemo(() => {
     const date = new Date(selectedDate + 'T00:00:00');
     const todayDate = new Date(today + 'T00:00:00');
@@ -343,7 +349,7 @@ export default function CalendarScreen() {
             </TaskSectionCard>
           ) : null}
 
-          <TaskSectionCard title={formatRelativeDateLabel(selectedDate)}>
+          <TaskSectionCard title={selectedDateLabel}>
             {openScheduledTodos.length > 0 ? (
               renderTaskRows(openScheduledTodos)
             ) : (
