@@ -32,25 +32,29 @@ export function TaskSectionCard({
   // Deliberately local: the issue rules out persisting this across sessions.
   const [expanded, setExpanded] = useState(defaultExpanded);
 
-  const showBody = !collapsible || expanded;
-  const HeaderContainer = collapsible ? Pressable : View;
-  const headerProps = collapsible
+  // The header is the only toggle, and it needs a title to render. Without one
+  // there is nothing to tap, so the body must stay reachable rather than
+  // stranding its children behind a chevron that was never drawn.
+  const isCollapsible = collapsible && title !== undefined;
+  const showBody = !isCollapsible || expanded;
+  const HeaderContainer = isCollapsible ? Pressable : View;
+  const headerProps = isCollapsible
     ? {
         onPress: () => setExpanded((current) => !current),
         accessibilityRole: 'button' as const,
         accessibilityState: { expanded },
-        accessibilityLabel: `${expanded ? 'Collapse' : 'Expand'} ${title?.toLowerCase()} tasks, ${count ?? 0} items`,
+        accessibilityLabel: `${expanded ? 'Collapse' : 'Expand'} ${title.toLowerCase()} tasks, ${count ?? 0} items`,
       }
     : {};
 
   return (
     <Card variant="outlined" noPadding noMargin style={styles.card}>
       {title ? (
-        <HeaderContainer style={[styles.header, collapsible && styles.headerCollapsible]} {...headerProps}>
+        <HeaderContainer style={[styles.header, isCollapsible && styles.headerCollapsible]} {...headerProps}>
           <SectionLabel>{title}</SectionLabel>
           <View style={styles.headerRight}>
             {count !== undefined ? <Caption>{count}</Caption> : null}
-            {collapsible ? (
+            {isCollapsible ? (
               <Ionicons
                 name={expanded ? 'chevron-down' : 'chevron-forward'}
                 size={18}

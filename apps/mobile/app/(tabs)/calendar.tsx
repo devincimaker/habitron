@@ -93,10 +93,12 @@ export default function CalendarScreen() {
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragHoverDate, setDragHoverDate] = useState<string | null>(null);
   // Dragging a task re-renders this screen every pointer frame, so keep the
-  // date formatting off that path.
+  // date formatting off that path. `today` is a dependency even though the util
+  // reads it itself: without it the label stays on "Today" past midnight.
   const selectedDateLabel = useMemo(
     () => formatRelativeDateLabel(selectedDate),
-    [selectedDate],
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- today is read inside the util
+    [selectedDate, today],
   );
   const headerTitle = useMemo(() => {
     const date = new Date(selectedDate + 'T00:00:00');
