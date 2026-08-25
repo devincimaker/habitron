@@ -22,6 +22,15 @@ that returned zero proves nothing on its own.
   nothing warns you. If this session is standing in the main checkout and the PR
   belongs to a worktree, `cd` into that worktree first, or hand the merge to the
   session that owns it.
+- **The merge deletes the directory you are standing in.** That is the hook
+  working, not a fault — but a session pinned inside the worktree loses its
+  workspace at the moment it succeeds, and everything from Phase 4 on lives in
+  the main checkout: the CI watch, `tmp/autopilot-run.json`, the next
+  `pnpm wt:new`. So drive the worktree with `cd` from a session rooted in the
+  main checkout (the hook reads the merge command's cwd, so `cd <worktree> &&
+  gh pr merge` still fires it), and if the session did enter the worktree, leave
+  it the moment the merge returns. A loop that merges from inside and stays
+  there ends its own run on a green merge.
 - **A browser merge skips the hook entirely.** It only fires on the Bash tool
   call. When you arrive at a PR that is already `MERGED`, skip Phase 3 and do the
   reclaim by hand (Phase 6 covers it).
@@ -95,6 +104,13 @@ Then **read the hook's message before doing anything else.** It reports one of:
 
 The last two are yours to finish. The hook never retries itself.
 
+Then get out of the worktree, before Phase 4 and before anything else. It has
+just been deleted underneath you: a shell still sitting there has no repository,
+`git -C` cannot reach the main checkout from a session pinned to it, and the
+remaining phases all need the main checkout. Returning costs nothing when the
+merge ran via `cd` from the main checkout in the first place — which is why the
+ground rules ask for that.
+
 ## Phase 4 — Watch what the merge started
 
 Merging pushes to `master`, which starts CI again. When the PR touched
@@ -161,5 +177,6 @@ Two follow-ups belong here and nowhere else:
 | "Worktree kept: the PR for '<branch>' is OPEN" | `gh pr merge <n>` merged a *different* PR than this worktree's branch | merge this branch's PR from this worktree, or reclaim by hand |
 | "Could not reclaim … Uncommitted work" | uncommitted work in the worktree | commit or stash it, then `pnpm wt:rm <branch>` |
 | PR already `MERGED` on arrival | merged in the browser, so no hook fired | skip Phase 3; run Phases 4 to 6, reclaiming by hand |
+| `fatal: not a git repository` right after the merge | the session was pinned inside the worktree the hook just deleted | the merge landed. `gh` still works with an explicit `-R devincimaker/habitron`, which needs no repository — confirm the state that way, then return to the main checkout and finish Phases 4 to 6 from there |
 | `deploy` job failed | migrations did not reach production | read the run log; fix forward with a new migration. Never `db push` to production by hand |
 | Anything database-shaped, or a `wt:*` refusal | a guard fired | invoke the **`wt`** skill; it has every refusal and its remedy. Do not work around one |
