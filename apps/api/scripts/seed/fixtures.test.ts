@@ -52,6 +52,29 @@ describe('buildFixtures', () => {
     expect(fixtures.habitLogs.filter((log) => log.habit === 'Meditate')).toHaveLength(7);
   });
 
+  it('tags the four visible tasks with the four hues the chip design was checked against', () => {
+    expect(fixtures.tags).toEqual([
+      { name: 'admin', color: '#FFD54F' },
+      { name: 'health', color: '#AED581' },
+      { name: 'work', color: '#9575CD' },
+      { name: 'errands', color: '#26A69A' },
+    ]);
+
+    const tagged = fixtures.tasks.filter((task) => task.tag);
+    expect(tagged.map((task) => [task.title, task.tag])).toEqual([
+      ['Renew car insurance', 'admin'],
+      ['Call the dentist', 'health'],
+      ['Write weekly review', 'work'],
+      ['Buy oat milk', 'errands'],
+    ]);
+
+    // Every tag a task names has to exist, or the seed cannot resolve its id.
+    const names = new Set(fixtures.tags.map((tag) => tag.name));
+    for (const task of tagged) {
+      expect(names.has(task.tag as string), task.title).toBe(true);
+    }
+  });
+
   it('names a section that exists for every habit', () => {
     const sections = new Set(fixtures.sections.map((section) => section.name));
     for (const habit of fixtures.habits) {

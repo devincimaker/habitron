@@ -14,9 +14,9 @@ import {
   getEstimateDelta,
   incrementDuration,
 } from '../utils/todoEstimate';
-import { getTodoTagTintColor } from '../utils/todoTagColors';
+import { getTodoTagChipColors } from '../utils/todoTagColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
-import { useThemedStyles } from '../hooks/useColors';
+import { useColorTheme, useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 
 export interface TaskStatusToggleOptions {
@@ -65,6 +65,8 @@ export function TaskRow({
   isDragging = false,
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const colorTheme = useColorTheme();
+  const tagChip = getTodoTagChipColors(todo.tag?.color, colorTheme);
   const rowRef = useRef<View>(null);
   const swipeableRef = useRef<Swipeable>(null);
   const setChecklistItemDone = useTodosStore((state) => state.setChecklistItemDone);
@@ -362,15 +364,12 @@ export function TaskRow({
                     <View
                       style={[
                         styles.tagPill,
-                        todo.tag.color
-                          ? {
-                              backgroundColor: getTodoTagTintColor(todo.tag.color, '1F'),
-                              borderColor: getTodoTagTintColor(todo.tag.color, '3D'),
-                            }
+                        tagChip
+                          ? { backgroundColor: tagChip.background, borderColor: 'transparent' }
                           : undefined,
                       ]}
                     >
-                      <Caption color={todo.tag.color ?? colors.textSecondary}>{todo.tag.name}</Caption>
+                      <Caption color={tagChip?.label ?? colors.textSecondary}>{todo.tag.name}</Caption>
                     </View>
                   ) : (
                     <Caption>#{todo.tag.name}</Caption>
@@ -582,11 +581,15 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   tagPill: {
     borderRadius: BORDER_RADIUS.full,
+    // A tag with no colour keeps this outline: the coach's create_tag stores
+    // color as null, and surface-on-background is ~1.05:1, so without it the
+    // pill has no visible shape at all. A coloured chip overrides the border to
+    // transparent rather than dropping the width, so both are the same height.
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   swipeActionsContainer: {
     width: SWIPE_ACTION_WIDTH * 2,

@@ -18,6 +18,13 @@ export interface SeedTask {
   priority?: Priority;
   estimateMinutes?: number;
   checklist?: string[];
+  /** Names a tag in `tags`; the chip on a compact row is drawn from its colour. */
+  tag?: string;
+}
+
+export interface SeedTag {
+  name: string;
+  color: string;
 }
 
 export interface SeedHabit {
@@ -46,6 +53,7 @@ export interface SeedJournalEntry {
 
 export interface SeedFixtures {
   tasks: SeedTask[];
+  tags: SeedTag[];
   sections: { name: string; sortOrder: number }[];
   habits: SeedHabit[];
   habitLogs: SeedHabitLog[];
@@ -65,14 +73,23 @@ export const HABIT_START_DAYS_AGO = 30;
 export function buildFixtures(today: string): SeedFixtures {
   const day = (offset: number) => addDays(today, offset);
 
+  // The four hues the chip design was checked against, spread over the tasks the
+  // Calendar and Tasks tabs both show, so a visual proof always has chips on screen.
+  const tags: SeedTag[] = [
+    { name: 'admin', color: '#FFD54F' },
+    { name: 'health', color: '#AED581' },
+    { name: 'work', color: '#9575CD' },
+    { name: 'errands', color: '#26A69A' },
+  ];
+
   const tasks: SeedTask[] = [
     // Overdue: open, due in the past, and scheduled — all three are what the
     // Calendar tab's overdue partition requires.
-    { title: 'Renew car insurance', dueDate: day(-2), scheduledDate: day(-2), status: 'open', priority: 1 },
-    { title: 'Call the dentist', dueDate: day(-1), scheduledDate: day(-1), status: 'open' },
+    { title: 'Renew car insurance', dueDate: day(-2), scheduledDate: day(-2), status: 'open', priority: 1, tag: 'admin' },
+    { title: 'Call the dentist', dueDate: day(-1), scheduledDate: day(-1), status: 'open', tag: 'health' },
     // Today, open
-    { title: 'Write weekly review', dueDate: today, scheduledDate: today, status: 'open', estimateMinutes: 30 },
-    { title: 'Buy oat milk', dueDate: today, scheduledDate: today, status: 'open', checklist: ['oat milk', 'bananas'] },
+    { title: 'Write weekly review', dueDate: today, scheduledDate: today, status: 'open', estimateMinutes: 30, tag: 'work' },
+    { title: 'Buy oat milk', dueDate: today, scheduledDate: today, status: 'open', checklist: ['oat milk', 'bananas'], tag: 'errands' },
     // Today, completed
     { title: 'Pay electricity bill', dueDate: today, scheduledDate: today, status: 'completed', completedAt: at(today, '09:10') },
     { title: 'Book flights', dueDate: today, scheduledDate: today, status: 'completed', completedAt: at(today, '11:40') },
@@ -110,6 +127,7 @@ export function buildFixtures(today: string): SeedFixtures {
 
   return {
     tasks,
+    tags,
     sections: [
       { name: 'Morning', sortOrder: 0 },
       { name: 'Afternoon', sortOrder: 1 },
