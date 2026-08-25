@@ -170,7 +170,7 @@ it here when it is the same kind of work, otherwise raise a Linear issue.
 
 ## 9. The gate, and verification that matches the change
 
-`pnpm typecheck && pnpm lint && pnpm test && pnpm knip` before a PR, and after
+`pnpm typecheck && pnpm lint && pnpm knip && pnpm test` before a PR, and after
 logic changes. Not after every four-word edit. Say what you skipped.
 
 Two conventions the gate enforces beyond the obvious:
@@ -182,9 +182,10 @@ Two conventions the gate enforces beyond the obvious:
 - **`pnpm knip`** resolves the whole import graph and finds dead files, dead
   exports and unused dependencies — the question ESLint cannot answer, since it
   sees one file at a time. Configured in `knip.json`. A symbol it reports is
-  deleted, or loses its `export` when its own file still uses it; `knip.json`
-  masks only code that is genuinely reached without an import, and says why on
-  every entry.
+  deleted, or loses its `export` when its own file still uses it. `knip.json`
+  masks two things and nothing else, each saying why on its own entry: code that
+  really is reached without an import, and — like a `max-lines` disable — code
+  parked on purpose, named with the issue that will delete it or use it.
 
 | The change is… | The proof is… |
 | --- | --- |
