@@ -1,7 +1,7 @@
 ---
 name: autopilot
 description: Drain Linear's Ready state without supervision — one looped agent takes the smallest unblocked issue from spec to merged master or a parked PR, tick after tick, while the user keeps speccing issues into Ready. Use when the user runs /autopilot, /autopilot sweep to file candidates, /autopilot ready 88 83 to spec-check and promote issues, or /loop /autopilot to run continuously.
-argument-hint: "[sweep | ready <numbers> | status | stop]"
+argument-hint: "[sweep | ready <numbers> [--next] | next <number> | status | stop]"
 ---
 
 # /autopilot — one Ready issue, landed, then stop
@@ -39,6 +39,13 @@ with itself, and every one of them is load-bearing:
 - **Scope discipline.** A tick does not fix the interesting thing next door. Not
   about risk — about the revert staying meaningful.
 
+The test for a new guard, when one is tempting: does it protect the revert, the
+gate, or the honesty of a claim? Then it belongs. Does it forbid a *technique*
+because the technique could be done carelessly? Then it does not — require the
+proof instead and let the tick work. A loop allowed to touch only what is
+trivially safe runs out of useful work long before the queue does, and an
+over-broad refusal ends a run exactly as dead as a bad merge does.
+
 ## Ground rules
 
 - **Ready is the mandate.** Work only on issues in `Ready`. Never invent a
@@ -61,8 +68,8 @@ with itself, and every one of them is load-bearing:
 - **Merge by default, park by exception.** A tick merges itself when the gate is
   green and the review pass is clean or its confirmed findings were fixed in
   scope. It parks only when it is genuinely stuck, when a confirmed finding
-  cannot be fixed inside scope, when the migration is destructive, or when the
-  issue carries a `park` tag.
+  *in this diff* cannot be fixed inside scope, when the migration is
+  destructive, or when the issue carries a `park` tag.
 - **Spend nothing on a reader who is not there.** A tick that merges itself is
   read by nobody. Proof that catches a regression stays, always. Proof shaped
   for a human — a before/after pair, a recap page — happens only where review
@@ -138,10 +145,12 @@ screen's spacing, colour or layout when the issue says so. A bad visual change
 is one `git revert`. What it may not do is decide the design — a change the
 issue did not describe is out of scope, however obvious it looks on screen.
 
-**The screen must be reachable by a deep link** (`habits-coach://tasks`,
-`habits-coach://session?autoPrompt=review-day`, …). If getting there needs a tap
-chain, say so on the issue and refuse. Blind tap chains drift, and an unattended
-tick has nobody to notice.
+**Any screen the app can reach, a tick can reach.** Prefer a deep link where one
+exists (`habits-coach://tasks`, `habits-coach://session?autoPrompt=review-day`,
+…) — it is faster and one fewer thing to assert. Where none does, navigate: tap
+by accessibility label, one step at a time, reading the screen back after each.
+What a tick may never do is *claim* a screen it did not confirm it was on. Phase
+5 says what confirming means.
 
 ### Class C — extract
 
@@ -219,8 +228,13 @@ behaves.
    `blocked by` relation not `Done`). **None left?** That is an idle tick, not a
    stop: narrate `[idle] nothing Ready · N blocked behind <issue>`,
    `ScheduleWakeup` with `noop: true` and 1200–1800s, and end the invocation.
-5. Take the smallest unblocked issue — class ascending A→D, then priority, then
-   oldest — and move it to **In Progress** (state id
+5. Take the first unblocked issue in this order: **anything carrying the `next`
+   label**, then class ascending A→D, then priority, then oldest. `next` is the
+   user's pin — it exists so "do this one first" is a label and not a plea, and
+   it outranks class because the user has already weighed the size. Two `next`
+   issues fall back to the rest of the order. Remove the label when the issue
+   leaves Ready (Phase 8), so it never lingers as a stale pin. Move the pick to
+   **In Progress** (state id
    `50df3fb4-1360-4f1c-9134-530709806d5d`; re-resolve with
    `list_issue_statuses` if that fails). A **checklist issue** already In
    Progress is takeable and sorts by its top unchecked row.
@@ -308,8 +322,23 @@ behaviour stated.
 **B and D, when the proof is a screenshot**: `pnpm dev` in the foreground, never
 piped through `tail`/`head`. Confirm readiness by probe (`lsof -ti
 :$WT_EXPO_PORT`, `xcrun simctl list devices booted`), not by exit code. Apply the
-change, wait for fast refresh, deep-link to the screen, and screenshot **the
+change, wait for fast refresh, navigate to the screen, and screenshot **the
 result**. One pass, one shot.
+
+**A screenshot is proof only if the tick can name what it asserted about the
+screen before taking it.** Get there however the screen is reachable — a deep
+link when one exists, otherwise `sim.py tap "<label>"`, as many steps as it
+takes. Before the shot counts, read the screen back (`sim.py ls`) and confirm an
+element that appears **only** on the target screen; name that element in the PR
+body beside the image. Reaching a screen is ordinary work. Claiming you reached
+it is the part you earn.
+
+The guard is deliberately about the claim and not the technique. A tap that
+lands 20pt off, a modal that swallowed it, a list that scrolled — each of those
+is invisible in the resulting image and obvious in the assertion. What to refuse
+is a step that cannot be checked this way: nothing stably labelled to tap
+toward, or nothing unique on the target screen to assert. Name which one on the
+issue (Phase 6).
 
 No stash, no before/after pair on a tick that merges itself. The shot proves the
 screen still renders and the change landed where the issue said; the *comparison*
@@ -318,10 +347,13 @@ hiding it: a merged visual change leaves no published picture of itself, and its
 rollback is the `git revert` the squash guarantees. Parking turns the pair back
 on (Phase 7).
 
-The `simulator-driving` skill owns the two blockers that trap an unattended tick
-(the Expo dev-menu sheet, the SpringBoard "Open in Habits Coach?" alert). If the
-simulator stops responding, invoke it rather than improvising taps. If it is
-still stuck after that, refuse — do not merge a visual PR blind.
+The `simulator-driving` skill owns both the two blockers that trap an unattended
+tick (the Expo dev-menu sheet, the SpringBoard "Open in Habits Coach?" alert)
+and the label-tapping and screen-reading the rule above depends on — `simctl`
+cannot tap, `idb` can, and `sim.py` knows an alert from a label. Invoke it
+rather than improvising coordinates. A simulator still unresponsive after it has
+had a go is a broken tool rather than hard navigation: refuse, and do not merge
+a visual PR blind.
 
 ## Phase 6 — Refuse, when refusing is right
 
@@ -329,7 +361,9 @@ Refuse and move on, never soldier through, when:
 
 - the issue needs schema it never named, or tests need a database it never
   planned for;
-- a visual target needs a tap chain, or the simulator will not cooperate;
+- a screen cannot be positively identified — nothing stably labelled to tap
+  toward, or nothing unique on it to assert — or the simulator will not
+  cooperate after `simulator-driving` has had a go;
 - the honest fix is a design decision the issue did not make;
 - the gate fails for a reason outside this issue (`master` was already red);
 - the diff is drifting past the issue — two concerns, or a third file you did not
@@ -360,8 +394,8 @@ follow-ups, no "left alone", no future work. It ends with `## See it working`
 
 - **A**: the swap, and that it is value-identical — each literal and the token
   that already held it.
-- **B**: the test and its before/after, or the deep link, the simulator, and what
-  changed.
+- **B**: the test and its before/after, or the route taken to the screen, the
+  element asserted on it, the simulator, and what changed.
 - **C**: the test file and the cases, named.
 - **D**: the issue's proof section, delivered item by item. Schema ticks name the
   migration and the branch database it was applied on.
@@ -381,7 +415,11 @@ review confirms:
 
 - confirmed and inside the issue's scope: fix it now, re-run the gate, push, and
   let the merge wait on the new head's CI run;
-- confirmed and outside the scope: **park** — never widen the diff to chase it;
+- confirmed, but in code this PR did not touch: **file it in `Backlog` and
+  merge**. A finding next door does not make this diff wrong, and parking a
+  correct PR over it stalls the queue for nothing;
+- confirmed, inside this diff, and not fixable within the issue's scope:
+  **park** — never widen the diff to chase it;
 - unconfirmed: drop it.
 
 Then invoke the **`merge`** skill with the PR number, **from inside the
@@ -401,8 +439,8 @@ If `/merge` stops at its gate, that is a refusal: Phase 6, with its reason.
 
 **To park instead of merging**: this is the one path that ends with a reader, so
 it is the one path that pays for a picture. When the change is visual, stash it
-and screenshot the same deep link to get the **before**, and pair it with Phase
-5's result shot. (The worktree is still standing, which is what keeps that before
+and retrace the same route to get the **before**, and pair it with Phase 5's
+result shot. (The worktree is still standing, which is what keeps that before
 shot reachable this late.) Leave the PR open with its proof complete and a
 comment naming the reason — the confirmed finding, the destructive migration, or
 the issue's `park` tag; move the issue to **In Review** with the same comment;
@@ -415,7 +453,7 @@ or cancels it.
 ## Phase 8 — Record and hand back
 
 1. Append to `landed` (or `parked`), reset `consecutiveRefusals` to 0, write
-   `tmp/autopilot-run.json`. For a checklist issue, append the row rather than
+   `tmp/autopilot-run.json`. If the issue carried `next`, remove the label now. For a checklist issue, append the row rather than
    the issue, and leave the issue In Progress until its last row is ticked.
 2. One line per tick, so the loop reads back as a list:
    `[HAB-88 · B · tick 3] merged #71 · composer clears on echo · jest + one shot`
@@ -430,8 +468,12 @@ or cancels it.
 
 Not part of a tick. Run whenever the user wants candidates.
 
-1. Sweep for candidates of classes A–C. (A sweep cannot write a class D issue —
-   those are authored with the user.) The cheap measurements:
+1. Sweep for candidates of any class, class D included. A sweep files into
+   `Backlog`, which is a proposal and not an approval, and `/autopilot ready`
+   already rejects a D issue missing what-to-change, how-it-is-proved or
+   what-not-to-touch. Write those three sections where the sweep can; file it
+   with the missing one named where it cannot, so the user fills the gap
+   instead of the queue losing the idea. The cheap measurements:
    `grep -rnE "borderRadius: [0-9]|padding[A-Za-z]*: [0-9]|margin[A-Za-z]*: [0-9]"`
    under `apps/mobile`, cross-referenced against `apps/mobile/constants/theme.ts`;
    components with branching logic and no `utils/`; suites that cover one happy
@@ -470,8 +512,13 @@ team prefix, full ids are accepted too.
    change, and the expected clock, plus the rejects and why. End with the
    command: `/loop /autopilot`.
 
+`/autopilot ready 115 --next` (or `next 115` on its own, for an issue already in
+Ready) applies the `next` label so the next tick takes that issue before
+anything else. It is the answer to "bump this up" — never retitle an issue to a
+smaller class to jump the queue.
+
 ## `/autopilot status` / `stop`
 
-`status`: print the `Ready` list with blocked flags, the issue in `In Progress`
-if any, and the run file. No work. `stop`: `ScheduleWakeup` with `stop: true` and
+`status`: print the `Ready` list in pick order, with blocked flags and the
+`next` pin marked, the issue in `In Progress` if any, and the run file. No work. `stop`: `ScheduleWakeup` with `stop: true` and
 print the Phase 8 summary.
