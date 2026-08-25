@@ -1,0 +1,47 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+
+  // Dead-code detection for the whole workspace. ESLint sees one file at a time,
+  // so it catches an unused local and nothing else; knip resolves the whole
+  // import graph and answers the question ESLint cannot: is anything still
+  // reaching this?
+  //
+  // Everything excluded below is code that *is* reached, just not through an
+  // import knip can follow. Real dead code is deleted (AGENTS.md §2), never
+  // masked here.
+
+  "workspaces": {
+    ".": {
+      // Deno edge functions, deployed to Supabase and invoked by pg_cron —
+      // see 20260202000002_add_notification_cron_jobs.sql, which schedules
+      // send-scheduled-notifications, schedule-daily-reminders and
+      // check-pending-habits through invoke_edge_function(). Nothing in this
+      // repo imports them, so without this line all three read as dead.
+      "entry": ["supabase/functions/**/index.ts"]
+    },
+
+    "apps/mobile": {
+      "ignoreDependencies": [
+        // Inferred by knip's Expo plugin from app.json keys rather than from
+        // any import, and neither is installed: `userInterfaceStyle` implies
+        // expo-system-ui, an EAS project id implies expo-updates. The app
+        // builds without them. Worth revisiting if Android ever ships, since
+        // expo-system-ui is what applies `userInterfaceStyle` there.
+        "expo-updates",
+        "expo-system-ui"
+      ]
+    }
+  },
+
+  "ignoreDependencies": [
+    // The @sentry/react-native/expo plugin (apps/mobile/app.json) shells out to
+    // it during an EAS build so production builds embed the JS bundle. Nothing
+    // imports it, and nothing should.
+    "@sentry/cli"
+  ],
+
+  // The Supabase CLI is deliberately not a dependency: CI pins it with
+  // supabase/setup-cli and locally it comes from npx. Declaring it in
+  // package.json would give us a second version to keep in sync with that pin.
+  "ignoreBinaries": ["supabase"]
+}

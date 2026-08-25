@@ -24,12 +24,15 @@
     "db:push": "supabase db push",
     "db:reset": "supabase db reset",
     "db:diff": "supabase db diff",
-    "db:new": "supabase migration new"
+    "db:new": "supabase migration new",
+    "knip": "knip"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "eslint": "^9",
     "eslint-plugin-react-hooks": "^5",
     "globals": "^17.11.0",
+    "knip": "^6.32.2",
     "turbo": "^2.3.3",
     "typescript-eslint": "^8"
   }

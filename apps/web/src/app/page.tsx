@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 const APP_STORE_URL = 'https://apps.apple.com/app/habits-coach/id000000000';
 
 function AppStoreButton({ variant = 'dark' }: { variant?: 'dark' | 'light' }) {

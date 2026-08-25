@@ -41,7 +41,6 @@ interface StreakResult {
  */
 function computeStreaks(habit: Habit, logsByDate: Map<string, HabitLogRecord>, start: string, end: string): StreakResult {
   const flexible = habit.frequency === 'weekly' && !habit.weeklyDays?.length;
-  let current = 0;
   let longest = 0;
   let run = 0;
   let lastCompleted: string | undefined;
@@ -62,8 +61,7 @@ function computeStreaks(habit: Habit, logsByDate: Map<string, HabitLogRecord>, s
     }
     // On the last day (today) a pending scheduled habit doesn't break the streak yet.
   }
-  current = run;
-  return { current, longest, lastCompleted };
+  return { current: run, longest, lastCompleted };
 }
 
 export async function buildHabitHistory(db: Db, timezone: string, args: { days: number; habitId?: string }) {

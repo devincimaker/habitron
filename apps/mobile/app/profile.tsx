@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, FlatList, Modal } from 'react-native';
 import { useRouter } from 'expo-router';

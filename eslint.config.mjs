@@ -50,6 +50,13 @@ export default tseslint.config(
       // which is the class of bug that actually ships here.
       'no-constant-binary-expression': 'error',
       eqeqeq: ['error', 'smart'],
+      // A file over 300 lines is doing more than one thing. Code only: this
+      // codebase comments heavily and that should never push a file over. A
+      // file that cannot come under it carries a file-level disable naming the
+      // issue that will, so the exception has an owner and an end. Styles stay
+      // co-located; moving them out to duck the cap moves lines without
+      // splitting the file that is doing too much.
+      'max-lines': ['error', { max: 300, skipBlankLines: true, skipComments: true }],
     },
   },
 
@@ -80,6 +87,9 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-require-imports': 'off',
+      // A suite is a flat list of independent cases. Length is not the
+      // complexity max-lines exists to catch.
+      'max-lines': 'off',
     },
   },
 

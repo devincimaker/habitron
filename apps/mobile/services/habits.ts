@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 import { supabase } from './supabase';
 import {
   HABIT_DEFAULT_SECTION_NAMES,

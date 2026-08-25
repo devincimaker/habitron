@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import type { Db, PlanItemInput } from './db.js';

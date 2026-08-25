@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 import React, {
   forwardRef,
   useCallback,

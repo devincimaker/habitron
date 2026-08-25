@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 // User Profile types
 export interface UserProfile {
   id: string;

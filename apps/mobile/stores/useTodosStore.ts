@@ -1,3 +1,4 @@
+/* eslint-disable max-lines -- HAB-89: split pending */
 import { create } from 'zustand';
 import type { Todo, TodoDraft, TodoList, TodoStatus, TodoTag } from '@habits-coach/shared';
 import { normalizeChecklistDraft } from '@habits-coach/shared';
