@@ -154,9 +154,9 @@ The rest of this phase is for the first case.
    conversation. Call `EnterPlanMode` when the change is big enough that a
    written plan is worth reviewing, or whenever the user asks.
 5. **Close by naming what comes next**, briefly: the gate
-   (`pnpm turbo typecheck lint test`), the `## See it working` section every
-   user-visible PR needs, and that the merge hook reclaims this worktree
-   automatically once the PR is merged.
+   (`pnpm typecheck && pnpm lint && pnpm knip && pnpm test`), the
+   `## See it working` section every user-visible PR needs, and that the merge
+   hook reclaims this worktree automatically once the PR is merged.
 
 ## When something goes wrong
 

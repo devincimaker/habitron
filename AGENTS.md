@@ -53,6 +53,7 @@ pnpm dev          # mobile app + API, on this checkout's ports and simulator
 pnpm typecheck    # tsc across every package
 pnpm lint         # eslint, one flat config at the root
 pnpm test         # jest (mobile) + vitest (api, mcp)
+pnpm knip         # dead files, exports and dependencies, across the import graph
 ```
 
 `pnpm dev` reads `apps/mobile/.env` for `IOS_SIMULATOR` and `EXPO_PORT` and

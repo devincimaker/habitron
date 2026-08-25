@@ -52,12 +52,14 @@
   // The Supabase CLI is deliberately not a dependency: CI pins it with
   // supabase/setup-cli and locally it comes from npx. Declaring it in
   // package.json would give us a second version to keep in sync with that pin.
-  "ignoreBinaries": ["supabase"],
-
-  // Not set, and worth knowing: knip's default `includeEntryExports: false`
-  // means a symbol re-exported from a package barrel is never checked. So
-  // packages/shared and packages/habitron's public surfaces sit outside this
-  // report — `pnpm knip --include-entry-exports` finds 29 there. HAB-132 owns
-  // turning it on, which is the only way "the whole import graph" is true.
-  "includeEntryExports": false
+  // Deliberately not set, and worth knowing: knip's default
+  // `includeEntryExports: false` means a symbol re-exported from a package
+  // barrel is never checked, so packages/shared and packages/habitron's public
+  // surfaces sit outside this report — `pnpm knip --include-entry-exports`
+  // finds 29 there. Writing the key in explicitly, even as `false`, would be
+  // worse than leaving it out: a value in the config overrides that flag, so
+  // the one command that reveals the gap would silently report clean.
+  // HAB-132 owns turning it on, which is the only way "the whole import graph"
+  // is true.
+  "ignoreBinaries": ["supabase"]
 }
