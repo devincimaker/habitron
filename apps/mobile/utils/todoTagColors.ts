@@ -26,6 +26,8 @@ export const TAG_CHIP_MIN_CONTRAST = 4.5;
 const CHIP_FILL_ALPHA = { light: 0.45, dark: 0.35 } as const;
 
 type Rgb = readonly [number, number, number];
+/** Distinct from Rgb so the two triples cannot be swapped silently. */
+type Hsl = readonly [number, number, number];
 export type TagChipTheme = 'light' | 'dark';
 
 function hashTagName(value: string) {
@@ -59,7 +61,7 @@ function toHex([r, g, b]: Rgb): string {
     .join('')}`;
 }
 
-function toHsl([r, g, b]: Rgb): Rgb {
+function toHsl([r, g, b]: Rgb): Hsl {
   const red = r / 255;
   const green = g / 255;
   const blue = b / 255;
@@ -79,7 +81,7 @@ function toHsl([r, g, b]: Rgb): Rgb {
   return [hue * 60, saturation * 100, lightness * 100];
 }
 
-function fromHsl([h, s, l]: Rgb): Rgb {
+function fromHsl([h, s, l]: Hsl): Rgb {
   const hue = ((h % 360) + 360) % 360;
   const saturation = s / 100;
   const lightness = l / 100;

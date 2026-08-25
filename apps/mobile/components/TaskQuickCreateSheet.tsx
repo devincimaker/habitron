@@ -434,9 +434,6 @@ const createStyles = (colors: Colors) =>
       paddingVertical: SPACING.xs,
     },
     tagSuggestionButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: SPACING.sm,
       paddingHorizontal: SPACING.md,
       paddingVertical: 10,
       marginHorizontal: SPACING.xs,
