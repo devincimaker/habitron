@@ -19,7 +19,6 @@ import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
-import { SectionHeader } from '../../components/SectionHeader';
 import {
   TaskRow,
   type TaskStatusToggleOptions,
@@ -27,8 +26,9 @@ import {
   type TaskRowDragStartEvent,
 } from '../../components/TaskRow';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
+import { TaskSectionCard } from '../../components/TaskSectionCard';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
-import { Card } from '../../components/ui';
+import { Caption } from '../../components/ui';
 import {
   BORDER_RADIUS,
   SHADOWS,
@@ -273,26 +273,24 @@ export default function CalendarScreen() {
     [getCalendarDropDate, rescheduleTodo]
   );
 
-  const renderTaskCard = useCallback(
-    (items: Todo[], keyPrefix?: string) => (
-      <Card variant="outlined">
-        {items.map((todo) => (
-          <TaskRow
-            key={keyPrefix ? `${keyPrefix}-${todo.id}` : todo.id}
-            todo={todo}
-            variant="compact"
-            onToggleStatus={handleToggleTodoStatus}
-            onRemove={removeTodo}
-            onEdit={openTaskEditor}
-            onReschedule={setReschedulingTodo}
-            onDragStart={handleTaskDragStart}
-            onDragMove={handleTaskDragMove}
-            onDragEnd={handleTaskDragEnd}
-            isDragging={dragState?.todo.id === todo.id}
-          />
-        ))}
-      </Card>
-    ),
+  const renderTaskRows = useCallback(
+    (items: Todo[], keyPrefix?: string) =>
+      items.map((todo, index) => (
+        <TaskRow
+          key={keyPrefix ? `${keyPrefix}-${todo.id}` : todo.id}
+          todo={todo}
+          variant="compact"
+          isLast={index === items.length - 1}
+          onToggleStatus={handleToggleTodoStatus}
+          onRemove={removeTodo}
+          onEdit={openTaskEditor}
+          onReschedule={setReschedulingTodo}
+          onDragStart={handleTaskDragStart}
+          onDragMove={handleTaskDragMove}
+          onDragEnd={handleTaskDragEnd}
+          isDragging={dragState?.todo.id === todo.id}
+        />
+      )),
     [
       dragState?.todo.id,
       handleTaskDragEnd,
@@ -340,36 +338,31 @@ export default function CalendarScreen() {
           }
         >
           {overdueTodos.length > 0 ? (
-            <>
-              <SectionHeader
-                title="Overdue"
-                subtitle="Scheduled earlier and still open"
-              />
-              {renderTaskCard(overdueTodos, 'overdue')}
-            </>
+            <TaskSectionCard title="Overdue">
+              {renderTaskRows(overdueTodos, 'overdue')}
+            </TaskSectionCard>
           ) : null}
 
-          <SectionHeader
-            title="Tasks"
-            subtitle={
-              selectedDate === today
-                ? 'Scheduled for today'
-                : `Scheduled for ${formatRelativeDateLabel(selectedDate)}`
-            }
-          />
-
-          {openScheduledTodos.length > 0 ? (
-            renderTaskCard(openScheduledTodos)
-          ) : null}
+          <TaskSectionCard title={formatRelativeDateLabel(selectedDate)}>
+            {openScheduledTodos.length > 0 ? (
+              renderTaskRows(openScheduledTodos)
+            ) : (
+              <Caption style={styles.emptySection}>
+                Nothing scheduled — tap + to add one.
+              </Caption>
+            )}
+          </TaskSectionCard>
 
           {completedScheduledTodos.length > 0 ? (
-            <>
-              <SectionHeader
-                title="Completed"
-                subtitle="Things already closed out for this day"
-              />
-              {renderTaskCard(completedScheduledTodos, 'completed')}
-            </>
+            <TaskSectionCard
+              title="Completed"
+              count={completedScheduledTodos.length}
+              collapsible
+              defaultExpanded
+              dimContent
+            >
+              {renderTaskRows(completedScheduledTodos, 'completed')}
+            </TaskSectionCard>
           ) : null}
         </ScrollView>
 
@@ -466,6 +459,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   content: {
     paddingTop: SPACING.sm,
+  },
+  emptySection: {
+    paddingVertical: SPACING.sm,
   },
   fab: {
     position: 'absolute',

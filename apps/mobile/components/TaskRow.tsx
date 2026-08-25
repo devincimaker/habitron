@@ -48,6 +48,8 @@ interface TaskRowProps {
   onDragMove?: (todo: Todo, event: TaskRowDragMoveEvent) => void;
   onDragEnd?: (todo: Todo, event: TaskRowDragMoveEvent) => void;
   isDragging?: boolean;
+  /** The card draws its own border, so the last row's hairline would double it. */
+  isLast?: boolean;
 }
 
 const SWIPE_ACTION_WIDTH = 72;
@@ -63,6 +65,7 @@ export function TaskRow({
   onDragMove,
   onDragEnd,
   isDragging = false,
+  isLast = false,
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const colorTheme = useColorTheme();
@@ -279,6 +282,7 @@ export function TaskRow({
           style={[
             styles.taskRow,
             isCompact && styles.compactTaskRow,
+            isLast && styles.lastTaskRow,
             isDragging && styles.draggingRow,
           ]}
         >
@@ -466,6 +470,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.border,
+  },
+  lastTaskRow: {
+    borderBottomWidth: 0,
   },
   compactTaskRow: {
     paddingVertical: 10,

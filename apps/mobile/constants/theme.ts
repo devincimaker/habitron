@@ -115,6 +115,7 @@ export const TYPOGRAPHY = {
   bodyMedium: { fontSize: 14, fontWeight: "400" as const, lineHeight: 22 },
   bodySmall: { fontSize: 12, fontWeight: "400" as const, lineHeight: 18 },
   label: { fontSize: 14, fontWeight: "500" as const, lineHeight: 20 },
+  sectionLabel: { fontSize: 15, fontWeight: "600" as const, lineHeight: 20 },
   caption: { fontSize: 12, fontWeight: "400" as const, lineHeight: 16 },
 } as const;
 

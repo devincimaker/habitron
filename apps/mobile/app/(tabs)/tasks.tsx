@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- HAB-89: split pending */
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Tabs } from 'expo-router';
 import {
@@ -15,9 +14,10 @@ import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
+import { TaskSectionCard } from '../../components/TaskSectionCard';
 import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
-import { BodyLarge, BodyMedium, Card } from '../../components/ui';
+import { BodyMedium, Card } from '../../components/ui';
 import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
@@ -79,7 +79,6 @@ export default function TasksScreen() {
   const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
-  const [isCompletedExpanded, setIsCompletedExpanded] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const openTodos = useMemo(
     () =>
@@ -178,8 +177,8 @@ export default function TasksScreen() {
           }
         >
           {openTodos.length > 0 ? (
-            <Card variant="outlined">
-              {openTodos.map((todo) => (
+            <TaskSectionCard>
+              {openTodos.map((todo, index) => (
                 <TaskRow
                   key={todo.id}
                   todo={todo}
@@ -188,11 +187,12 @@ export default function TasksScreen() {
                   onEdit={openTaskEditor}
                   onReschedule={setReschedulingTodo}
                   variant="compact"
+                  isLast={index === openTodos.length - 1}
                 />
               ))}
-            </Card>
+            </TaskSectionCard>
           ) : (
-            <Card variant="surface">
+            <Card variant="surface" style={styles.emptyCard}>
               <BodyMedium>
                 No open tasks right now. Add one here and schedule it later if you need to.
               </BodyMedium>
@@ -200,53 +200,26 @@ export default function TasksScreen() {
           )}
 
           {completedTodos.length > 0 ? (
-            <Card
-              variant="outlined"
-              noPadding
-              style={styles.completedCard}
+            <TaskSectionCard
+              title="Completed"
+              count={completedTodos.length}
+              collapsible
+              defaultExpanded={false}
+              dimContent
             >
-              <Pressable
-                style={styles.completedHeader}
-                onPress={() => setIsCompletedExpanded((current) => !current)}
-                accessibilityRole="button"
-                accessibilityLabel={
-                  isCompletedExpanded
-                    ? `Collapse completed tasks, ${completedTodos.length} items`
-                    : `Expand completed tasks, ${completedTodos.length} items`
-                }
-              >
-                <BodyLarge color={colors.textLight} style={styles.completedTitle}>
-                  Completed
-                </BodyLarge>
-
-                <View style={styles.completedHeaderRight}>
-                  <BodyLarge color={colors.textLight} style={styles.completedCount}>
-                    {completedTodos.length}
-                  </BodyLarge>
-                  <Ionicons
-                    name={isCompletedExpanded ? 'chevron-down' : 'chevron-forward'}
-                    size={22}
-                    color={colors.textLight}
-                  />
-                </View>
-              </Pressable>
-
-              {isCompletedExpanded ? (
-                <View style={styles.completedContent}>
-                  {completedTodos.map((todo) => (
-                    <TaskRow
-                      key={`completed-${todo.id}`}
-                      todo={todo}
-                      onToggleStatus={handleToggleTodoStatus}
-                      onRemove={removeTodo}
-                      onEdit={openTaskEditor}
-                      onReschedule={setReschedulingTodo}
-                      variant="compact"
-                    />
-                  ))}
-                </View>
-              ) : null}
-            </Card>
+              {completedTodos.map((todo, index) => (
+                <TaskRow
+                  key={`completed-${todo.id}`}
+                  todo={todo}
+                  onToggleStatus={handleToggleTodoStatus}
+                  onRemove={removeTodo}
+                  onEdit={openTaskEditor}
+                  onReschedule={setReschedulingTodo}
+                  variant="compact"
+                  isLast={index === completedTodos.length - 1}
+                />
+              ))}
+            </TaskSectionCard>
           ) : null}
         </ScrollView>
 
@@ -308,35 +281,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   content: {
     paddingTop: SPACING.sm,
   },
-  completedCard: {
+  emptyCard: {
     marginHorizontal: SPACING.md,
-    opacity: 0.55,
-    overflow: 'hidden',
-  },
-  completedHeader: {
-    minHeight: 82,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: SPACING.md,
-    paddingVertical: 18,
-  },
-  completedTitle: {
-    flexShrink: 1,
-  },
-  completedHeaderRight: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    marginLeft: SPACING.md,
-  },
-  completedCount: {
-    minWidth: 16,
-    textAlign: 'right',
-  },
-  completedContent: {
-    paddingHorizontal: SPACING.md,
-    paddingBottom: SPACING.sm,
   },
   fab: {
     position: 'absolute',
