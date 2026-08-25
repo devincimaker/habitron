@@ -335,12 +335,14 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
 
   const handleSendMessage = useCallback(async () => {
     const text = inputText.trim();
-    if (!text || isLoading) return;
+    // isLoading only goes up once the session exists, so the ref is what keeps a
+    // second tap in that window from being treated as a send of its own.
+    if (!text || isLoading || isSendingRef.current) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     // The turn resolves only when the whole reply has streamed, so clear on send
-    // and put the text back if the send never started — never over what was typed
-    // in the meantime.
+    // and put the text back if the turn never started. A draft typed while the
+    // session was failing to open wins over the restore.
     setInputText('');
     const didSend = await sendUserMessage(text);
     if (!didSend) {
