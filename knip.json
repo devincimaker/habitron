@@ -21,6 +21,10 @@
     },
 
     "apps/mobile": {
+      // Goals are coming back to the app, so the editor stays even though
+      // nothing reaches it today. HAB-90 allows exactly this one exception.
+      "ignore": ["components/GoalEditorModal.tsx"],
+
       "ignoreDependencies": [
         // Inferred by knip's Expo plugin from app.json keys rather than from
         // any import, and neither is installed: `userInterfaceStyle` implies

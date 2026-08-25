@@ -7,7 +7,7 @@ import { HABITRON_TOOL_PREFIX, TurnCollector } from './events.js';
 import { buildSystemPrompt } from './prompt.js';
 
 /** The skills a coaching session may invoke (folders in packages/coach-skills/.claude/skills). */
-export const COACH_SKILLS = ['coach', 'first-session', 'plan-day', 'review-day', 'review-habits'];
+const COACH_SKILLS = ['coach', 'first-session', 'plan-day', 'review-day', 'review-habits'];
 /** The one skill a hold-to-instruct turn runs. */
 export const INSTRUCT_SKILLS = ['instruct'];
 
@@ -41,7 +41,7 @@ function toolFailure(error: unknown): CallToolResult {
 }
 
 /** Registers the shared Habitron tool list on the SDK's in-process MCP server. */
-export function createHabitronMcpServer(tools: AnyHabitronTool[]) {
+function createHabitronMcpServer(tools: AnyHabitronTool[]) {
   return createSdkMcpServer({
     name: 'habitron',
     version: '1.0.0',

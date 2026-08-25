@@ -15,7 +15,7 @@ export function sortSessions<T extends Pick<CoachingSessionSummary, 'startedAt' 
 }
 
 /** `Aug 22`, with the year only when it is not the current one. */
-export function formatSessionDate(timestamp: number, now: Date = new Date()): string {
+function formatSessionDate(timestamp: number, now: Date = new Date()): string {
   const date = new Date(timestamp);
   return date.toLocaleDateString('en-US', {
     month: 'short',

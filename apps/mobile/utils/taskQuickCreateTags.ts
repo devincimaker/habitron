@@ -112,7 +112,7 @@ export function stripInlineScheduledTimeToken(text: string) {
  * Splits multi-line quick-create input: the first line is the task (with
  * inline tokens), every following non-empty line becomes a checklist item.
  */
-export function splitQuickCreateInput(text: string): {
+function splitQuickCreateInput(text: string): {
   firstLine: string;
   checklistItems: string[];
 } {

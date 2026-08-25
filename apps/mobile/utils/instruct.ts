@@ -13,12 +13,12 @@ export const TOAST_MS = 1600;
 export const NOTHING_HEARD = "Didn't catch that. Hold Coach and try again.";
 export const NOTHING_TO_DO = 'Nothing to change.';
 
-export interface Proposal {
+interface Proposal {
   summary: string;
   actions: string[];
 }
 
-export type InstructPhase =
+type InstructPhase =
   | 'idle'
   | 'recording'
   | 'working'

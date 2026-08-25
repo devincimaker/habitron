@@ -20,7 +20,7 @@ function round(value: number, places = 2): number {
 }
 
 /** Is the habit expected on this date? Weekly-count habits have no fixed days, so only daily/pinned/interval habits return true. */
-export function isHabitScheduled(habit: Habit, date: string): boolean {
+function isHabitScheduled(habit: Habit, date: string): boolean {
   if (date < habit.startDate) return false;
   if (habit.frequency === 'daily') return true;
   if (habit.frequency === 'interval') {

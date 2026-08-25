@@ -94,20 +94,6 @@ export async function savePushToken(token: string): Promise<void> {
 }
 
 /**
- * Remove a push token from the database (e.g., on logout).
- */
-export async function removePushToken(token: string): Promise<void> {
-  const { error } = await supabase
-    .from('push_tokens')
-    .delete()
-    .eq('token', token);
-
-  if (error) {
-    console.error('Error removing push token:', error);
-  }
-}
-
-/**
  * Add a listener for when the user taps on a notification.
  * Returns a subscription that should be cleaned up when no longer needed.
  */
@@ -115,14 +101,4 @@ export function addNotificationResponseListener(
   callback: (response: Notifications.NotificationResponse) => void
 ): Notifications.EventSubscription {
   return Notifications.addNotificationResponseReceivedListener(callback);
-}
-
-/**
- * Add a listener for when a notification is received while app is in foreground.
- * Returns a subscription that should be cleaned up when no longer needed.
- */
-export function addNotificationReceivedListener(
-  callback: (notification: Notifications.Notification) => void
-): Notifications.EventSubscription {
-  return Notifications.addNotificationReceivedListener(callback);
 }
