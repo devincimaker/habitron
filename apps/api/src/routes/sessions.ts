@@ -1,4 +1,3 @@
-/* eslint-disable max-lines -- HAB-89: split pending */
 import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
