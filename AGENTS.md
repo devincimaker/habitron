@@ -109,6 +109,9 @@ is a production schema change, not a dev convenience.
 - **shared for everything else**, and when genuinely ambiguous. Upgrading later
   is one command; guessing `--db` wrongly costs money and minutes. Guessing
   shared wrongly costs production.
+- The operative version of this call, together with the simulator one, is the
+  **`wt`** skill's *Routing* section. `start` and `autopilot` both read it
+  rather than carrying their own copy, so there is one table to change.
 - **Merged migrations are immutable.** Fix forward with a new migration. `db push`
   matches by version timestamp, so editing an applied file does nothing — that is
   what `pnpm wt:db:reset` is for, on a branch DB.

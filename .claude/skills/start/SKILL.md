@@ -46,16 +46,21 @@ conversation, with the user reviewing as you go.
 
 ## Phase 2 — Route: two independent calls, each logged with its reason
 
-| Call | Choose the expensive option when | Ambiguous → |
-| --- | --- | --- |
-| **Database** | the work implies schema: migrations, RLS or policies, RPCs, triggers, new tables/columns/indexes, `SECURITY DEFINER` → `--db` | **shared**. `pnpm wt:setup --db` upgrades in place the moment you find you need it |
-| **Simulator** | the issue changes something on screen: UI, copy, navigation, styling, state, loading and error states → build one (the default) | **`--no-sim`**. `pnpm wt:setup --sim` builds one the moment the diff says you need it |
+**The `wt` skill owns both decisions** — read its *Routing* section and follow
+it. Database and simulator are decided there, in one place, so this skill and
+`autopilot` cannot drift into routing the same issue differently.
 
-Both are cheap to reverse. The asymmetry that matters is on the database side
-and it is not symmetric at all: **shared mode is the live database**, the one the
-shipped app talks to. A wrong `--db` wastes minutes and a few cents. A migration
-run in shared mode is a production schema change nobody reviewed. See the
-**`wt`** skill for the full decision and every guard refusal it can produce.
+Log the outcome in one line before Phase 3 runs, so the calls stay visible and
+easy to challenge:
+
+```
+[HAB-83 · setup] feat/hab-83-day-ratings · --db (new table) · no simulator (coach-only)
+```
+
+The one thing worth carrying in your head while you read it: the two calls are
+not symmetric. Both are cheap to reverse, but **shared mode is the live
+database**. A wrong `--db` wastes minutes and a few cents. A migration run in
+shared mode is a production schema change nobody reviewed.
 
 ## Phase 3 — The worktree
 

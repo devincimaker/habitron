@@ -15,10 +15,18 @@ database.** There is no local Supabase stack here. A shared worktree points at
 use. Running a migration there is not a dev convenience, it is a production
 schema change.
 
-## Decision: shared or `--db`?
+## Routing: the two calls, and who owns them
+
+**This section is the single owner of both decisions.** `start` and `autopilot`
+route through it rather than restating it — a routing table written twice is a
+table that drifts, and a drifted one sends a tick to a different database than
+you would have picked. Change the rule here; do not copy it out.
 
 Read the Linear issue first (`mcp__linear__get_issue`, team **Habitron**) —
-never guess from the issue number.
+never guess from the issue number. Then log both calls in one line with their
+reasons: `feat/hab-83-day-ratings · --db (new table) · no simulator (coach-only)`.
+
+### Database — `--db` or shared
 
 - **`--db` (own branch database)** whenever the work implies a schema change:
   migrations, RLS or policies, RPCs, triggers, new tables/columns/indexes,
@@ -30,6 +38,22 @@ never guess from the issue number.
 
 The asymmetry to remember: a wrong "shared" that turns out to need schema costs
 you one command. A migration run against shared mode costs you production.
+
+An issue that leaves an unattended run guessing about schema is incomplete —
+`autopilot` refuses it back to `Todo` rather than picking.
+
+### Simulator — build one or `--no-sim`
+
+- **Build one (the default)** when the work changes something on screen: UI,
+  copy, navigation, styling, state, loading and error states.
+- **`--no-sim`** when nothing lands on screen: data layer, coach skills, API
+  routes, pure logic, tests.
+- Genuinely ambiguous → **`--no-sim`**. `pnpm wt:setup --sim` builds one the
+  moment the diff proves you need it.
+
+This call is cheap in both directions, which is why it defaults the opposite
+way from the database one. When the proof is a test or a diff rather than a
+screenshot, there is nothing for a simulator to do.
 
 ## Commands
 

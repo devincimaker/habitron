@@ -230,18 +230,23 @@ behaves.
 `pnpm wt:new feat|fix|chore|refactor/hab-NN-<slug>` from the main checkout.
 Branch names follow AGENTS.md §8, not Linear's `gitBranchName`.
 
-- **`--db` when the issue carries schema**, shared otherwise. An issue that
-  leaves you guessing about schema is incomplete: refuse it back to `Todo`.
-  Guessing `--db` wrongly costs money and minutes; guessing shared wrongly runs
-  a migration on production (AGENTS.md §6).
-- **`--no-sim` for classes A and C**, and for B and D exactly when the proof is
-  a test or a diff. Build a simulator when the proof is a screenshot.
-- Bash timeout **600000** when passing `--db`. Then `EnterWorktree`.
+**The `wt` skill owns both routing calls** — read its *Routing* section and
+follow it, the same one `/start` follows, so a tick never routes an issue
+differently than you would have. Two things the class adds on top of it:
 
-The `wt` skill owns every refusal this can produce. A guard that fires is a
-refusal (Phase 6), not something to route around. **Never delete a worktree to
-escape a failed setup** — it may already own a billable branch database that
-only its ledger names.
+- The class already answers the simulator call: **A and C are always
+  `--no-sim`**; B and D take one exactly when their proof is a screenshot
+  rather than a test or a diff.
+- An issue that leaves you guessing about schema is incomplete. Refuse it back
+  to `Todo` (Phase 6) instead of picking — that guess is the one that runs a
+  migration on production.
+
+Bash timeout **600000** when passing `--db`. Then `EnterWorktree`.
+
+`wt` also owns every refusal this can produce. A guard that fires is a refusal
+(Phase 6), not something to route around. **Never delete a worktree to escape a
+failed setup** — it may already own a billable branch database that only its
+ledger names.
 
 ## Phase 3 — Read before writing
 
