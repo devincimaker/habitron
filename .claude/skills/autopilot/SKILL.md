@@ -241,8 +241,11 @@ behaves.
 
 ## Phase 2 — Worktree
 
-`pnpm wt:new feat|fix|chore|refactor/hab-NN-<slug>` from the main checkout.
-Branch names follow AGENTS.md §8, not Linear's `gitBranchName`.
+`pnpm wt:new [--db] [--no-sim] feat|fix|chore|refactor/hab-NN-<slug>` from the
+main checkout. Branch names follow AGENTS.md §8, not Linear's `gitBranchName`.
+Flags go **before** the branch: `wt:new` takes anything after it as the
+worktree's directory name, so a trailing `--db` silently gives you a shared-mode
+worktree pointed at production.
 
 **The `wt` skill owns both routing calls** — read its *Routing* section and
 follow it, the same one `/start` follows, so a tick never routes an issue

@@ -75,7 +75,7 @@ claimed in `~/.conductor/state/resources.json`, shared with every other repo on
 this machine.
 
 ```bash
-pnpm wt:new feat/hab-NN-slug [--db] [--no-sim]   # create
+pnpm wt:new [--db] [--no-sim] feat/hab-NN-slug   # create — flags BEFORE the branch
 pnpm wt:setup [--db|--no-db] [--sim|--no-sim]    # repair or change modes, in place
 pnpm wt:list                                     # every worktree, plus leaked branch DBs
 pnpm wt:rm <branch>                              # reclaim all of it

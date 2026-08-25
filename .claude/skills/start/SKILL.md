@@ -68,7 +68,10 @@ shared mode is a production schema change nobody reviewed.
    it and skip creation. Running `/start HAB-73` twice must resume, not fail. A
    worktree you did not create may belong to another session: ask before
    touching it.
-2. From the main checkout: `pnpm wt:new feat|fix|chore|refactor/hab-NN-<slug> [--db] [--no-sim]`.
+2. From the main checkout: `pnpm wt:new [--db] [--no-sim] feat|fix|chore|refactor/hab-NN-<slug>`.
+   Flags go **before** the branch name — `wt:new` stops reading them at the
+   first non-flag argument, and takes anything after it as the worktree's
+   directory name.
    Branch names follow the AGENTS.md convention, not Linear's `gitBranchName`.
    Use a **Bash timeout of 600000** when passing `--db` — provisioning takes
    minutes and a default timeout will kill it midway.

@@ -60,8 +60,8 @@ screenshot, there is nothing for a simulator to do.
 
 ```bash
 pnpm wt:new fix/hab-NN-slug            # new worktree, shared mode
-pnpm wt:new feat/hab-NN-slug --db      # new worktree with its own branch DB
-pnpm wt:new chore/hab-NN-slug --no-sim # no simulator: nothing on screen changes
+pnpm wt:new --db feat/hab-NN-slug      # new worktree with its own branch DB
+pnpm wt:new --no-sim chore/hab-NN-slug # no simulator: nothing on screen changes
 pnpm wt:setup --db                     # upgrade an existing worktree to its own DB
 pnpm wt:setup --no-db                  # move it back to shared (deletes the branch DB)
 pnpm wt:setup --sim                    # build the simulator after all
@@ -70,6 +70,16 @@ pnpm wt:rm <branch>                    # worktree + simulator + branch DB, all o
 pnpm wt:db:reset                       # wipe + re-apply migrations on THIS branch DB
 pnpm dev                               # boot this worktree's simulator + Metro + API
 ```
+
+**`wt:new` takes its flags before the branch name; `wt:setup` takes them
+anywhere.** That asymmetry is the one that bites. `wt:setup` scans every
+argument and refuses an unknown flag, so order never matters. `wt:new` stops
+reading flags at the first non-flag argument and takes a second positional as
+the worktree's *directory name* — so `pnpm wt:new feat/hab-NN-slug --no-sim`
+creates a worktree in a directory called `--no-sim`, with a simulator, and says
+nothing. The `--db` version of that mistake is the expensive one: you believe
+the branch has its own database and it is on the shared project, which is
+production.
 
 `pnpm wt:new` takes a Bash timeout of **600000** when `--db` is passed: branch
 database provisioning takes minutes and a default timeout kills it midway.
