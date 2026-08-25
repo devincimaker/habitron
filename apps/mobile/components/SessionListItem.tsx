@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
 import { FONT_SIZES, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { formatSessionMeta, isSessionOpen } from '../utils/coachSessions';
 
 const SWIPE_THRESHOLD = 80;
 
@@ -23,18 +24,7 @@ export function SessionListItem({
   session, onPress, onDelete }: SessionListItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
-
-  const date = new Date(session.startedAt);
-  const isCurrentYear = date.getFullYear() === new Date().getFullYear();
-  const dateStr = date.toLocaleDateString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: isCurrentYear ? undefined : 'numeric',
-  });
-  const timeStr = date.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
+  const open = isSessionOpen(session);
 
   const handleDelete = () => onDelete?.(session);
   const handlePress = () => onPress(session.id);
@@ -74,18 +64,28 @@ export function SessionListItem({
       </Animated.View>
 
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.container, animatedStyle]}>
-          <View style={styles.iconContainer}>
-            <Ionicons name="chatbubbles-outline" size={24} color={colors.primary} />
+        <Animated.View
+          style={[styles.container, open && styles.containerOpen, animatedStyle]}
+          accessibilityRole="button"
+          accessibilityLabel={`${session.name || 'Untitled Session'}, ${formatSessionMeta(session)}`}
+        >
+          <View style={[styles.iconContainer, open && styles.iconContainerOpen]}>
+            <Ionicons
+              name="chatbubble-outline"
+              size={22}
+              color={open ? colors.primary : colors.textSecondary}
+            />
           </View>
           <View style={styles.content}>
             <Text style={styles.name} numberOfLines={1}>
               {session.name || 'Untitled Session'}
             </Text>
-            <Text style={styles.meta}>
-              {dateStr} at {timeStr} · {session.messageCount} messages
-              {session.memoryCount ? ` · ${session.memoryCount} memories` : ''}
-            </Text>
+            <View style={styles.metaRow}>
+              {open && <View style={styles.openDot} />}
+              <Text style={styles.meta} numberOfLines={1}>
+                {formatSessionMeta(session)}
+              </Text>
+            </View>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </Animated.View>
@@ -113,15 +113,23 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     padding: 16,
     backgroundColor: colors.surface,
     borderRadius: 12,
+    borderWidth: 1,
+    borderColor: colors.surface,
+  },
+  containerOpen: {
+    borderColor: colors.primary,
   },
   iconContainer: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: colors.primaryLight,
+    backgroundColor: colors.controlFill,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,
+  },
+  iconContainerOpen: {
+    backgroundColor: colors.primaryLight,
   },
   content: {
     flex: 1,
@@ -132,8 +140,20 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     color: colors.text,
     marginBottom: 2,
   },
+  metaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  openDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+  },
   meta: {
     fontSize: FONT_SIZES.footnote,
     color: colors.textSecondary,
+    flexShrink: 1,
   },
 });

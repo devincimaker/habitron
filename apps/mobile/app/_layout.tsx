@@ -127,7 +127,7 @@ export default Sentry.wrap(function RootLayout() {
       if (data?.action === 'start_coaching') {
         // Only navigate if navigation is ready and no session is already active
         if (navigationState?.key && !isSessionActiveRef.current) {
-          router.push('/session?autoStart=true');
+          router.push('/session');
         }
       }
     });

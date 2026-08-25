@@ -1,22 +1,12 @@
 import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
-import { useSessionStore } from '../stores/useSessionStore';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { SPACING, TAB_BAR } from '../constants/theme';
 
 export function EmptyState() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { isActive, startSession } = useSessionStore();
-
-  const handleStartCoaching = () => {
-    // Prevent duplicate session screens from rapid taps
-    if (isActive) return;
-
-    startSession();
-    router.push('/session');
-  };
 
   return (
     <View style={[styles.container, { paddingBottom: TAB_BAR.height + insets.bottom }]}>
@@ -27,7 +17,7 @@ export function EmptyState() {
       </BodyMedium>
       <Button
         title="Start Coaching Session"
-        onPress={handleStartCoaching}
+        onPress={() => router.push('/session')}
         size="lg"
       />
     </View>

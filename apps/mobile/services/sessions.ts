@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 import type {
   CoachingSessionSummary,
   CoachingSessionDetail,
-  CoachingSessionMessage,
+  UpdateSessionRequest,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
 import { createApiUrl } from './apiUrl';
@@ -28,27 +28,6 @@ export async function getSessions(): Promise<CoachingSessionSummary[]> {
 
   const data = await response.json();
   return data.sessions;
-}
-
-export async function getActiveSession(): Promise<{
-  id: string;
-  name?: string | null;
-  startedAt: number;
-  messages: CoachingSessionMessage[];
-  updatedAt: number;
-} | null> {
-  const token = await getAuthToken();
-
-  const response = await fetch(createApiUrl('/api/sessions/active'), {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    await handleFetchError(response, 'Failed to fetch active session');
-  }
-
-  const data = await response.json();
-  return data.session;
 }
 
 export async function getSession(id: string): Promise<CoachingSessionDetail> {
@@ -87,11 +66,7 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
 
 export async function updateSession(
   id: string,
-  updates: {
-    messages?: CoachingSessionMessage[];
-    name?: string;
-    endedAt?: number;
-  }
+  updates: UpdateSessionRequest
 ): Promise<void> {
   const token = await getAuthToken();
 

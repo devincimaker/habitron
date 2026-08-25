@@ -41,11 +41,13 @@ import type { ChatMessage as ChatMessageType } from '@habits-coach/shared';
 import {
   SPACING,
   BORDER_RADIUS,
+  FONT_SIZES,
   TYPOGRAPHY,
   TOUCH_TARGET,
   type Colors,
 } from '../constants/theme';
 import { describeCoachActivity } from '../utils/coachActivity';
+import { formatSessionStatus } from '../utils/coachSessions';
 import { useThemedStyles } from '../hooks/useColors';
 
 type ReviewState =
@@ -54,25 +56,21 @@ type ReviewState =
   | { phase: 'reviewing'; memories: ExtractedMemory[]; selected: Set<number> };
 
 interface CoachSessionScreenProps {
-  autoPrompt?: string;
-  onDismiss?: () => void;
+  onDismiss: () => void;
 }
 
 /** The skill command that opens a session: the coach speaks first, grounded in the data. */
-function getOpenerCommand(autoPrompt?: string): string {
-  return autoPrompt === 'plan-day' ? '/plan-day' : '/coach';
-}
+const OPENER_COMMAND = '/coach';
 
-export function CoachSessionScreen({
-  autoPrompt,
-  onDismiss,
-}: CoachSessionScreenProps) {
+export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
 
   const {
     isActive,
     sessionId,
+    startedAt,
+    endedAt,
     messages,
     isLoading,
     startError,
@@ -110,12 +108,13 @@ export function CoachSessionScreen({
     loadPlan(today);
   }, [loadEntries, loadGoals, loadMemories, loadPlan, loadTodos, today]);
 
+  // Ending is the deliberate act: finalize, then leave. Leaving on its own is
+  // just onDismiss — the route keeps the session open on unmount.
   const exitSession = useCallback(() => {
-    loadSessions();
     setInputText('');
     setReviewState({ phase: 'none' });
-    void endSession();
-    onDismiss?.();
+    void endSession().then(loadSessions);
+    onDismiss();
   }, [endSession, loadSessions, onDismiss]);
 
   // The coach reads and writes real data during a turn; pull the app's stores back in line.
@@ -255,8 +254,8 @@ export function CoachSessionScreen({
     }
 
     hasSentOpener.current = true;
-    void runTurn(getOpenerCommand(autoPrompt), { echoUser: false });
-  }, [autoPrompt, isActive, isLoading, messages.length, reviewState.phase, runTurn, sessionId]);
+    void runTurn(OPENER_COMMAND, { echoUser: false });
+  }, [isActive, isLoading, messages.length, reviewState.phase, runTurn, sessionId]);
 
   const performEndSession = useCallback(async () => {
     if (messages.length <= 2) {
@@ -374,6 +373,18 @@ export function CoachSessionScreen({
 
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
 
+  const backButton = (
+    <TouchableOpacity
+      style={styles.headerButton}
+      onPress={onDismiss}
+      activeOpacity={0.7}
+      accessibilityRole="button"
+      accessibilityLabel="Back"
+    >
+      <Ionicons name="chevron-back" size={28} color={colors.text} />
+    </TouchableOpacity>
+  );
+
   if (reviewState.phase === 'extracting') {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -448,11 +459,7 @@ export function CoachSessionScreen({
   if (isActive && !sessionId && startError) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.sessionHeader}>
-          <TouchableOpacity style={styles.closeButton} onPress={exitSession} activeOpacity={0.7}>
-            <Ionicons name="close" size={32} color={colors.textLight} />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.sessionHeader}>{backButton}</View>
         <View style={styles.preparingContainer}>
           <BodyMedium style={styles.preparingText}>
             {getCoachSessionStartErrorMessage(new Error(startError))}
@@ -466,11 +473,7 @@ export function CoachSessionScreen({
   if (messages.length === 0) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
-        <View style={styles.sessionHeader}>
-          <TouchableOpacity style={styles.closeButton} onPress={exitSession} activeOpacity={0.7}>
-            <Ionicons name="close" size={32} color={colors.textLight} />
-          </TouchableOpacity>
-        </View>
+        <View style={styles.sessionHeader}>{backButton}</View>
         <View style={styles.preparingContainer}>
           <ActivityIndicator size="large" color={colors.primary} />
           <BodyMedium style={styles.preparingText}>{activity ?? 'Loading your coach...'}</BodyMedium>
@@ -486,13 +489,29 @@ export function CoachSessionScreen({
       keyboardVerticalOffset={0}
     >
       <View style={styles.sessionHeader}>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={handleEndSession}
-          activeOpacity={0.7}
-        >
-          <Ionicons name="close" size={32} color={colors.textLight} />
-        </TouchableOpacity>
+        {backButton}
+
+        {startedAt !== null && (
+          <View style={styles.statusPill}>
+            <Text style={styles.statusText} numberOfLines={1}>
+              {formatSessionStatus(startedAt, endedAt)}
+            </Text>
+          </View>
+        )}
+
+        {endedAt === null ? (
+          <TouchableOpacity
+            style={styles.headerButton}
+            onPress={handleEndSession}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel="End session"
+          >
+            <Text style={styles.endText}>End</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.headerButton} />
+        )}
       </View>
 
       <FlatList
@@ -572,17 +591,34 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   sessionHeader: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     backgroundColor: colors.background,
   },
-  closeButton: {
-    width: TOUCH_TARGET.min,
+  headerButton: {
+    minWidth: TOUCH_TARGET.min,
     height: TOUCH_TARGET.min,
+    paddingHorizontal: SPACING.xs,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  statusPill: {
+    flexShrink: 1,
+    paddingHorizontal: SPACING.sm + 2,
+    paddingVertical: SPACING.xs + 1,
+    borderRadius: BORDER_RADIUS.full,
+    backgroundColor: colors.controlFill,
+  },
+  statusText: {
+    ...TYPOGRAPHY.caption,
+    color: colors.textSecondary,
+  },
+  endText: {
+    ...TYPOGRAPHY.label,
+    fontSize: FONT_SIZES.body,
+    color: colors.primary,
   },
   messageListContainer: {
     flex: 1,

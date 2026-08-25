@@ -2,31 +2,52 @@
  * Session Store Tests
  *
  * The coach speaks first, so a backend session is created as soon as a
- * session starts; sessions the user never replied in are deleted on end.
+ * session starts; sessions the user never replied in are deleted on end or
+ * on leave. A session opened from the hub is hydrated in place, left open
+ * when you leave, named by the first user message, and reopened if you keep
+ * talking in a finalized one.
  */
 
 const mockCreateSession = jest.fn();
 const mockUpdateSession = jest.fn();
 const mockFinalizeSession = jest.fn();
 const mockDeleteSession = jest.fn();
-const mockGetActiveSession = jest.fn();
 
 jest.mock('../services/sessions', () => ({
   createSession: () => mockCreateSession(),
   updateSession: (...args: unknown[]) => mockUpdateSession(...args),
   finalizeSession: (...args: unknown[]) => mockFinalizeSession(...args),
   deleteSession: (...args: unknown[]) => mockDeleteSession(...args),
-  getActiveSession: () => mockGetActiveSession(),
 }));
 
+import type { CoachingSessionDetail } from '@habits-coach/shared';
 import { useSessionStore } from '../stores/useSessionStore';
+
+function buildDetail(overrides: Partial<CoachingSessionDetail> = {}): CoachingSessionDetail {
+  return {
+    id: 'past-session',
+    name: 'Morning routine',
+    startedAt: 1_700_000_000_000,
+    endedAt: 1_700_000_600_000,
+    memoryCount: 1,
+    messages: [
+      { role: 'assistant', content: 'Hi', timestamp: 1_700_000_000_000 },
+      { role: 'user', content: 'Help me with mornings', timestamp: 1_700_000_100_000 },
+      { role: 'assistant', content: 'Sure', timestamp: 1_700_000_200_000 },
+    ],
+    memories: [],
+    ...overrides,
+  };
+}
 
 describe('useSessionStore', () => {
   beforeEach(() => {
     useSessionStore.setState({
       isActive: false,
       sessionId: null,
+      name: null,
       startedAt: null,
+      endedAt: null,
       lastActiveAt: null,
       messages: [],
       isLoading: false,
@@ -69,10 +90,31 @@ describe('useSessionStore', () => {
 
     await useSessionStore.getState().startSession();
     await useSessionStore.getState().ensureBackendSession();
-    await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+    await useSessionStore.getState().addMessage({ role: 'assistant', content: 'Hello' });
 
     expect(mockCreateSession).toHaveBeenCalledTimes(1);
     expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('names the session after the first user message, once', async () => {
+    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    await useSessionStore.getState().startSession();
+
+    await useSessionStore.getState().addMessage({
+      role: 'user',
+      content: '  I keep skipping my evening walk  ',
+    });
+
+    expect(mockUpdateSession.mock.calls[0]).toEqual([
+      'test-session-id',
+      { name: 'I keep skipping my evening walk' },
+    ]);
+    expect(mockUpdateSession.mock.calls[1][1]).toEqual({ messages: expect.any(Array) });
+    expect(useSessionStore.getState().name).toBe('I keep skipping my evening walk');
+
+    await useSessionStore.getState().addMessage({ role: 'user', content: 'Second thought' });
+    expect(mockUpdateSession).toHaveBeenCalledTimes(3);
+    expect(mockUpdateSession.mock.calls[2][1]).toEqual({ messages: expect.any(Array) });
   });
 
   it('streams into a message locally and syncs when finalized', async () => {
@@ -120,36 +162,97 @@ describe('useSessionStore', () => {
     expect(useSessionStore.getState().lastActiveAt).toBeNull();
   });
 
-  it('recovers a recent active session with its transcript', async () => {
-    const updatedAt = Date.now() - 60_000;
-    mockGetActiveSession.mockResolvedValue({
-      id: 'active-id',
-      startedAt: updatedAt - 1000,
-      updatedAt,
-      messages: [
-        { role: 'assistant', content: 'Hi', timestamp: updatedAt - 500 },
-        { role: 'user', content: 'Hello', timestamp: updatedAt },
-      ],
+  describe('leaving', () => {
+    it('persists the transcript and clears state without finalizing', async () => {
+      mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+      await useSessionStore.getState().startSession();
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
+      mockUpdateSession.mockClear();
+
+      await useSessionStore.getState().leaveSession();
+
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledWith('test-session-id', {
+        messages: [expect.objectContaining({ role: 'user', content: 'Hello' })],
+      });
+      expect(mockFinalizeSession).not.toHaveBeenCalled();
+      expect(mockDeleteSession).not.toHaveBeenCalled();
+      expect(useSessionStore.getState().isActive).toBe(false);
+      expect(useSessionStore.getState().sessionId).toBeNull();
+      expect(useSessionStore.getState().messages).toEqual([]);
     });
 
-    await expect(useSessionStore.getState().checkAndRecoverSession()).resolves.toBe('recovered');
+    it('deletes the session when the user never replied', async () => {
+      mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+      await useSessionStore.getState().startSession();
+      useSessionStore.getState().addLocalMessage({ role: 'assistant', content: 'How is today going?' });
 
-    expect(useSessionStore.getState().sessionId).toBe('active-id');
-    expect(useSessionStore.getState().messages.map((m) => m.content)).toEqual(['Hi', 'Hello']);
+      await useSessionStore.getState().leaveSession();
+
+      expect(mockDeleteSession).toHaveBeenCalledWith('test-session-id');
+      expect(mockUpdateSession).not.toHaveBeenCalled();
+    });
   });
 
-  it('deletes a stale active session that only holds the opener', async () => {
-    const updatedAt = Date.now() - 11 * 60 * 1000;
-    mockGetActiveSession.mockResolvedValue({
-      id: 'stale-id',
-      startedAt: updatedAt,
-      updatedAt,
-      messages: [{ role: 'assistant', content: 'Hi', timestamp: updatedAt }],
+  describe('sessions opened from the hub', () => {
+    it('hydrates transcript and identity from a session detail', () => {
+      useSessionStore.getState().hydrateSession(buildDetail({ endedAt: null }));
+
+      const state = useSessionStore.getState();
+      expect(state.isActive).toBe(true);
+      expect(state.sessionId).toBe('past-session');
+      expect(state.name).toBe('Morning routine');
+      expect(state.startedAt).toBe(1_700_000_000_000);
+      expect(state.endedAt).toBeNull();
+      expect(state.startError).toBeNull();
+      expect(state.messages.map((m) => [m.role, m.content])).toEqual([
+        ['assistant', 'Hi'],
+        ['user', 'Help me with mornings'],
+        ['assistant', 'Sure'],
+      ]);
+      expect(new Set(state.messages.map((m) => m.id)).size).toBe(3);
     });
 
-    await expect(useSessionStore.getState().checkAndRecoverSession()).resolves.toBe('finalized');
+    it('continues an open session in place without renaming it', async () => {
+      useSessionStore.getState().hydrateSession(buildDetail({ endedAt: null }));
 
-    expect(mockDeleteSession).toHaveBeenCalledWith('stale-id');
-    expect(mockFinalizeSession).not.toHaveBeenCalled();
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'More' });
+
+      expect(mockCreateSession).not.toHaveBeenCalled();
+      expect(mockUpdateSession).toHaveBeenCalledTimes(1);
+      expect(mockUpdateSession).toHaveBeenCalledWith('past-session', {
+        messages: expect.any(Array),
+      });
+      expect(useSessionStore.getState().messages).toHaveLength(4);
+    });
+
+    it('reopens a finalized session on the first new user message', async () => {
+      useSessionStore.getState().hydrateSession(buildDetail());
+      expect(useSessionStore.getState().endedAt).not.toBeNull();
+
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'One more thing' });
+
+      expect(mockUpdateSession.mock.calls[0]).toEqual([
+        'past-session',
+        { endedAt: null, isProcessed: false },
+      ]);
+      expect(mockUpdateSession.mock.calls[1][1]).toEqual({ messages: expect.any(Array) });
+      expect(useSessionStore.getState().endedAt).toBeNull();
+
+      await useSessionStore.getState().addMessage({ role: 'user', content: 'And another' });
+      expect(mockUpdateSession).toHaveBeenCalledTimes(3);
+    });
+
+    it('rejects the message when reopening fails', async () => {
+      mockUpdateSession.mockRejectedValueOnce(new Error('Network error'));
+      useSessionStore.getState().hydrateSession(buildDetail());
+
+      await expect(
+        useSessionStore.getState().addMessage({ role: 'user', content: 'One more thing' })
+      ).rejects.toThrow('Network error');
+
+      expect(useSessionStore.getState().endedAt).not.toBeNull();
+      expect(useSessionStore.getState().messages).toHaveLength(3);
+    });
   });
 });

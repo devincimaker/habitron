@@ -1,14 +1,15 @@
 import { create } from 'zustand';
-import { ChatMessage } from '@habits-coach/shared';
+import type { ChatMessage, CoachingSessionDetail, UpdateSessionRequest } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
-
-const SESSION_RECOVERY_WINDOW_MS = 10 * 60 * 1000; // 10 minutes
+import { deriveSessionName } from '../utils/sessionName';
 
 interface SessionState {
   isActive: boolean;
   sessionId: string | null;  // Backend session ID
+  name: string | null;  // Provisional until finalize generates a summary
   startedAt: number | null;
+  endedAt: number | null;  // Set when a finalized session was opened from the hub
   lastActiveAt: number | null;
   messages: ChatMessage[];
   isLoading: boolean;
@@ -17,8 +18,12 @@ interface SessionState {
 
   // Actions
   startSession: () => Promise<void>;
+  /** Opens a session from the hub in place: transcript, identity, and whether it was ended. */
+  hydrateSession: (session: CoachingSessionDetail) => void;
   /** The backend session id, creating the session if needed. Throws when the backend is unreachable. */
   ensureBackendSession: () => Promise<string>;
+  /** Leaves without ending: the transcript is persisted and the session stays open. */
+  leaveSession: () => Promise<void>;
   endSession: () => Promise<void>;
   /** Adds a message locally only; returns its id. */
   addLocalMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => string;
@@ -29,7 +34,6 @@ interface SessionState {
   finalizeMessage: (messageId: string, content: string) => Promise<void>;
   syncMessages: () => Promise<void>;  // Persist messages to backend
   setLoading: (loading: boolean) => void;
-  checkAndRecoverSession: () => Promise<'recovered' | 'finalized' | 'none'>;
 }
 
 function generateId(): string {
@@ -50,15 +54,32 @@ function hasUserMessages(messages: Pick<ChatMessage, 'role'>[]): boolean {
 
 let pendingSessionCreation: Promise<string> | null = null;
 
-export const useSessionStore = create<SessionState>((set, get) => ({
+const EMPTY_STATE: Pick<
+  SessionState,
+  | 'isActive'
+  | 'sessionId'
+  | 'name'
+  | 'startedAt'
+  | 'endedAt'
+  | 'lastActiveAt'
+  | 'messages'
+  | 'isLoading'
+  | 'startError'
+> = {
   isActive: false,
   sessionId: null,
+  name: null,
   startedAt: null,
+  endedAt: null,
   lastActiveAt: null,
   messages: [],
   isLoading: false,
-  isSyncing: false,
   startError: null,
+};
+
+export const useSessionStore = create<SessionState>((set, get) => ({
+  ...EMPTY_STATE,
+  isSyncing: false,
 
   startSession: async () => {
     // Prevent duplicate session starts from rapid taps
@@ -66,13 +87,10 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
     const now = Date.now();
     set({
+      ...EMPTY_STATE,
       isActive: true,
-      sessionId: null,
       startedAt: now,
       lastActiveAt: now,
-      messages: [],
-      isLoading: false,
-      startError: null,
     });
 
     // The coach speaks first, so the backend session exists from the start.
@@ -81,6 +99,26 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     } catch {
       // startError is set; the screen offers a retry.
     }
+  },
+
+  hydrateSession: (session) => {
+    const messages: ChatMessage[] = session.messages.map((m, i) => ({
+      id: `${session.id}-${i}-${m.timestamp}`,
+      role: m.role,
+      content: m.content,
+      timestamp: m.timestamp,
+    }));
+
+    set({
+      ...EMPTY_STATE,
+      isActive: true,
+      sessionId: session.id,
+      name: session.name,
+      startedAt: session.startedAt,
+      endedAt: session.endedAt,
+      lastActiveAt: messages[messages.length - 1]?.timestamp ?? session.startedAt,
+      messages,
+    });
   },
 
   ensureBackendSession: async () => {
@@ -108,19 +146,32 @@ export const useSessionStore = create<SessionState>((set, get) => ({
     return pendingSessionCreation;
   },
 
+  leaveSession: async () => {
+    const { sessionId, messages } = get();
+
+    set(EMPTY_STATE);
+
+    if (!sessionId) return;
+
+    try {
+      if (hasUserMessages(messages)) {
+        await sessionsService.updateSession(sessionId, {
+          messages: toMessagePayload(messages),
+        });
+      } else {
+        // Only the coach's opener happened: nothing worth keeping open.
+        await sessionsService.deleteSession(sessionId);
+      }
+    } catch (error) {
+      console.warn('Failed to leave session:', error);
+      Sentry.captureException(error, { tags: { feature: 'session' } });
+    }
+  },
+
   endSession: async () => {
     const { sessionId, messages } = get();
 
-    // Clear local state
-    set({
-      isActive: false,
-      sessionId: null,
-      startedAt: null,
-      lastActiveAt: null,
-      messages: [],
-      isLoading: false,
-      startError: null,
-    });
+    set(EMPTY_STATE);
 
     if (!sessionId) return;
 
@@ -159,6 +210,31 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   },
 
   addMessage: async (messageData) => {
+    // The first user message names the session so it reads in the hub while
+    // open, and reopens a finalized session that was resumed from the hub. If
+    // that write fails the send is rejected, so the turn never runs against a
+    // session the backend still considers closed.
+    const { sessionId, endedAt, name } = get();
+    if (messageData.role === 'user' && sessionId && (endedAt !== null || name === null)) {
+      const updates: UpdateSessionRequest = {};
+      if (endedAt !== null) {
+        updates.endedAt = null;
+        updates.isProcessed = false;
+      }
+      if (name === null) {
+        updates.name = deriveSessionName(messageData.content) ?? undefined;
+      }
+
+      try {
+        await sessionsService.updateSession(sessionId, updates);
+        set({ endedAt: null, name: updates.name ?? name });
+      } catch (error) {
+        console.warn('Failed to open session in backend:', error);
+        Sentry.captureException(error, { tags: { feature: 'session' } });
+        throw error;
+      }
+    }
+
     const id = get().addLocalMessage(messageData);
     await get().syncMessages();
     return id;
@@ -204,56 +280,5 @@ export const useSessionStore = create<SessionState>((set, get) => ({
 
   setLoading: (loading) => {
     set({ isLoading: loading });
-  },
-
-  checkAndRecoverSession: async () => {
-    try {
-      const activeSession = await sessionsService.getActiveSession();
-
-      if (!activeSession) {
-        return 'none';
-      }
-
-      const now = Date.now();
-      const elapsed = now - activeSession.updatedAt;
-
-      // Orphaned session - outside the 10 minute window
-      if (elapsed >= SESSION_RECOVERY_WINDOW_MS) {
-        if (hasUserMessages(activeSession.messages)) {
-          await sessionsService.finalizeSession(activeSession.id, {
-            extractMemories: false,
-          });
-        } else {
-          await sessionsService.deleteSession(activeSession.id);
-        }
-        return 'finalized';
-      }
-
-      // Recover session - within 10 minute window
-      const messages: ChatMessage[] = activeSession.messages.map((m, i) => ({
-        id: `recovered-${i}-${m.timestamp}`,
-        role: m.role,
-        content: m.content,
-        timestamp: m.timestamp,
-      }));
-
-      set({
-        isActive: true,
-        sessionId: activeSession.id,
-        startedAt: activeSession.startedAt,
-        lastActiveAt: activeSession.updatedAt,
-        messages,
-        isLoading: false,
-        startError: null,
-      });
-
-      return 'recovered';
-    } catch (error) {
-      // Use warn instead of error to avoid red screen in dev mode
-      // This is not critical - we can just start a new session
-      console.warn('Failed to check/recover session:', error);
-      Sentry.captureException(error, { tags: { feature: 'session' } });
-      return 'none';
-    }
   },
 }));

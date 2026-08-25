@@ -68,10 +68,6 @@ export default function ProfileScreen() {
     router.push('/memories');
   }, [router]);
 
-  const handleOpenSessions = useCallback(() => {
-    router.push('/sessions');
-  }, [router]);
-
   const handleToggleReminder = useCallback(async (enabled: boolean) => {
     const { error } = await updateDailyReminder(enabled);
     if (error) {
@@ -107,16 +103,6 @@ export default function ProfileScreen() {
               {memories.length > 0 && (
                 <Caption style={styles.menuCount}>{memories.length}</Caption>
               )}
-              <Feather name="chevron-right" size={20} color={colors.textSecondary} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={[styles.menuRow, { marginTop: SPACING.sm }]} onPress={handleOpenSessions}>
-            <View style={styles.menuRowLeft}>
-              <Feather name="message-square" size={20} color={colors.text} style={styles.menuIcon} />
-              <BodyMedium>Session history</BodyMedium>
-            </View>
-            <View style={styles.menuRowRight}>
               <Feather name="chevron-right" size={20} color={colors.textSecondary} />
             </View>
           </TouchableOpacity>

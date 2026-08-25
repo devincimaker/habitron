@@ -365,7 +365,6 @@ export interface CoachingSessionSummary {
   name: string | null;
   startedAt: number;
   endedAt: number | null;
-  messageCount: number;
   memoryCount?: number;
 }
 
@@ -388,7 +387,7 @@ export interface CreateSessionResponse {
 export interface UpdateSessionRequest {
   messages?: CoachingSessionMessage[];
   name?: string;
-  endedAt?: number;
+  endedAt?: number | null;  // null reopens a finalized session
   isProcessed?: boolean;
 }
 

@@ -1,38 +1,42 @@
 import { useEffect } from 'react';
+import { Alert } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { CoachSessionScreen } from '../components/CoachSessionScreen';
 import { useSessionStore } from '../stores/useSessionStore';
-import { useSessionsStore } from '../stores/useSessionsStore';
-import { ensureCoachSession } from '../utils/ensureCoachSession';
+import { getSession } from '../services/sessions';
 
 export default function ModalSessionRoute() {
   const router = useRouter();
-  const { autoPrompt } = useLocalSearchParams<{
-    autoPrompt?: string;
-  }>();
+  const { sessionId } = useLocalSearchParams<{ sessionId?: string }>();
   const startSession = useSessionStore((state) => state.startSession);
-  const checkAndRecoverSession = useSessionStore((state) => state.checkAndRecoverSession);
-  const loadSessions = useSessionsStore((state) => state.loadSessions);
+  const hydrateSession = useSessionStore((state) => state.hydrateSession);
+  const leaveSession = useSessionStore((state) => state.leaveSession);
 
+  // The route owns the session's lifetime: opening it starts or resumes a
+  // session, and unmounting leaves it open. Only End (in the screen) finalizes.
   useEffect(() => {
-    void ensureCoachSession({
-      getSessionState: () => {
-        const state = useSessionStore.getState();
-        return {
-          isActive: state.isActive,
-          messages: state.messages,
-        };
-      },
-      checkAndRecoverSession,
-      loadSessions,
-      startSession,
-    });
-  }, [checkAndRecoverSession, loadSessions, startSession]);
+    let cancelled = false;
 
-  return (
-    <CoachSessionScreen
-      autoPrompt={autoPrompt}
-      onDismiss={() => router.back()}
-    />
-  );
+    if (sessionId) {
+      getSession(sessionId)
+        .then((session) => {
+          if (!cancelled) hydrateSession(session);
+        })
+        .catch((error) => {
+          console.warn('Failed to open session:', error);
+          if (cancelled) return;
+          Alert.alert('Could not open session', 'Please try again.');
+          router.back();
+        });
+    } else {
+      void startSession();
+    }
+
+    return () => {
+      cancelled = true;
+      void leaveSession();
+    };
+  }, [sessionId, startSession, hydrateSession, leaveSession, router]);
+
+  return <CoachSessionScreen onDismiss={() => router.back()} />;
 }
