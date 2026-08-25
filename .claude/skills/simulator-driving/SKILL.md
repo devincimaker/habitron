@@ -102,8 +102,13 @@ xcrun simctl openurl "$UDID" "habits-coach://profile"
 xcrun simctl openurl "$UDID" "habits-coach://memories"
 ```
 
-Chains of blind taps drift, and a fast refresh resets navigation underneath you,
-so a chain that worked once fails silently the next time. Deep link instead.
+Prefer a deep link wherever one exists: it is faster, and it is one fewer thing
+to assert. Where none does, navigate — `sim.py tap "<label>"`, one step at a
+time, reading the screen back after each, because a fast refresh can reset
+navigation underneath you. What you may never do is *claim* a screen you did not
+confirm: before a screenshot counts, `sim.py ls` and name an element that
+appears **only** on the target screen. A tap that landed 20pt off is invisible
+in the image and obvious in the assertion.
 
 ## Blocker 1 — the Expo dev-menu sheet
 
@@ -269,6 +274,36 @@ xcrun simctl list devices booted     # and this worktree's simulator is up
 
 Reading `ps` is unreliable: every other worktree runs its own `expo start`, so a
 match proves someone's Metro is alive, not yours. Match on the port.
+
+## Logging in
+
+A worktree's simulator is a fresh install of the dev client, so it starts
+**signed out** every time, and a `--db` worktree's database does not even
+contain the account until `wt:setup` seeds it.
+
+```bash
+python3 .claude/skills/simulator-driving/sim.py login
+```
+
+It reads `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` from the nearest
+`apps/api/.env`, taps the two fields by their labels, and waits up to 20s for
+the app's `Inbox` header. Two exits:
+
+- **0** — `signed in as <email>`, or `already signed in` when the app was
+  already past the login screen. Safe to run before every pass.
+- **1** — it prints what *is* on screen. The login screen renders Supabase's
+  error inline, so `Invalid login credentials` appears in that list when the
+  password in `.env` is not the account's.
+
+`pnpm seed` (from the worktree root) puts that account into a known state first:
+2 overdue, 2 open and 2 completed tasks today, 4 habits with history, 2 journal
+entries. In shared mode that is the live project, and every shared-mode
+simulator is signed into the same account — so run it when the proof needs the
+fixture state, not by habit.
+
+If the fields will not take text, check that the app is on the login screen and
+not behind the dev-menu sheet (blocker 1): `tap` ranks a `TextField` above the
+`StaticText` label, but only among elements that are actually on screen.
 
 ## Reverting source while the app runs
 

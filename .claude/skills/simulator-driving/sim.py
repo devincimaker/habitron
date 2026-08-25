@@ -7,6 +7,7 @@
     sim.py unblock             # clear the SpringBoard "Open in …?" alert
     sim.py reboot              # shutdown + boot + wait until taps work again
     sim.py ready               # wait until accessibility answers (after a boot)
+    sim.py login               # sign in as TEST_USER_EMAIL (apps/api/.env)
     sim.py shot out.png        # screenshot
 
 The UDID comes from this checkout's .env.worktree or apps/mobile/.env — by UDID
@@ -62,11 +63,36 @@ def resolve_name(name):
     return matches[0][0]
 
 
+def checkouts():
+    """This directory and every parent up to the checkout root, outermost last."""
+    here = Path.cwd()
+    for base in [here, *here.parents]:
+        yield base
+        if (base / ".git").exists():
+            return
+
+
+def read_env(fname, keys):
+    """The first checkout above cwd that carries fname, as a dict of the keys asked for."""
+    for base in checkouts():
+        f = base / fname
+        if not f.is_file():
+            continue
+        text = f.read_text()
+        found = {}
+        for key in keys:
+            m = re.search(rf"^{key}=(.+)$", text, re.M)
+            if m and m.group(1).strip():
+                found[key] = m.group(1).strip()
+        if found:
+            return found
+    return {}
+
+
 def find_udid():
     if os.environ.get("WT_SIM_UDID"):
         return os.environ["WT_SIM_UDID"]
-    here = Path.cwd()
-    for base in [here, *here.parents]:
+    for base in checkouts():
         for fname, key in ((".env.worktree", "WT_SIM_UDID"),
                            ("apps/mobile/.env", "IOS_SIMULATOR_UDID")):
             f = base / fname
@@ -84,8 +110,6 @@ def find_udid():
                     return udid
                 sys.exit(f"No simulator named {m.group(1).strip()!r} exists. "
                          "Check apps/mobile/.env against `xcrun simctl list devices`.")
-        if (base / ".git").exists():
-            break
     sys.exit("No simulator found. Set WT_SIM_UDID, or run from a checkout "
              "whose .env.worktree / apps/mobile/.env names one.")
 
@@ -233,6 +257,99 @@ def wait_ready(timeout=90):
     return False
 
 
+# The signed-in app always shows the Tasks tab's header; the login screen never does.
+SIGNED_IN_MARKER = "Inbox"
+BUNDLE_ID = "com.capybarastudios.habitscoach"
+
+
+def dump_screen(limit=8):
+    for label, _, _ in elements()[:limit]:
+        print(f"  {label!r}", file=sys.stderr)
+
+
+def type_text(value, chunk=6):
+    """Type in short bursts.
+
+    `idb ui text` drops characters on a long string — a 24-character password
+    arrives short, and the only symptom is 'Invalid login credentials'. Bursts
+    with a beat between them arrive whole.
+    """
+    for start in range(0, len(value), chunk):
+        subprocess.run([IDB, "ui", "text", "--udid", UDID, value[start:start + chunk]],
+                       check=True, capture_output=True, timeout=60)
+        time.sleep(0.2)
+
+
+def relaunch():
+    """Restart the app, which is the only way to clear text already in a field."""
+    subprocess.run(["xcrun", "simctl", "terminate", UDID, BUNDLE_ID],
+                   capture_output=True, timeout=60)
+    time.sleep(2)
+    subprocess.run(["xcrun", "simctl", "launch", UDID, BUNDLE_ID],
+                   capture_output=True, timeout=60)
+    time.sleep(8)
+    tap("Close", exact=True, quiet=True)  # the dev-menu sheet, if it came back
+    time.sleep(1)
+
+
+def attempt_login(email, password):
+    """One pass at the form. False means the app is not signed in afterwards."""
+    if not tap("Email", exact=True, quiet=True):
+        print("No Email field to tap", file=sys.stderr)
+        return False
+    type_text(email)
+    if not tap("Password", exact=True, quiet=True):
+        print("No Password field to tap", file=sys.stderr)
+        return False
+    type_text(password)
+    if not tap("Sign In", exact=True, quiet=True):
+        print("No Sign In button to tap", file=sys.stderr)
+        return False
+
+    deadline = time.time() + 20
+    while True:
+        if any(SIGNED_IN_MARKER in label for label, _, _ in elements()):
+            return True
+        if time.time() >= deadline:
+            return False
+        time.sleep(1)
+
+
+def login():
+    """Sign the app in as the test account. Idempotent: says so and exits 0 if already in."""
+    creds = read_env("apps/api/.env", ("TEST_USER_EMAIL", "TEST_USER_PASSWORD"))
+    email, password = creds.get("TEST_USER_EMAIL"), creds.get("TEST_USER_PASSWORD")
+    if not email or not password:
+        missing = "TEST_USER_EMAIL" if not email else "TEST_USER_PASSWORD"
+        sys.exit(f"{missing} is not set — add it to apps/api/.env")
+
+    labels = [label for label, _, _ in elements()]
+    if any(SIGNED_IN_MARKER in label for label in labels):
+        print("already signed in")
+        return True
+    if not any("Sign In" in label for label in labels):
+        unblock()
+        labels = [label for label, _, _ in elements()]
+        if not any("Sign In" in label for label in labels):
+            print("Neither the login screen nor the app is up. On screen:", file=sys.stderr)
+            dump_screen(5)
+            return False
+
+    # The fields are labelled by ui/Input's `label` prop, and tap() prefers a
+    # TextField over the StaticText above it.
+    for attempt in range(2):
+        if attempt:
+            relaunch()  # the first attempt's text is still in the fields
+        if attempt_login(email, password):
+            print(f"signed in as {email}")
+            return True
+
+    # The login screen renders Supabase's error inline, so it is on screen now.
+    print("Still not signed in. On screen:", file=sys.stderr)
+    dump_screen()
+    return False
+
+
 def reboot():
     subprocess.run(["xcrun", "simctl", "shutdown", UDID], capture_output=True, timeout=120)
     subprocess.run(["xcrun", "simctl", "boot", UDID], capture_output=True, timeout=120)
@@ -253,6 +370,8 @@ if __name__ == "__main__":
         sys.exit(0 if reboot() else 1)
     elif cmd == "ready":
         sys.exit(0 if wait_ready() else 1)
+    elif cmd == "login":
+        sys.exit(0 if login() else 1)
     elif cmd == "shot":
         subprocess.run(["xcrun", "simctl", "io", UDID, "screenshot", sys.argv[2]],
                        check=True, capture_output=True, timeout=60)

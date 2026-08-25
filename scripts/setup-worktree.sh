@@ -363,6 +363,20 @@ else
     wt_info "Supabase still reports $flagged for this branch. Its schema is complete"
     wt_info "(checked above), so that status is noise here, not a problem to fix."
   fi
+
+  # Point this worktree's env at its own database *before* seeding. Until this
+  # runs, apps/api/.env is still the copy of the main checkout's — i.e. the live
+  # project — and the seed deletes rows. The env section below rewrites the same
+  # two values idempotently.
+  wt_upsert_env "$target/apps/api/.env" "SUPABASE_URL" "$supabase_url"
+  wt_upsert_env "$target/apps/api/.env" "SUPABASE_SERVICE_ROLE_KEY" "$service_key"
+
+  # A branch database starts with an empty auth.users, so there is nobody to
+  # sign in as until this runs.
+  wt_step "Seeding the test account"
+  (cd "$target" && pnpm --filter @habits-coach/api seed) \
+    || wt_die "Seeding failed. Fix apps/api/.env (TEST_USER_EMAIL / TEST_USER_PASSWORD), then re-run:
+  cd $target && pnpm --filter @habits-coach/api seed"
 fi
 
 # --- write env ---------------------------------------------------------------

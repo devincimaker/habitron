@@ -47,6 +47,12 @@ Refusing to reset a database that is not this worktree's. Re-run: pnpm wt:setup 
 wt_step "Resetting branch database $branch_ref"
 (cd "$target" && echo y | supabase db reset --db-url "$db_url") || wt_die "Reset failed"
 
+wt_step "Seeding the test account"
+(cd "$target" && pnpm --filter @habits-coach/api seed) \
+  || wt_die "Reset succeeded but seeding failed. Re-run:
+  cd $target && pnpm --filter @habits-coach/api seed"
+
 wt_step "Done"
-wt_info "Every migration in this checkout is applied. The app needs a re-login"
-wt_info "(fresh database, fresh JWTs). Restart Metro with --clear if it was up."
+wt_info "Every migration in this checkout is applied, and the test account is seeded."
+wt_info "The app needs a re-login (fresh database, fresh JWTs) as TEST_USER_EMAIL"
+wt_info "from apps/api/.env — 'sim.py login' does it. Restart Metro with --clear if it was up."

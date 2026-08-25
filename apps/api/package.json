@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "coach:smoke": "tsx scripts/coach-smoke.ts"
+    "coach:smoke": "tsx scripts/coach-smoke.ts",
+    "seed": "tsx scripts/seed-test-user.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.241",

@@ -44,6 +44,7 @@ export function Input({
           inputStyle,
         ]}
         placeholderTextColor={colors.textLight}
+        accessibilityLabel={label}
         onFocus={(e) => {
           setIsFocused(true);
           textInputProps.onFocus?.(e);
