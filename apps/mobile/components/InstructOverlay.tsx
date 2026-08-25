@@ -120,7 +120,9 @@ export function InstructOverlay({
       )}
 
       {state.phase === 'working' && (
-        <View style={styles.panel}>
+        // Display only: the hint is written on this card, so the card must let
+        // the tap through to the scrim behind it rather than swallow it.
+        <View style={styles.panel} pointerEvents="none">
           <View style={styles.busyRow}>
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.busyText}>{workingLabel(state)}</Text>

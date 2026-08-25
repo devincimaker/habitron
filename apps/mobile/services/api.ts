@@ -64,7 +64,9 @@ async function streamEvents(
   const feed = createSseParser(onEvent);
   // An abort mid-stream has to reach the reader too, or the loop below waits
   // on a chunk that is never coming. The listener dies with the turn's controller.
-  signal?.addEventListener('abort', () => void reader.cancel(), { once: true });
+  // A stream that already errored rejects on cancel; an abort is not a place
+  // to raise that again.
+  signal?.addEventListener('abort', () => void reader.cancel().catch(() => {}), { once: true });
 
   while (true) {
     const { done, value } = await reader.read();
