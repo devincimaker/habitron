@@ -178,6 +178,23 @@ if [ $# -lt 1 ] || [ $# -gt 2 ]; then
   exit 1
 fi
 
+# The second positional is the worktree's directory name, and the loop above
+# stopped reading flags at the first non-flag argument — so a flag here is
+# almost always flags-after-branch. Left unchecked it creates a worktree in a
+# directory called "--db" and drops the routing it asked for, silently. The
+# --db case is the expensive one: shared mode is the production project.
+case "${2:-}" in
+  -*)
+    echo "ERROR: '$2' looks like a flag, but wt:new reads its flags before the" >&2
+    echo "branch name. As written it is the worktree's directory name, and the" >&2
+    echo "flag itself is ignored." >&2
+    echo "" >&2
+    echo "  pnpm wt:new $2 $1" >&2
+    echo "" >&2
+    exit 1
+    ;;
+esac
+
 if ! git rev-parse --show-toplevel >/dev/null 2>&1; then
   echo "ERROR: Not inside a git repository." >&2
   exit 1
