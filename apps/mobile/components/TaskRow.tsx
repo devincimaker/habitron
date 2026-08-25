@@ -14,9 +14,9 @@ import {
   getEstimateDelta,
   incrementDuration,
 } from '../utils/todoEstimate';
-import { getTodoTagTintColor } from '../utils/todoTagColors';
+import { getTodoTagChipColors } from '../utils/todoTagColors';
 import { formatTodoScheduledTime } from '../utils/todoTime';
-import { useThemedStyles } from '../hooks/useColors';
+import { useColorTheme, useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 
 export interface TaskStatusToggleOptions {
@@ -65,6 +65,8 @@ export function TaskRow({
   isDragging = false,
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const colorTheme = useColorTheme();
+  const tagChip = getTodoTagChipColors(todo.tag?.color, colorTheme);
   const rowRef = useRef<View>(null);
   const swipeableRef = useRef<Swipeable>(null);
   const setChecklistItemDone = useTodosStore((state) => state.setChecklistItemDone);
@@ -362,15 +364,10 @@ export function TaskRow({
                     <View
                       style={[
                         styles.tagPill,
-                        todo.tag.color
-                          ? {
-                              backgroundColor: getTodoTagTintColor(todo.tag.color, '1F'),
-                              borderColor: getTodoTagTintColor(todo.tag.color, '3D'),
-                            }
-                          : undefined,
+                        tagChip ? { backgroundColor: tagChip.background } : undefined,
                       ]}
                     >
-                      <Caption color={todo.tag.color ?? colors.textSecondary}>{todo.tag.name}</Caption>
+                      <Caption color={tagChip?.label ?? colors.textSecondary}>{todo.tag.name}</Caption>
                     </View>
                   ) : (
                     <Caption>#{todo.tag.name}</Caption>
@@ -583,10 +580,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   tagPill: {
     borderRadius: BORDER_RADIUS.full,
     backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    paddingVertical: 4,
   },
   swipeActionsContainer: {
     width: SWIPE_ACTION_WIDTH * 2,

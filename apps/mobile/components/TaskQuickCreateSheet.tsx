@@ -21,7 +21,7 @@ import type { TodoDraft } from '@habits-coach/shared';
 import { DatePickerModal } from './DatePickerModal';
 import { BodyMedium } from './ui';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
-import { useThemedStyles } from '../hooks/useColors';
+import { useColorTheme, useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
 import {
@@ -32,7 +32,7 @@ import {
   replaceActiveInlineTagContext,
   type TextSelectionRange,
 } from '../utils/taskQuickCreateTags';
-import { getTodoTagTintColor } from '../utils/todoTagColors';
+import { getTodoTagChipColors } from '../utils/todoTagColors';
 
 interface TaskQuickCreateSheetProps {
   visible: boolean;
@@ -75,6 +75,7 @@ export function TaskQuickCreateSheet({
   defaultScheduledDate,
 }: TaskQuickCreateSheetProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const colorTheme = useColorTheme();
   const insets = useSafeAreaInsets();
   const tags = useTodosStore((state) => state.tags);
   const inputRef = useRef<TextInput>(null);
@@ -226,31 +227,23 @@ export function TaskQuickCreateSheet({
                 keyboardShouldPersistTaps="handled"
                 showsVerticalScrollIndicator={false}
               >
-                {tagSuggestions.map((tag) => (
-                  <Pressable
-                    key={tag.id}
-                    style={[
-                      styles.tagSuggestionButton,
-                      tag.color
-                        ? {
-                            backgroundColor: getTodoTagTintColor(tag.color, '14'),
-                            borderColor: getTodoTagTintColor(tag.color, '2E'),
-                          }
-                        : undefined,
-                    ]}
-                    onPress={() => handleSelectTagSuggestion(tag.name)}
-                    accessibilityRole="button"
-                    accessibilityLabel={`Use tag #${tag.name}`}
-                  >
-                    <View
+                {tagSuggestions.map((tag) => {
+                  const chip = getTodoTagChipColors(tag.color, colorTheme);
+                  return (
+                    <Pressable
+                      key={tag.id}
                       style={[
-                        styles.tagSuggestionDot,
-                        tag.color ? { backgroundColor: tag.color } : undefined,
+                        styles.tagSuggestionButton,
+                        chip ? { backgroundColor: chip.background } : undefined,
                       ]}
-                    />
-                    <BodyMedium color={tag.color ?? colors.text}>#{tag.name}</BodyMedium>
-                  </Pressable>
-                ))}
+                      onPress={() => handleSelectTagSuggestion(tag.name)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Use tag #${tag.name}`}
+                    >
+                      <BodyMedium color={chip?.label ?? colors.text}>#{tag.name}</BodyMedium>
+                    </Pressable>
+                  );
+                })}
               </ScrollView>
             </View>
           ) : null}
@@ -449,14 +442,6 @@ const createStyles = (colors: Colors) =>
       marginHorizontal: SPACING.xs,
       marginVertical: 2,
       borderRadius: BORDER_RADIUS.lg,
-      borderWidth: 1,
-      borderColor: 'transparent',
-    },
-    tagSuggestionDot: {
-      width: 8,
-      height: 8,
-      borderRadius: BORDER_RADIUS.full,
-      backgroundColor: colors.textLight,
     },
     composer: {
       backgroundColor: colors.background,

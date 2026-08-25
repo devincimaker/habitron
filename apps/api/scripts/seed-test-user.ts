@@ -81,6 +81,13 @@ const habitron = createHabitron({
   timezone,
 });
 
+step(`Writing ${fixtures.tags.length} tags`);
+const tagId = new Map<string, string>();
+for (const tag of fixtures.tags) {
+  const created = await habitron.db.createTag(tag.name, tag.color);
+  tagId.set(tag.name, created.id);
+}
+
 step(`Writing ${fixtures.tasks.length} tasks around ${day}`);
 for (const task of fixtures.tasks) {
   const created = await habitron.db.createTask({
@@ -90,6 +97,7 @@ for (const task of fixtures.tasks) {
     priority: task.priority,
     estimateMinutes: task.estimateMinutes,
     checklist: task.checklist,
+    tagId: task.tag ? tagId.get(task.tag) : undefined,
   });
   if (task.status === 'completed') {
     await habitron.db.setTaskStatus(created.id, 'completed');

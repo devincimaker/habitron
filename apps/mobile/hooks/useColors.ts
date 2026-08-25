@@ -17,6 +17,15 @@ export function useColors(): Colors {
   return ctx;
 }
 
+/**
+ * Which palette is in force, for the few places that need to derive a colour
+ * rather than read one. Taken from the provider's value, not a second
+ * useColorScheme() call, so it can never disagree with the colours on screen.
+ */
+export function useColorTheme(): 'light' | 'dark' {
+  return useColors() === COLORS_DARK ? 'dark' : 'light';
+}
+
 export function useThemedStyles<T>(factory: (colors: Colors) => T): [T, Colors] {
   const colors = useColors();
   const styles = useMemo(() => factory(colors), [colors, factory]);
