@@ -1,29 +1,4 @@
-import type { Ionicons } from '@expo/vector-icons';
-import type { CoachSkillId, CoachingSessionSummary } from '@habits-coach/shared';
-
-type IoniconName = keyof typeof Ionicons.glyphMap;
-
-const SKILL_LABELS: Record<CoachSkillId, string> = {
-  'habit-design': 'Habit design',
-  'day-planning': 'Day planning',
-  'task-management': 'Task management',
-  'general-coach': 'Coaching',
-};
-
-const SKILL_ICONS: Record<CoachSkillId, IoniconName> = {
-  'habit-design': 'repeat-outline',
-  'day-planning': 'sunny-outline',
-  'task-management': 'checkbox-outline',
-  'general-coach': 'chatbubble-outline',
-};
-
-export function getSessionSkillLabel(skillId: CoachSkillId | null | undefined): string {
-  return SKILL_LABELS[skillId ?? 'general-coach'];
-}
-
-export function getSessionSkillIcon(skillId: CoachSkillId | null | undefined): IoniconName {
-  return SKILL_ICONS[skillId ?? 'general-coach'];
-}
+import type { CoachingSessionSummary } from '@habits-coach/shared';
 
 export function isSessionOpen(session: Pick<CoachingSessionSummary, 'endedAt'>): boolean {
   return session.endedAt === null;
@@ -68,17 +43,16 @@ function formatRelativeDate(timestamp: number, now: Date): string {
 
 /**
  * Meta line under the session name in the hub. Outcomes, not volume:
- * `Habit design · Open` or `Habit design · 3 memories · Aug 22`.
+ * `Open` or `3 memories · Aug 22`.
  */
 export function formatSessionMeta(
-  session: Pick<CoachingSessionSummary, 'startedAt' | 'endedAt' | 'memoryCount' | 'leadSkillId'>,
+  session: Pick<CoachingSessionSummary, 'startedAt' | 'endedAt' | 'memoryCount'>,
   now: Date = new Date()
 ): string {
-  const parts = [getSessionSkillLabel(session.leadSkillId)];
   if (isSessionOpen(session)) {
-    parts.push('Open');
-    return parts.join(' · ');
+    return 'Open';
   }
+  const parts: string[] = [];
   if (session.memoryCount) {
     parts.push(`${session.memoryCount} ${session.memoryCount === 1 ? 'memory' : 'memories'}`);
   }

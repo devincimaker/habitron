@@ -10,11 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
 import { FONT_SIZES, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import {
-  formatSessionMeta,
-  getSessionSkillIcon,
-  isSessionOpen,
-} from '../utils/coachSessions';
+import { formatSessionMeta, isSessionOpen } from '../utils/coachSessions';
 
 const SWIPE_THRESHOLD = 80;
 
@@ -75,7 +71,7 @@ export function SessionListItem({
         >
           <View style={[styles.iconContainer, open && styles.iconContainerOpen]}>
             <Ionicons
-              name={getSessionSkillIcon(session.leadSkillId)}
+              name="chatbubble-outline"
               size={22}
               color={open ? colors.primary : colors.textSecondary}
             />

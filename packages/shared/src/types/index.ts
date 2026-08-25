@@ -374,7 +374,6 @@ export interface CoachingSessionDetail extends CoachingSessionSummary {
 
 export interface CreateSessionRequest {
   startedAt?: number;  // Optional, defaults to now
-  name?: string;  // Provisional name; finalize replaces it with a generated summary
 }
 
 export interface CreateSessionResponse {

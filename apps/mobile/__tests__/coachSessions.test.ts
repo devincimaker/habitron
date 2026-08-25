@@ -3,8 +3,6 @@ import {
   buildMemoryWarning,
   formatSessionMeta,
   formatSessionStatus,
-  getSessionSkillIcon,
-  getSessionSkillLabel,
   sortSessions,
 } from '../utils/coachSessions';
 
@@ -18,26 +16,9 @@ function session(overrides: Partial<CoachingSessionSummary>): CoachingSessionSum
     startedAt: day('2026-08-22T09:00:00'),
     endedAt: day('2026-08-22T09:30:00'),
     memoryCount: 0,
-    leadSkillId: 'habit-design',
     ...overrides,
   };
 }
-
-describe('skill label and icon', () => {
-  it('maps every skill, and falls back to general coaching', () => {
-    expect(getSessionSkillLabel('habit-design')).toBe('Habit design');
-    expect(getSessionSkillLabel('day-planning')).toBe('Day planning');
-    expect(getSessionSkillLabel('task-management')).toBe('Task management');
-    expect(getSessionSkillLabel('general-coach')).toBe('Coaching');
-    expect(getSessionSkillLabel(null)).toBe('Coaching');
-    expect(getSessionSkillLabel(undefined)).toBe('Coaching');
-
-    expect(getSessionSkillIcon('habit-design')).toBe('repeat-outline');
-    expect(getSessionSkillIcon('day-planning')).toBe('sunny-outline');
-    expect(getSessionSkillIcon('task-management')).toBe('checkbox-outline');
-    expect(getSessionSkillIcon(null)).toBe('chatbubble-outline');
-  });
-});
 
 describe('sortSessions', () => {
   it('puts open sessions first, then newest first', () => {
@@ -60,26 +41,18 @@ describe('sortSessions', () => {
 });
 
 describe('formatSessionMeta', () => {
-  it('shows skill and Open for an open session, no date or memories', () => {
-    expect(formatSessionMeta(session({ endedAt: null, memoryCount: 4 }), NOW)).toBe(
-      'Habit design · Open'
-    );
+  it('reads Open for an open session, with no date or memories', () => {
+    expect(formatSessionMeta(session({ endedAt: null, memoryCount: 4 }), NOW)).toBe('Open');
   });
 
-  it('shows skill, memory count and date for a closed session', () => {
-    expect(formatSessionMeta(session({ memoryCount: 3 }), NOW)).toBe(
-      'Habit design · 3 memories · Aug 22'
-    );
-    expect(formatSessionMeta(session({ memoryCount: 1 }), NOW)).toBe(
-      'Habit design · 1 memory · Aug 22'
-    );
+  it('shows memory count and date for a closed session', () => {
+    expect(formatSessionMeta(session({ memoryCount: 3 }), NOW)).toBe('3 memories · Aug 22');
+    expect(formatSessionMeta(session({ memoryCount: 1 }), NOW)).toBe('1 memory · Aug 22');
   });
 
   it('omits the memory count when there are none', () => {
-    expect(formatSessionMeta(session({ memoryCount: 0 }), NOW)).toBe('Habit design · Aug 22');
-    expect(formatSessionMeta(session({ memoryCount: undefined }), NOW)).toBe(
-      'Habit design · Aug 22'
-    );
+    expect(formatSessionMeta(session({ memoryCount: 0 }), NOW)).toBe('Aug 22');
+    expect(formatSessionMeta(session({ memoryCount: undefined }), NOW)).toBe('Aug 22');
   });
 
   it('adds the year for sessions from another year', () => {
@@ -88,7 +61,7 @@ describe('formatSessionMeta', () => {
         session({ startedAt: day('2020-06-20T14:00:00'), endedAt: day('2020-06-20T14:30:00') }),
         NOW
       )
-    ).toBe('Habit design · Jun 20, 2020');
+    ).toBe('Jun 20, 2020');
   });
 });
 
