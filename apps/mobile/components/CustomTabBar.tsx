@@ -118,9 +118,13 @@ function TabButton({
       const y = event.allTouches[0]?.absoluteY ?? holdStartY.current;
       hold?.move(holdStartY.current - y);
     })
-    .onEnd(() => {
+    // onFinalize fires on every terminal transition, with the same `success`
+    // onEnd would get: false when the press was cancelled rather than released
+    // — a second finger, the app backgrounding, travel past maxDistance.
+    .onFinalize((_event, success) => {
+      if (!holdActive.current) return;
       holdActive.current = false;
-      hold?.end();
+      hold?.end(success);
     });
 
   const button = (

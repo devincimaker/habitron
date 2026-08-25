@@ -25,7 +25,9 @@ import { describeCoachActivity } from '../utils/coachActivity';
 import {
   INITIAL_INSTRUCT_STATE,
   TOAST_MS,
+  canAbort,
   canHold,
+  holdOutcome,
   instructReducer,
   parseProposal,
   type InstructState,
@@ -37,12 +39,15 @@ export interface InstructHold {
   start: () => void;
   /** How far the finger has risen above where the hold began, in points. */
   move: (lift: number) => void;
-  end: () => void;
+  /** `released` is false when the gesture was cancelled rather than lifted. */
+  end: (released: boolean) => void;
 }
 
 interface InstructContextValue {
   state: InstructState;
   hold: InstructHold;
+  /** Stop a working turn and return to whatever the hold interrupted. */
+  abort: () => void;
 }
 
 const InstructContext = createContext<InstructContextValue | null>(null);
@@ -72,6 +77,10 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   /** The in-flight `startRecording`, so a release never races the start. */
   const startingRef = useRef<Promise<void>>(Promise.resolve());
   const holdingRef = useRef(false);
+  /** The gesture's own measurement, so the release never waits on a render. */
+  const liftRef = useRef(0);
+  /** The in-flight turn's controller: aborting it is also what orphans its results. */
+  const abortRef = useRef<AbortController | null>(null);
 
   const userName = useProfileStore((s) => s.name);
   const loadHabits = useHabitsStore((s) => s.loadHabits);
@@ -90,7 +99,10 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   }, [loadEntries, loadGoals, loadHabits, loadPlan, loadTodos]);
 
   const runTurn = useCallback(
-    async (request: TurnRequest): Promise<{ text: string; error: string | null }> => {
+    async (
+      request: TurnRequest,
+      signal?: AbortSignal
+    ): Promise<{ text: string; error: string | null }> => {
       let streamed = '';
       let finalText: string | null = null;
       let error: string | null = null;
@@ -103,6 +115,9 @@ export function InstructProvider({ children }: { children: ReactNode }) {
             userName: userName || undefined,
           },
           (event) => {
+            // A turn that was aborted or overtaken must not paint anything,
+            // including the session id a later correction would resume.
+            if (signal?.aborted) return;
             switch (event.type) {
               case 'session':
                 dispatch({ type: 'session', claudeSessionId: event.claudeSessionId });
@@ -120,9 +135,12 @@ export function InstructProvider({ children }: { children: ReactNode }) {
                 error = event.message;
                 break;
             }
-          }
+          },
+          signal
         );
       } catch (caught) {
+        // An abort is a deliberate cancel, not a failure: silent, unreported.
+        if (signal?.aborted) return { text: '', error: null };
         console.warn('Instruction turn failed:', caught);
         Sentry.captureException(caught, {
           tags: { feature: 'instruct', stage: 'chat_generation' },
@@ -139,6 +157,12 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   const submit = useCallback(
     async (audioUri?: string) => {
       const { correcting, claudeSessionId } = stateRef.current;
+      // One mechanism for both jobs: a new turn orphans whatever is still
+      // running, and the same signal is what every later dispatch checks.
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const { signal } = controller;
       dispatch({ type: 'submit' });
 
       await startingRef.current;
@@ -146,12 +170,14 @@ export function InstructProvider({ children }: { children: ReactNode }) {
       let transcript = '';
       if (uri) {
         try {
-          transcript = (await transcribeAudio(uri)).trim();
+          transcript = (await transcribeAudio(uri, signal)).trim();
         } catch (error) {
+          if (signal.aborted) return;
           console.warn('Transcription failed:', error);
           Sentry.captureException(error, { tags: { feature: 'instruct', stage: 'transcription' } });
         }
       }
+      if (signal.aborted) return;
       if (!transcript) {
         dispatch({ type: 'nothing-heard' });
         return;
@@ -161,7 +187,8 @@ export function InstructProvider({ children }: { children: ReactNode }) {
         correcting && claudeSessionId
           ? { kind: 'correct', text: transcript, claudeSessionId }
           : { kind: 'propose', text: transcript };
-      const { text, error } = await runTurn(request);
+      const { text, error } = await runTurn(request, signal);
+      if (signal.aborted) return;
       if (error) {
         dispatch({ type: 'notice', message: error, transcript });
         return;
@@ -195,23 +222,34 @@ export function InstructProvider({ children }: { children: ReactNode }) {
 
   const dismiss = useCallback(() => dispatch({ type: 'dismiss' }), []);
 
+  const abort = useCallback(() => {
+    if (!canAbort(stateRef.current)) return;
+    abortRef.current?.abort();
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    dispatch({ type: 'abort' });
+  }, []);
+
   // Stable handlers: the gesture holds on to whatever it was given when the hold began.
   const hold = useMemo<InstructHold>(
     () => ({
       start: () => {
         if (holdingRef.current || !canHold(stateRef.current)) return;
         holdingRef.current = true;
+        liftRef.current = 0;
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
         dispatch({ type: 'hold-start' });
         startingRef.current = recorderRef.current.startRecording();
       },
       move: (lift) => {
-        if (holdingRef.current) dispatch({ type: 'hold-move', lift });
+        if (!holdingRef.current) return;
+        liftRef.current = lift;
+        dispatch({ type: 'hold-move', lift });
       },
-      end: () => {
+      end: (released) => {
         if (!holdingRef.current) return;
         holdingRef.current = false;
-        if (stateRef.current.cancelArmed) {
+        if (holdOutcome(released, liftRef.current) === 'cancel') {
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           dispatch({ type: 'hold-cancel' });
           void startingRef.current.then(() => recorderRef.current.cancelRecording());
         } else {
@@ -228,7 +266,7 @@ export function InstructProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timer);
   }, [state.phase]);
 
-  const value = useMemo(() => ({ state, hold }), [state, hold]);
+  const value = useMemo(() => ({ state, hold, abort }), [state, hold, abort]);
 
   return (
     <InstructContext.Provider value={value}>
@@ -240,6 +278,7 @@ export function InstructProvider({ children }: { children: ReactNode }) {
           recordingDuration={recorder.recordingDuration}
           onApply={apply}
           onDismiss={dismiss}
+          onAbort={abort}
         />
       </View>
     </InstructContext.Provider>

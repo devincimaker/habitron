@@ -34,7 +34,8 @@ async function getAuthToken(): Promise<string> {
 async function streamEvents(
   path: string,
   request: unknown,
-  onEvent: (event: CoachStreamEvent) => void
+  onEvent: (event: CoachStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<void> {
   const token = await getAuthToken();
 
@@ -46,6 +47,7 @@ async function streamEvents(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(request),
+    signal,
   });
 
   if (!response.ok) {
@@ -60,6 +62,9 @@ async function streamEvents(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   const feed = createSseParser(onEvent);
+  // An abort mid-stream has to reach the reader too, or the loop below waits
+  // on a chunk that is never coming. The listener dies with the turn's controller.
+  signal?.addEventListener('abort', () => void reader.cancel(), { once: true });
 
   while (true) {
     const { done, value } = await reader.read();
@@ -80,12 +85,13 @@ export function streamCoachTurn(
 /** One hold-to-instruct turn: propose, correct, or apply. No coaching session involved. */
 export function streamInstructTurn(
   request: CoachInstructRequest,
-  onEvent: (event: CoachStreamEvent) => void
+  onEvent: (event: CoachStreamEvent) => void,
+  signal?: AbortSignal
 ): Promise<void> {
-  return streamEvents('/api/instruct', request, onEvent);
+  return streamEvents('/api/instruct', request, onEvent, signal);
 }
 
-export async function transcribeAudio(audioUri: string): Promise<string> {
+export async function transcribeAudio(audioUri: string, signal?: AbortSignal): Promise<string> {
   const token = await getAuthToken();
 
   // Create form data with the audio file
@@ -114,6 +120,7 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
       Authorization: `Bearer ${token}`,
     },
     body: formData,
+    signal,
   });
 
   if (!response.ok) {

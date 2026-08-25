@@ -62,6 +62,7 @@ export type InstructAction =
   | { type: 'hold-start' }
   | { type: 'hold-move'; lift: number }
   | { type: 'hold-cancel' }
+  | { type: 'abort' }
   | { type: 'submit' }
   | { type: 'nothing-heard' }
   | { type: 'session'; claudeSessionId: string }
@@ -72,6 +73,25 @@ export type InstructAction =
   | { type: 'applied' }
   | { type: 'dismiss' }
   | { type: 'toast-expired' };
+
+/** The one place the cancel line is drawn: the outcome and the hint agree by construction. */
+function armed(lift: number): boolean {
+  return lift > CANCEL_LIFT;
+}
+
+/**
+ * What a finished hold means. The lift is measured by the gesture itself, so
+ * this never depends on state React has not rendered yet: a flick up and
+ * release is a cancel even when the arming dispatch has not flushed.
+ */
+export function holdOutcome(released: boolean, lift: number): 'submit' | 'cancel' {
+  return released && !armed(lift) ? 'submit' : 'cancel';
+}
+
+/** Only a working turn can be stopped: applying is already writing real data. */
+export function canAbort(state: InstructState): boolean {
+  return state.phase === 'working';
+}
 
 /** Whether a hold may begin: nothing is being recorded or run. */
 export function canHold(state: InstructState): boolean {
@@ -110,7 +130,7 @@ export function instructReducer(state: InstructState, action: InstructAction): I
 
     case 'hold-move': {
       if (state.phase !== 'recording') return state;
-      const cancelArmed = action.lift > CANCEL_LIFT;
+      const cancelArmed = armed(action.lift);
       return cancelArmed === state.cancelArmed ? state : { ...state, cancelArmed };
     }
 
@@ -118,6 +138,13 @@ export function instructReducer(state: InstructState, action: InstructAction): I
       if (state.phase !== 'recording') return state;
       if (!state.correcting) return INITIAL_INSTRUCT_STATE;
       return { ...state, phase: sheetPhase(state), correcting: false, cancelArmed: false };
+
+    case 'abort': {
+      if (!canAbort(state)) return state;
+      const phase = sheetPhase(state);
+      if (phase === 'idle') return INITIAL_INSTRUCT_STATE;
+      return { ...state, phase, correcting: false, activity: null };
+    }
 
     case 'submit':
       if (state.phase !== 'recording') return state;

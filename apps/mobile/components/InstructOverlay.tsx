@@ -12,6 +12,7 @@ import {
 } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import {
+  canAbort,
   formatElapsed,
   holdHint,
   sheetHint,
@@ -27,6 +28,7 @@ interface InstructOverlayProps {
   recordingDuration: number;
   onApply: () => void;
   onDismiss: () => void;
+  onAbort: () => void;
 }
 
 /**
@@ -41,6 +43,7 @@ export function InstructOverlay({
   recordingDuration,
   onApply,
   onDismiss,
+  onAbort,
 }: InstructOverlayProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -48,6 +51,7 @@ export function InstructOverlay({
   if (state.phase === 'idle') return null;
 
   const dismissible = state.phase === 'proposal' || state.phase === 'notice';
+  const abortable = canAbort(state);
   const showSheet = state.proposal !== null || state.phase === 'notice';
 
   return (
@@ -59,8 +63,8 @@ export function InstructOverlay({
       {state.phase !== 'toast' && (
         <Pressable
           style={styles.scrim}
-          onPress={dismissible ? onDismiss : undefined}
-          accessibilityLabel={dismissible ? 'Dismiss' : undefined}
+          onPress={abortable ? onAbort : dismissible ? onDismiss : undefined}
+          accessibilityLabel={abortable ? 'Cancel' : dismissible ? 'Dismiss' : undefined}
         />
       )}
 
@@ -121,6 +125,7 @@ export function InstructOverlay({
             <ActivityIndicator color={colors.primary} />
             <Text style={styles.busyText}>{workingLabel(state)}</Text>
           </View>
+          <Text style={styles.hint}>Tap to cancel</Text>
         </View>
       )}
 
