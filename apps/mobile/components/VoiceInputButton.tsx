@@ -35,7 +35,7 @@ function formatDuration(ms: number): string {
 }
 
 // Waveform visualization component
-function Waveform({ level, isWarning = false }: { level: number; isWarning?: boolean }) {
+export function Waveform({ level, isWarning = false }: { level: number; isWarning?: boolean }) {
   const [, colors] = useThemedStyles(createStyles);
   const bars = 20;
   const animatedValues = useRef(

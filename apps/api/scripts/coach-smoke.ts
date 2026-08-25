@@ -5,12 +5,18 @@
  *
  * Needs apps/api/.env (Supabase + CLAUDE_CODE_OAUTH_TOKEN or a local Claude login)
  * and COACH_SMOKE_USER_ID (defaults to the simulator test account).
+ *
+ * COACH_SMOKE_MODE=instruct runs the turn the way /api/instruct does: only the
+ * `instruct` skill, read-only tools unless the prompt is the apply prompt.
+ * Chain propose → correct → apply with COACH_SMOKE_RESUME.
  */
-import { runCoachTurn } from '../src/coach/agent.js';
+import { INSTRUCT_SKILLS, runCoachTurn } from '../src/coach/agent.js';
+import { APPLY_PROMPT } from '../src/routes/instruct.js';
 
 const userId = process.env.COACH_SMOKE_USER_ID || 'f59b2da9-c260-4930-bf50-686eb9c2d1e5';
 const prompt = process.argv.slice(2).join(' ') || '/coach';
 const claudeSessionId = process.env.COACH_SMOKE_RESUME || null;
+const instruct = process.env.COACH_SMOKE_MODE === 'instruct';
 
 const started = Date.now();
 const result = await runCoachTurn(
@@ -20,6 +26,7 @@ const result = await runCoachTurn(
     timezone: process.env.HABITRON_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
     userName: 'Test',
     claudeSessionId,
+    ...(instruct ? { skills: INSTRUCT_SKILLS, readOnly: prompt !== APPLY_PROMPT } : {}),
   },
   (event) => {
     if (event.type === 'text') {

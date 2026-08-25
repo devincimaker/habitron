@@ -314,6 +314,23 @@ export interface CoachTurnRequest {
   userName?: string;
 }
 
+/**
+ * Hold-to-instruct (POST /api/instruct): one spoken instruction handled as a
+ * proposal, then applied on confirmation — no coaching session row, no memories.
+ * `propose` opens an Agent SDK session; `correct` and `apply` resume it.
+ */
+export type CoachInstructKind = 'propose' | 'correct' | 'apply';
+
+export interface CoachInstructRequest {
+  kind: CoachInstructKind;
+  /** The transcribed instruction (`propose`) or correction (`correct`). */
+  text?: string;
+  /** The Agent SDK session the proposal turn returned; required for `correct` and `apply`. */
+  claudeSessionId?: string;
+  timezone: string;
+  userName?: string;
+}
+
 export type CoachStreamEvent =
   | { type: 'session'; claudeSessionId: string }
   | { type: 'text'; delta: string }

@@ -4,6 +4,11 @@ jest.mock('react-native', () => ({
   },
 }));
 
+jest.mock('expo-constants', () => ({
+  __esModule: true,
+  default: { expoConfig: null },
+}));
+
 import {
   buildApiUrl,
   isLocalApiUrl,

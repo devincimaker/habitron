@@ -114,7 +114,9 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
   }, []);
 
   const stopRecording = useCallback(async (): Promise<string | null> => {
-    if (!isRecording) {
+    // The native status, not the React flag: a hold can release before the
+    // render that follows `record()` has happened.
+    if (!getRecorderStatus(recorder, 'stop')?.isRecording) {
       resetRecordingState();
       return null;
     }
@@ -147,7 +149,7 @@ export function useAudioRecorder(options: UseAudioRecorderOptions = {}): UseAudi
       setError('Failed to stop recording');
       return null;
     }
-  }, [isRecording, recorder, resetRecordingState]);
+  }, [recorder, resetRecordingState]);
 
   const startRecording = useCallback(async () => {
     try {

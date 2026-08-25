@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { NativeModules } from 'react-native';
 
 const LOCAL_API_FALLBACK = 'http://localhost:3001';
@@ -47,9 +48,18 @@ export function isLocalApiUrl(baseUrl: string): boolean {
   return Boolean(parsedUrl && LOCAL_API_HOSTS.has(parsedUrl.hostname));
 }
 
+// Where the JS bundle came from. In a dev client Expo records the dev server
+// as `hostUri` ("192.168.1.10:8086"); the SourceCode module is the fallback,
+// whose constants are only reachable through getConstants() under the New
+// Architecture — reading `scriptURL` off the module itself is undefined there,
+// which left a dev build on a phone talking to the phone's own localhost.
 function getRuntimeScriptUrl(): string | null {
-  const sourceCode = NativeModules.SourceCode as { scriptURL?: string } | undefined;
-  return sourceCode?.scriptURL ?? null;
+  const hostUri = Constants.expoConfig?.hostUri;
+  if (hostUri) return `http://${hostUri}`;
+  const sourceCode = NativeModules.SourceCode as
+    | { scriptURL?: string; getConstants?: () => { scriptURL?: string } }
+    | undefined;
+  return sourceCode?.getConstants?.().scriptURL ?? sourceCode?.scriptURL ?? null;
 }
 
 export const API_BASE_URL = resolveApiBaseUrl(

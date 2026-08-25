@@ -1,6 +1,6 @@
 import { fetch as streamingFetch } from 'expo/fetch';
 import { supabase } from './supabase';
-import type { CoachStreamEvent, CoachTurnRequest } from '@habits-coach/shared';
+import type { CoachInstructRequest, CoachStreamEvent, CoachTurnRequest } from '@habits-coach/shared';
 import { createApiUrl } from './apiUrl';
 import { createSseParser } from '../utils/sse';
 
@@ -27,17 +27,18 @@ async function getAuthToken(): Promise<string> {
 }
 
 /**
- * One coaching turn. Events arrive as the coach works (text deltas, tool
- * activity) and the turn ends with `done` or `error`; the promise resolves
- * once the stream closes.
+ * One coach turn over server-sent events. Events arrive as the coach works
+ * (text deltas, tool activity) and the turn ends with `done` or `error`; the
+ * promise resolves once the stream closes.
  */
-export async function streamCoachTurn(
-  request: CoachTurnRequest,
+async function streamEvents(
+  path: string,
+  request: unknown,
   onEvent: (event: CoachStreamEvent) => void
 ): Promise<void> {
   const token = await getAuthToken();
 
-  const response = await streamingFetch(createApiUrl('/api/chat'), {
+  const response = await streamingFetch(createApiUrl(path), {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -66,6 +67,22 @@ export async function streamCoachTurn(
     feed(decoder.decode(value, { stream: true }));
   }
   feed(decoder.decode());
+}
+
+/** One turn of a coaching session. */
+export function streamCoachTurn(
+  request: CoachTurnRequest,
+  onEvent: (event: CoachStreamEvent) => void
+): Promise<void> {
+  return streamEvents('/api/chat', request, onEvent);
+}
+
+/** One hold-to-instruct turn: propose, correct, or apply. No coaching session involved. */
+export function streamInstructTurn(
+  request: CoachInstructRequest,
+  onEvent: (event: CoachStreamEvent) => void
+): Promise<void> {
+  return streamEvents('/api/instruct', request, onEvent);
 }
 
 export async function transcribeAudio(audioUri: string): Promise<string> {
