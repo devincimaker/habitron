@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import { config } from './config.js';
 import { generalRateLimiter } from './middleware/rateLimit.js';
 import chatRouter from './routes/chat.js';
+import instructRouter from './routes/instruct.js';
 import memoriesRouter from './routes/memories.js';
 import notificationsRouter from './routes/notifications.js';
 import sessionsRouter from './routes/sessions.js';
@@ -33,6 +34,7 @@ app.get('/health', (_req, res) => {
 
 // API routes
 app.use('/api/chat', chatRouter);
+app.use('/api/instruct', instructRouter);
 app.use('/api/memories', memoriesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/sessions', sessionsRouter);

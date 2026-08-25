@@ -3,11 +3,13 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHabitron, localNow, type AnyHabitronTool } from '@habits-coach/habitron';
 import type { CoachStreamEvent } from '@habits-coach/shared';
 import { config } from '../config.js';
-import { TurnCollector } from './events.js';
+import { HABITRON_TOOL_PREFIX, TurnCollector } from './events.js';
 import { buildSystemPrompt } from './prompt.js';
 
-/** The skills the in-app coach may invoke (the folders in packages/coach-skills/.claude/skills). */
+/** The skills a coaching session may invoke (folders in packages/coach-skills/.claude/skills). */
 export const COACH_SKILLS = ['coach', 'first-session', 'plan-day', 'review-day', 'review-habits'];
+/** The one skill a hold-to-instruct turn runs. */
+export const INSTRUCT_SKILLS = ['instruct'];
 
 export interface CoachTurnInput {
   userId: string;
@@ -17,6 +19,10 @@ export interface CoachTurnInput {
   userName?: string;
   /** Agent SDK session to resume; null on the first turn of a coaching session. */
   claudeSessionId: string | null;
+  /** Skills this turn may invoke; defaults to the coaching set. */
+  skills?: string[];
+  /** Expose only the read-only Habitron tools: a proposal turn that must not change anything. */
+  readOnly?: boolean;
   signal?: AbortSignal;
 }
 
@@ -72,6 +78,10 @@ export async function runCoachTurn(
     timezone: input.timezone,
   });
 
+  const tools = input.readOnly
+    ? habitron.tools.filter((t) => t.annotations?.readOnlyHint)
+    : habitron.tools;
+
   const abortController = new AbortController();
   input.signal?.addEventListener('abort', () => abortController.abort(), { once: true });
 
@@ -86,11 +96,11 @@ export async function runCoachTurn(
     model: config.coach.model,
     effort: config.coach.effort,
     settingSources: ['project'],
-    skills: COACH_SKILLS,
+    skills: input.skills ?? COACH_SKILLS,
     tools: ['Skill'],
-    allowedTools: ['Skill', 'mcp__habitron__*'],
+    allowedTools: ['Skill', ...tools.map((t) => `${HABITRON_TOOL_PREFIX}${t.name}`)],
     permissionMode: 'dontAsk',
-    mcpServers: { habitron: createHabitronMcpServer(habitron.tools) },
+    mcpServers: { habitron: createHabitronMcpServer(tools) },
     includePartialMessages: true,
     maxTurns: config.coach.maxTurns,
     resume: input.claudeSessionId ?? undefined,

@@ -26,3 +26,4 @@ There is exactly one user. Every `habitron` tool reads and writes their real dat
 - `/plan-day [date]` — intake → draft → confirm → save
 - `/review-day [date]` — close out a day: outcomes, journal, lessons
 - `/review-habits [days]` — how habits and days have actually been going (history tools)
+- `/instruct <instruction>` — one spoken command, proposed first and applied on confirmation; no session, no memories

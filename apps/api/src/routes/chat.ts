@@ -1,13 +1,12 @@
 import { Router, Request, Response } from 'express';
-import type { CoachStreamEvent, CoachTurnRequest, ErrorResponse } from '@habits-coach/shared';
+import type { CoachTurnRequest, ErrorResponse } from '@habits-coach/shared';
 import { runCoachTurn } from '../coach/agent.js';
+import { openEventStream } from '../coach/sse.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { chatRateLimiter } from '../middleware/rateLimit.js';
 import { findCoachSession, setClaudeSessionId } from '../services/coachSessions.js';
 
 const router: Router = Router();
-
-const HEARTBEAT_MS = 15_000;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -57,21 +56,7 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
     return;
   }
 
-  res.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache, no-transform',
-    Connection: 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  });
-  res.flushHeaders?.();
-
-  const send = (event: CoachStreamEvent) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
-  const heartbeat = setInterval(() => res.write(': ping\n\n'), HEARTBEAT_MS);
-
-  const abort = new AbortController();
-  req.on('close', () => abort.abort());
+  const stream = openEventStream(req, res);
 
   try {
     const result = await runCoachTurn(
@@ -81,22 +66,21 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
         timezone,
         userName: isNonEmptyString(userName) ? userName : undefined,
         claudeSessionId: session.claudeSessionId,
-        signal: abort.signal,
+        signal: stream.signal,
       },
-      send
+      stream.send
     );
 
     if (result.claudeSessionId && result.claudeSessionId !== session.claudeSessionId) {
       await setClaudeSessionId(sessionId, userId, result.claudeSessionId);
     }
   } catch (error) {
-    if (!abort.signal.aborted) {
+    if (!stream.signal.aborted) {
       console.error('Chat error:', error);
-      send({ type: 'error', message: 'The coach ran into a problem. Please try again.' });
+      stream.send({ type: 'error', message: 'The coach ran into a problem. Please try again.' });
     }
   } finally {
-    clearInterval(heartbeat);
-    res.end();
+    stream.close();
   }
 }
 

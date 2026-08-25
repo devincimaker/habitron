@@ -1,4 +1,6 @@
+import { useRef } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import Animated, {
@@ -8,6 +10,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { TAB_BAR, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { HOLD_MS } from '../utils/instruct';
+import { CoachTabGlyph } from './CoachTabGlyph';
+import { useInstruct, type InstructHold } from './InstructProvider';
 
 type IoniconsName = keyof typeof Ionicons.glyphMap;
 
@@ -18,6 +23,11 @@ const TAB_ICONS: Record<string, { active: IoniconsName; inactive: IoniconsName }
   habits: { active: 'repeat', inactive: 'repeat-outline' },
   journal: { active: 'book', inactive: 'book-outline' },
 };
+
+/** The one tab that answers a hold as well as a tap. */
+const HOLD_TAB = 'coach';
+/** How far the finger may travel during a hold before the gesture gives up. */
+const HOLD_MAX_DISTANCE = 400;
 
 interface CustomTabBarProps {
   state: {
@@ -59,18 +69,24 @@ function AnimatedTabIcon({
   );
 }
 
-// Tab button with press animation
+const noop = () => {};
+
+// Tab button with press animation; with `hold`, a long press records instead of navigating
 function TabButton({
   children,
   onPress,
   isActive,
+  hold,
 }: {
   children: React.ReactNode;
   onPress: () => void;
   isActive: boolean;
+  hold?: InstructHold;
 }) {
   const [styles] = useThemedStyles(createStyles);
   const scale = useSharedValue(1);
+  const holdStartY = useRef(0);
+  const holdActive = useRef(false);
 
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
@@ -85,23 +101,52 @@ function TabButton({
     scale.value = withTiming(1, { duration: 100 });
   };
 
-  return (
+  // Callbacks run on the JS thread (runOnJS): they only forward to the provider.
+  const holdGesture = Gesture.LongPress()
+    .minDuration(HOLD_MS)
+    .maxDistance(HOLD_MAX_DISTANCE)
+    .runOnJS(true)
+    .onTouchesDown((event) => {
+      holdStartY.current = event.allTouches[0]?.absoluteY ?? 0;
+    })
+    .onStart(() => {
+      holdActive.current = true;
+      hold?.start();
+    })
+    .onTouchesMove((event) => {
+      if (!holdActive.current) return;
+      const y = event.allTouches[0]?.absoluteY ?? holdStartY.current;
+      hold?.move(holdStartY.current - y);
+    })
+    .onEnd(() => {
+      holdActive.current = false;
+      hold?.end();
+    });
+
+  const button = (
     <Pressable
       onPress={onPress}
+      // A fired long press suppresses onPress, so a hold never also opens the hub.
+      onLongPress={hold ? noop : undefined}
+      delayLongPress={HOLD_MS}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       style={styles.tabButton}
       accessibilityRole="tab"
       accessibilityState={{ selected: isActive }}
+      accessibilityHint={hold ? 'Hold to speak an instruction' : undefined}
     >
       <Animated.View style={animatedStyle}>{children}</Animated.View>
     </Pressable>
   );
+
+  return hold ? <GestureDetector gesture={holdGesture}>{button}</GestureDetector> : button;
 }
 
 export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
+  const instruct = useInstruct();
 
   const visibleRoutes = state.routes.filter(route => TAB_ICONS[route.name]);
 
@@ -116,6 +161,7 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
           const actualIndex = state.routes.findIndex(r => r.key === route.key);
           const isFocused = state.index === actualIndex;
           const color = isFocused ? colors.primary : colors.textSecondary;
+          const isHoldTab = route.name === HOLD_TAB;
 
           const onPress = () => {
             const event = navigation.emit({
@@ -130,8 +176,17 @@ export function CustomTabBar({ state, descriptors, navigation }: CustomTabBarPro
           };
 
           return (
-            <TabButton key={route.key} onPress={onPress} isActive={isFocused}>
-              <AnimatedTabIcon focused={isFocused} routeName={route.name} color={color} />
+            <TabButton
+              key={route.key}
+              onPress={onPress}
+              isActive={isFocused}
+              hold={isHoldTab ? instruct.hold : undefined}
+            >
+              {isHoldTab ? (
+                <CoachTabGlyph state={instruct.state} focused={isFocused} color={color} />
+              ) : (
+                <AnimatedTabIcon focused={isFocused} routeName={route.name} color={color} />
+              )}
               <Text style={[styles.tabLabel, { color }]}>{label}</Text>
             </TabButton>
           );
