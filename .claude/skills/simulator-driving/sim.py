@@ -257,9 +257,19 @@ def wait_ready(timeout=90):
     return False
 
 
-# The signed-in app always shows the Tasks tab's header; the login screen never does.
-SIGNED_IN_MARKER = "Inbox"
+# Every signed-in screen carries the tab bar; neither auth screen carries any of
+# it. One label is not enough — the signup screen reads "Start with Thrive Coach"
+# — so three of the five is the test.
+TAB_LABELS = ("Tasks", "Calendar", "Coach", "Habits", "Journal")
 BUNDLE_ID = "com.capybarastudios.habitscoach"
+
+
+def signed_in(labels=None):
+    """True when the tab bar is on screen, whichever tab is selected."""
+    if labels is None:
+        labels = [label for label, _, _ in elements()]
+    seen = {tab for tab in TAB_LABELS if any(tab in label for label in labels)}
+    return len(seen) >= 3
 
 
 def dump_screen(limit=8):
@@ -275,9 +285,16 @@ def type_text(value, chunk=6):
     with a beat between them arrive whole.
     """
     for start in range(0, len(value), chunk):
-        subprocess.run([IDB, "ui", "text", "--udid", UDID, value[start:start + chunk]],
+        # `--` so a chunk beginning with '-' is a value and not an idb option.
+        subprocess.run([IDB, "ui", "text", "--udid", UDID, "--", value[start:start + chunk]],
                        check=True, capture_output=True, timeout=60)
         time.sleep(0.2)
+
+
+def dismiss_dev_menu():
+    """Blocker 1: the Expo dev-client sheet. A cold launch always raises it, and
+    unblock() cannot see it — it is the app's own view, not a SpringBoard alert."""
+    return tap("Close", exact=True, quiet=True)
 
 
 def relaunch():
@@ -288,7 +305,7 @@ def relaunch():
     subprocess.run(["xcrun", "simctl", "launch", UDID, BUNDLE_ID],
                    capture_output=True, timeout=60)
     time.sleep(8)
-    tap("Close", exact=True, quiet=True)  # the dev-menu sheet, if it came back
+    dismiss_dev_menu()  # it comes back on every launch
     time.sleep(1)
 
 
@@ -308,11 +325,31 @@ def attempt_login(email, password):
 
     deadline = time.time() + 20
     while True:
-        if any(SIGNED_IN_MARKER in label for label, _, _ in elements()):
+        if signed_in():
             return True
         if time.time() >= deadline:
             return False
         time.sleep(1)
+
+
+def await_screen(timeout=40):
+    """Wait for the app to route, and say where it landed: 'in', 'form' or None.
+
+    app/index.tsx holds a splash for 1.5s and then waits on the profile fetch, so
+    the first frame after a boot or a `pnpm dev` is neither screen. Judging it
+    would call unblock() on a healthy app — and unblock() reboots the device when
+    the accessibility server has not answered yet.
+    """
+    deadline = time.time() + timeout
+    while True:
+        labels = [label for label, _, _ in elements()]
+        if signed_in(labels):
+            return "in"
+        if any("Sign In" in label for label in labels):
+            return "form"
+        if time.time() >= deadline:
+            return None
+        time.sleep(2)
 
 
 def login():
@@ -323,23 +360,30 @@ def login():
         missing = "TEST_USER_EMAIL" if not email else "TEST_USER_PASSWORD"
         sys.exit(f"{missing} is not set — add it to apps/api/.env")
 
-    labels = [label for label, _, _ in elements()]
-    if any(SIGNED_IN_MARKER in label for label in labels):
+    where = await_screen()
+    if where is None and dismiss_dev_menu():
+        where = await_screen(timeout=30)  # blocker 1: a fresh install lands on it
+    if where is None:
+        unblock()                         # blocker 2: a queued openurl's alert
+        where = await_screen(timeout=20)
+    if where is None:
+        print("Neither the login screen nor the app is up. On screen:", file=sys.stderr)
+        dump_screen(5)
+        return False
+    if where == "in":
         print("already signed in")
         return True
-    if not any("Sign In" in label for label in labels):
-        unblock()
-        labels = [label for label, _, _ in elements()]
-        if not any("Sign In" in label for label in labels):
-            print("Neither the login screen nor the app is up. On screen:", file=sys.stderr)
-            dump_screen(5)
-            return False
 
     # The fields are labelled by ui/Input's `label` prop, and tap() prefers a
     # TextField over the StaticText above it.
     for attempt in range(2):
         if attempt:
             relaunch()  # the first attempt's text is still in the fields
+            # A slow sign-in can land after attempt_login gave up; the restarted
+            # app then restores the session instead of showing the form again.
+            if await_screen(timeout=20) == "in":
+                print(f"signed in as {email}")
+                return True
         if attempt_login(email, password):
             print(f"signed in as {email}")
             return True

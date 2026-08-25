@@ -286,8 +286,10 @@ python3 .claude/skills/simulator-driving/sim.py login
 ```
 
 It reads `TEST_USER_EMAIL` / `TEST_USER_PASSWORD` from the nearest
-`apps/api/.env`, taps the two fields by their labels, and waits up to 20s for
-the app's `Inbox` header. Two exits:
+`apps/api/.env`, waits for the app to get past its splash and route, and — if it
+landed on the login screen — taps the two fields by their labels and waits up to
+20s for the tab bar. "Signed in" is the tab bar, not one tab's header, so it is
+still true on whichever tab an earlier pass left the app. Two exits:
 
 - **0** — `signed in as <email>`, or `already signed in` when the app was
   already past the login screen. Safe to run before every pass.

@@ -12,11 +12,17 @@
  * In shared mode this is the live project: every shared-mode simulator is signed
  * into this same account, so a run changes what all of them are looking at.
  */
-import 'dotenv/config';
+import { config as loadEnv } from 'dotenv';
 import { createHabitron, today } from '@habits-coach/habitron';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { buildFixtures } from './seed/fixtures.js';
 import { adminClient, readTestUserEnv, upsertTestUser } from './seed/test-user.js';
+
+// `override` because this script deletes rows: the worktree's own apps/api/.env
+// is the only thing that says which project, and plain dotenv would let a
+// SUPABASE_URL exported in the shell win over it — pointing a branch worktree's
+// seed at the live database.
+loadEnv({ override: true });
 
 const FIXTURE_TABLES = [
   'todo_checklist_items',
@@ -50,15 +56,17 @@ async function count(supabase: SupabaseClient, table: string, userId: string): P
   return rows ?? 0;
 }
 
+/** The Supabase project ref, so a run says out loud which database it is rewriting. */
+function projectRef(supabaseUrl: string): string {
+  return new URL(supabaseUrl).hostname.split('.')[0];
+}
+
 const env = readTestUserEnv();
 const timezone = process.env.HABITRON_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone;
 const supabase = adminClient(env.supabaseUrl, env.serviceRoleKey);
 
-step(`Resolving ${env.email}`);
+step(`Resolving ${env.email} on project ${projectRef(env.supabaseUrl)}`);
 const user = await upsertTestUser(supabase, env.email, env.password);
-if (user.email.toLowerCase() !== env.email.toLowerCase()) {
-  throw new Error(`Refusing to seed: resolved ${user.email}, expected ${env.email}`);
-}
 console.log(`    ${user.created ? 'created' : 'found'} ${user.id}`);
 
 step('Clearing the fixture tables');
