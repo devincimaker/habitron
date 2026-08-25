@@ -80,6 +80,16 @@ export function Label({ children, color, style, ...props }: TypographyProps) {
   );
 }
 
+/** The muted label at the top of a task section card. */
+export function SectionLabel({ children, color, style, ...props }: TypographyProps) {
+  const colors = useColors();
+  return (
+    <Text style={[styles.sectionLabel, { color: color ?? colors.textLight }, style]} {...props}>
+      {children}
+    </Text>
+  );
+}
+
 export function Caption({ children, color, style, ...props }: TypographyProps) {
   const colors = useColors();
   return (
@@ -98,5 +108,6 @@ const styles = StyleSheet.create({
   bodyMedium: TYPOGRAPHY.bodyMedium,
   bodySmall: TYPOGRAPHY.bodySmall,
   label: TYPOGRAPHY.label,
+  sectionLabel: TYPOGRAPHY.sectionLabel,
   caption: TYPOGRAPHY.caption,
 });

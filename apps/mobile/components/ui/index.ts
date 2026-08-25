@@ -11,5 +11,6 @@ export {
   BodyMedium,
   BodySmall,
   Label,
+  SectionLabel,
   Caption,
 } from './Typography';
