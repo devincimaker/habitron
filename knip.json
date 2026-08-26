@@ -19,7 +19,13 @@
       // send-scheduled-notifications, schedule-daily-reminders and
       // check-pending-habits through invoke_edge_function(). Nothing in this
       // repo imports them, so without this line all three read as dead.
-      "entry": ["supabase/functions/**/index.ts"]
+      "entry": [
+        "supabase/functions/**/index.ts",
+        // The autopilot run ledger. The autopilot skill runs it with `node`
+        // (.claude/skills/autopilot/SKILL.md, "The run ledger"); nothing imports
+        // it. Its test is found on its own, through the root `node --test` script.
+        "scripts/autopilot-run.mjs"
+      ]
     },
 
     "apps/mobile": {
