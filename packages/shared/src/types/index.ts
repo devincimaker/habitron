@@ -406,6 +406,17 @@ export interface DayReviewSummary {
   overall?: number;
 }
 
+/** How far a review got: the ratings, the one question, then the open lane. */
+export type ReviewDepth = 'quick' | 'standard' | 'deep';
+
+/** A review with the prose the day detail shows, on top of the ratings. */
+export interface DayReviewDetail extends DayReviewSummary {
+  highlight?: string;
+  friction?: string;
+  depth: ReviewDepth;
+  reviewedAt: number;
+}
+
 /** The two daily coach practices. A session that is neither is a plain `coach` chat. */
 export type RitualId = 'plan-day' | 'review-day';
 

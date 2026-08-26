@@ -16,8 +16,9 @@ import { useThemedStyles } from '../hooks/useColors';
 interface JournalEntryCardProps {
   entry: JournalEntry;
   isHighlighted?: boolean;
-  onEdit: (entry: JournalEntry) => void;
-  onDelete: (entry: JournalEntry) => Promise<void>;
+  /** Both omitted where the card is a record rather than a list item. */
+  onEdit?: (entry: JournalEntry) => void;
+  onDelete?: (entry: JournalEntry) => Promise<void>;
 }
 
 function formatEntryTimestamp(timestamp: number): string {
@@ -99,8 +100,8 @@ export function JournalEntryCard({
           title: 'Entry actions',
         },
         (buttonIndex) => {
-          if (buttonIndex === 1) onEdit(entry);
-          if (buttonIndex === 2) void onDelete(entry);
+          if (buttonIndex === 1) onEdit?.(entry);
+          if (buttonIndex === 2) void onDelete?.(entry);
         }
       );
     } else {
@@ -109,11 +110,11 @@ export function JournalEntryCard({
         'Choose what to do with this reflection.',
         [
           { text: 'Cancel', style: 'cancel' },
-          { text: 'Edit', onPress: () => onEdit(entry) },
+          { text: 'Edit', onPress: () => onEdit?.(entry) },
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: () => void onDelete(entry),
+            onPress: () => void onDelete?.(entry),
           },
         ]
       );
@@ -126,7 +127,7 @@ export function JournalEntryCard({
     <AnimatedPressable
       entering={FadeInDown.duration(200)}
       style={[styles.card, animatedCardStyle]}
-      onPress={() => onEdit(entry)}
+      onPress={() => onEdit?.(entry)}
       accessibilityLabel="Open journal entry"
       accessibilityRole="button"
     >
@@ -140,17 +141,19 @@ export function JournalEntryCard({
           ) : null}
         </View>
 
-        <Pressable
-          style={styles.actionButton}
-          onPress={(event) => {
-            event.stopPropagation();
-            handleOpenActions();
-          }}
-          accessibilityLabel="Journal entry actions"
-          hitSlop={10}
-        >
-          <Feather name="more-horizontal" size={18} color={colors.textSecondary} />
-        </Pressable>
+        {onEdit || onDelete ? (
+          <Pressable
+            style={styles.actionButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              handleOpenActions();
+            }}
+            accessibilityLabel="Journal entry actions"
+            hitSlop={10}
+          >
+            <Feather name="more-horizontal" size={18} color={colors.textSecondary} />
+          </Pressable>
+        ) : null}
       </View>
 
       <BodyLarge style={styles.entryLead} numberOfLines={3}>
