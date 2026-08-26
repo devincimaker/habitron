@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import type { Db, PlanItemInput } from './db.js';
 import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
-import { instantFrom, isIsoDate, isIsoDateTime, today } from './time.js';
+import { instantFrom, isIsoDate, isIsoDateTime, today, WEEKDAYS } from './time.js';
 
 /**
  * One tool definition, independent of the host. `apps/mcp` registers these on a
@@ -37,6 +37,51 @@ const dateTimeSchema = z
   .string()
   .refine(isIsoDateTime, 'Expected YYYY-MM-DDTHH:MM')
   .describe('YYYY-MM-DDTHH:MM, local wall clock (seconds optional, ignored)');
+const weekdaySchema = z.enum(WEEKDAYS);
+const habitFrequencySchema = z.enum(['daily', 'weekly', 'interval']);
+const habitGoalTypeSchema = z.enum(['boolean', 'quantity']);
+const habitCheckInModeSchema = z.enum(['auto', 'manual', 'complete_all']);
+
+/**
+ * The habit fields create and update share. `name` is required to create one and
+ * optional to patch one; everything else is optional either way, and the coupling
+ * between the mode fields is enforced in `habitRowFromInput`, not here, so the
+ * error can name the conflict rather than reading as a schema mismatch.
+ */
+function habitWriteSchema(partial = false) {
+  const name = z.string().min(1).describe('What the habit is called');
+  return {
+    name: partial ? name.optional() : name,
+    frequency: habitFrequencySchema.optional().describe('daily (default), weekly, or interval'),
+    weeklyDays: z
+      .array(weekdaySchema)
+      .min(1)
+      .optional()
+      .describe('daily habits only: the weekdays it is due. Omit for every day'),
+    weeklyCount: z.int().min(1).max(7).optional().describe('weekly habits only: times per week'),
+    intervalDays: z.int().min(2).max(365).optional().describe('interval habits only: days between'),
+    startDate: dateSchema.optional().describe('Defaults to today'),
+    goalDays: z.int().min(1).max(999).optional().describe('Stop after N days'),
+    goalType: habitGoalTypeSchema.optional().describe('boolean (default) or quantity'),
+    targetAmount: z.number().positive().optional().describe('quantity habits only: the daily target'),
+    unit: z.string().min(1).optional().describe("quantity habits only, e.g. 'glasses'"),
+    checkInMode: habitCheckInModeSchema
+      .optional()
+      .describe('quantity habits only: how a check-in records progress'),
+    recordIncrement: z
+      .number()
+      .positive()
+      .optional()
+      .describe("quantity habits with checkInMode 'auto' only: how much one check-in adds"),
+    section: z.string().min(1).optional().describe('An existing section name; see list_habits'),
+    reason: z.string().optional().describe('Why it matters'),
+    icon: z.string().optional(),
+    reminderTimes: z.array(timeSchema).optional().describe('HH:MM reminders; replaces the whole set'),
+    constantReminder: z.boolean().optional(),
+    autoPopupLog: z.boolean().optional(),
+  };
+}
+
 const prioritySchema = z
   .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
   .describe('1 = highest, 4 = lowest');
@@ -334,6 +379,41 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       },
       handler: ({ habitId, status, date, amount }) =>
         db.logHabit({ habitId, status, amount, date: date ?? now() }),
+    }),
+
+    defineTool({
+      name: 'create_habit',
+      title: 'Create habit',
+      description:
+        "Start a new habit. Frequency is daily (optionally pinned to weekdays), weekly (N times a week), or interval (every N days). A boolean habit is done or not; a quantity habit counts progress towards targetAmount in its unit. Fields that do not belong to the chosen frequency or goalType are rejected rather than ignored — weekday pinning belongs to daily, not weekly. section is an existing section's name; sections are created in the app.",
+      inputSchema: habitWriteSchema(),
+      handler: (args) => db.createHabit(args, timezone),
+    }),
+
+    defineTool({
+      name: 'update_habit',
+      title: 'Update habit',
+      description:
+        'Change a habit. Only the fields you pass are written, so anything you omit keeps its value. Changing frequency or goalType rewrites that whole mode and clears the old one, and needs the new mode\'s defining field (intervalDays, or targetAmount). Passing reminderTimes replaces the whole set.',
+      inputSchema: { habitId: z.uuid(), ...habitWriteSchema(true) },
+      handler: ({ habitId, ...rest }) => db.updateHabit(habitId, rest, timezone),
+    }),
+
+    defineTool({
+      name: 'archive_habit',
+      title: 'Archive habit',
+      description:
+        'Take a habit out of the daily list without losing its history. Reversible with restore_habit. There is no way to delete a habit here, because that would take its logs with it.',
+      inputSchema: { habitId: z.uuid() },
+      handler: ({ habitId }) => db.setHabitActive(habitId, false),
+    }),
+
+    defineTool({
+      name: 'restore_habit',
+      title: 'Restore habit',
+      description: 'Bring an archived habit back into the daily list.',
+      inputSchema: { habitId: z.uuid() },
+      handler: ({ habitId }) => db.setHabitActive(habitId, true),
     }),
 
     // ------------------------------------------------------------------ plans

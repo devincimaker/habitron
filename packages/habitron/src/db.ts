@@ -15,6 +15,16 @@ import type {
   Priority,
   TodoStatus,
 } from '@habits-coach/shared';
+import { habitRowFromInput, type HabitFields } from './habitInput.js';
+import { today } from './time.js';
+
+/** A habit write: the pure fields, plus the two that need the database. */
+export type HabitWriteInput = HabitFields & {
+  /** Section *name*, resolved case-insensitively; sections are made in the app. */
+  section?: string;
+  /** Replaces the whole reminder set when present. */
+  reminderTimes?: string[];
+};
 
 interface DbTodo {
   id: string;
@@ -129,14 +139,20 @@ interface DbHabit {
   weekly_count: number | null;
   interval_days: number | null;
   start_date: string;
+  goal_days: number | null;
   goal_type: 'boolean' | 'quantity';
   target_amount: number | null;
   unit: string | null;
+  check_in_mode: 'auto' | 'manual' | 'complete_all';
+  record_increment: number | null;
+  constant_reminder: boolean;
+  auto_popup_log: boolean;
   section_id: string | null;
   reason: string | null;
   icon: string | null;
   active: boolean;
   habit_sections: { name: string; sort_order: number } | null;
+  habit_reminders: { time: string }[] | null;
 }
 
 export interface Habit {
@@ -150,9 +166,21 @@ export interface Habit {
   /** Interval habits: every N days from startDate. */
   intervalDays?: number;
   startDate: string;
+  /** Stop after N days, if the habit has an end in mind. */
+  goalDays?: number;
   goalType: 'boolean' | 'quantity';
   targetAmount?: number;
   unit?: string;
+  /** Quantity habits: how a check-in records progress. */
+  checkInMode: 'auto' | 'manual' | 'complete_all';
+  /** How much one 'auto' check-in adds. */
+  recordIncrement?: number;
+  /** Keep nudging until the habit is logged. */
+  constantReminder: boolean;
+  /** Open the log sheet on check-in rather than counting silently. */
+  autoPopupLog: boolean;
+  /** Reminder times as HH:MM, from habit_reminders. */
+  reminderTimes: string[];
   /** Time-of-day grouping from the app (Morning / Afternoon / Night / Others / custom). */
   section?: string;
   reason?: string;
@@ -618,7 +646,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   // Habit shape follows the live schema (habit form v2): sections replace time_of_day,
   // frequency gains 'interval', and goals can be boolean or a quantity per day.
   const HABIT_COLUMNS =
-    'id, name, frequency, weekly_days, weekly_count, interval_days, start_date, goal_type, target_amount, unit, section_id, reason, icon, active, habit_sections(name, sort_order)';
+    'id, name, frequency, weekly_days, weekly_count, interval_days, start_date, goal_days, goal_type, target_amount, unit, check_in_mode, record_increment, constant_reminder, auto_popup_log, section_id, reason, icon, active, habit_sections(name, sort_order), habit_reminders(time)';
 
 
 
@@ -631,9 +659,15 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       weeklyCount: row.weekly_count ?? undefined,
       intervalDays: row.interval_days ?? undefined,
       startDate: row.start_date,
+      goalDays: row.goal_days ?? undefined,
       goalType: row.goal_type,
       targetAmount: row.target_amount === null ? undefined : Number(row.target_amount),
       unit: row.unit ?? undefined,
+      checkInMode: row.check_in_mode,
+      recordIncrement: row.record_increment === null ? undefined : Number(row.record_increment),
+      constantReminder: row.constant_reminder,
+      autoPopupLog: row.auto_popup_log,
+      reminderTimes: (row.habit_reminders ?? []).map((r) => r.time).sort(),
       section: row.habit_sections?.name,
       reason: row.reason ?? undefined,
       icon: row.icon ?? undefined,
@@ -658,6 +692,86 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     return new Map(rows.map((row) => [row.id, mapHabit(row)]));
   }
 
+
+  /** Sections are created in the app, so an unknown name lists what exists. */
+  async function resolveSectionId(name: string): Promise<string> {
+    const rows = unwrap(
+      await supabase.from('habit_sections').select('id, name').eq('user_id', userId)
+    ) as Array<{ id: string; name: string }>;
+    const match = rows.find((row) => row.name.toLowerCase() === name.trim().toLowerCase());
+    if (!match) {
+      const known = rows.map((row) => row.name).join(', ') || 'none yet';
+      throw new Error(`Unknown habit section: ${name}. Existing sections: ${known}.`);
+    }
+    return match.id;
+  }
+
+  async function replaceReminders(habitId: string, times: string[]): Promise<void> {
+    unwrap(
+      await supabase.from('habit_reminders').delete().eq('habit_id', habitId).eq('user_id', userId)
+    );
+    const unique = Array.from(new Set(times));
+    if (unique.length === 0) return;
+    unwrap(
+      await supabase
+        .from('habit_reminders')
+        .insert(unique.map((time) => ({ habit_id: habitId, user_id: userId, time })))
+    );
+  }
+
+  async function getHabit(id: string): Promise<Habit> {
+    const row = unwrap(
+      await supabase.from('habits').select(HABIT_COLUMNS).eq('user_id', userId).eq('id', id).single()
+    ) as unknown as DbHabit;
+    return mapHabit(row);
+  }
+
+  async function createHabit(input: HabitWriteInput, timezone: string): Promise<Habit> {
+    const { section, reminderTimes, ...fields } = input;
+    const row = habitRowFromInput(fields, {
+      today: today(timezone),
+      ...(section !== undefined ? { sectionId: await resolveSectionId(section) } : {}),
+    });
+    const created = unwrap(
+      await supabase
+        .from('habits')
+        .insert({ user_id: userId, active: true, ...row })
+        .select('id')
+        .single()
+    ) as { id: string };
+    if (reminderTimes) await replaceReminders(created.id, reminderTimes);
+    return getHabit(created.id);
+  }
+
+  async function updateHabit(
+    id: string,
+    input: HabitWriteInput,
+    timezone: string
+  ): Promise<Habit> {
+    const { section, reminderTimes, ...fields } = input;
+    // A partial patch is checked against the habit's current mode, not a default.
+    const current = await getHabit(id);
+    const row = habitRowFromInput(fields, {
+      today: today(timezone),
+      existing: {
+        frequency: current.frequency,
+        goalType: current.goalType,
+        checkInMode: current.checkInMode,
+      },
+      ...(section !== undefined ? { sectionId: await resolveSectionId(section) } : {}),
+    });
+    if (Object.keys(row).length > 0) {
+      unwrap(await supabase.from('habits').update(row).eq('user_id', userId).eq('id', id));
+    }
+    if (reminderTimes) await replaceReminders(id, reminderTimes);
+    return getHabit(id);
+  }
+
+  /** Reversible on purpose: archiving keeps the logs, deleting would not. */
+  async function setHabitActive(id: string, active: boolean): Promise<Habit> {
+    unwrap(await supabase.from('habits').update({ active }).eq('user_id', userId).eq('id', id));
+    return getHabit(id);
+  }
 
   async function listHabitLogs(start: string, end: string): Promise<HabitLogRecord[]> {
     const rows = unwrap(
@@ -974,6 +1088,9 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     deleteTag,
     listHabits,
     getHabitsByIds,
+    createHabit,
+    updateHabit,
+    setHabitActive,
     listHabitLogs,
     logHabit,
     listRecentJournalEntries,
