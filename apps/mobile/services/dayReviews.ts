@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import type { DayReviewSummary } from '@habits-coach/shared';
+import type { DayReviewDetail, DayReviewSummary } from '@habits-coach/shared';
 
 interface DbDayReview {
   review_date: string;
@@ -19,6 +19,13 @@ function mapDbDayReview(row: DbDayReview): DayReviewSummary {
     momentum: row.momentum ?? undefined,
     calm: row.calm ?? undefined,
   };
+}
+
+interface DbDayReviewDetail extends DbDayReview {
+  highlight: string | null;
+  friction: string | null;
+  depth: DayReviewDetail['depth'];
+  reviewed_at: string;
 }
 
 async function getCurrentUserId(): Promise<string> {
@@ -60,4 +67,28 @@ export async function getAcceptedPlanDates(start: string): Promise<string[]> {
 
   if (error) throw error;
   return [...new Set(((data ?? []) as { plan_date: string }[]).map((row) => row.plan_date))];
+}
+
+/** One day's review in full, for the day detail. Null when the day has none. */
+export async function getDayReview(date: string): Promise<DayReviewDetail | null> {
+  const userId = await getCurrentUserId();
+
+  const { data, error } = await supabase
+    .from('day_reviews')
+    .select('review_date, overall, happy, energy, momentum, calm, highlight, friction, depth, reviewed_at')
+    .eq('user_id', userId)
+    .eq('review_date', date)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const row = data as DbDayReviewDetail;
+  return {
+    ...mapDbDayReview(row),
+    highlight: row.highlight ?? undefined,
+    friction: row.friction ?? undefined,
+    depth: row.depth,
+    reviewedAt: new Date(row.reviewed_at).getTime(),
+  };
 }

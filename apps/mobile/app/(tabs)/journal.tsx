@@ -22,6 +22,9 @@ import type {
 } from '@habits-coach/shared';
 import { JournalEntryCard } from '../../components/JournalEntryCard';
 import { JournalEntryModal } from '../../components/JournalEntryModal';
+import { DayTrendStrip } from '../../components/DayTrendStrip';
+import { DayGapChips } from '../../components/DayGapChips';
+import { DaySummaryRow } from '../../components/DaySummaryRow';
 import {
   BodyMedium,
   Caption,
@@ -29,6 +32,9 @@ import {
   Input,
 } from '../../components/ui';
 import { useJournalStore } from '../../stores/useJournalStore';
+import { useRitualsStore } from '../../stores/useRitualsStore';
+import { buildTrendWindow, findGaps, groupByDay, type DayGroup } from '../../utils/dayTrend';
+import { getTodayDate } from '@habits-coach/shared';
 import {
   BORDER_RADIUS,
   SHADOWS,
@@ -41,61 +47,6 @@ import {
   JOURNAL_MOOD_STYLES,
 } from '../../constants/journal';
 import { useThemedStyles, useColors } from '../../hooks/useColors';
-
-interface JournalSection {
-  key: string;
-  title: string;
-  entries: JournalEntry[];
-}
-
-function parseJournalDate(entryDate: string): Date {
-  return new Date(`${entryDate}T12:00:00`);
-}
-
-function isSameDay(left: Date, right: Date): boolean {
-  return (
-    left.getFullYear() === right.getFullYear() &&
-    left.getMonth() === right.getMonth() &&
-    left.getDate() === right.getDate()
-  );
-}
-
-function formatSectionTitle(entryDate: string): string {
-  const date = parseJournalDate(entryDate);
-  const today = new Date();
-  const yesterday = new Date();
-  yesterday.setDate(today.getDate() - 1);
-
-  if (isSameDay(date, today)) {
-    return 'Today';
-  }
-
-  if (isSameDay(date, yesterday)) {
-    return 'Yesterday';
-  }
-
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(date);
-}
-
-function groupEntriesByDate(entries: JournalEntry[]): JournalSection[] {
-  const groupedEntries = new Map<string, JournalEntry[]>();
-
-  for (const entry of entries) {
-    const sectionEntries = groupedEntries.get(entry.entryDate) ?? [];
-    sectionEntries.push(entry);
-    groupedEntries.set(entry.entryDate, sectionEntries);
-  }
-
-  return Array.from(groupedEntries.entries()).map(([entryDate, sectionEntries]) => ({
-    key: entryDate,
-    title: formatSectionTitle(entryDate),
-    entries: sectionEntries,
-  }));
-}
 
 function formatCountLabel(
   count: number,
@@ -122,6 +73,9 @@ export default function JournalScreen() {
     updateEntry,
     removeEntry,
   } = useJournalStore();
+  const loadReviews = useRitualsStore((state) => state.load);
+  const reviews = useRitualsStore((state) => state.reviews);
+  const today = getTodayDate();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMood, setSelectedMood] = useState<JournalMood | null>(null);
@@ -137,7 +91,8 @@ export default function JournalScreen() {
 
   useEffect(() => {
     void loadEntries();
-  }, [loadEntries]);
+    void loadReviews();
+  }, [loadEntries, loadReviews]);
 
   useEffect(() => {
     return () => {
@@ -145,6 +100,9 @@ export default function JournalScreen() {
       if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
     };
   }, []);
+
+  const activeFilterCount =
+    Number(Boolean(searchQuery.trim())) + Number(Boolean(selectedMood));
 
   const filteredEntries = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -162,9 +120,16 @@ export default function JournalScreen() {
     });
   }, [entries, searchQuery, selectedMood, pendingDelete]);
 
-  const groupedEntries = useMemo(
-    () => groupEntriesByDate(filteredEntries),
-    [filteredEntries]
+  // The strip always shows every day; only the list below it is filtered.
+  const trendWindow = useMemo(() => buildTrendWindow(reviews, today), [reviews, today]);
+  const gaps = useMemo(() => findGaps(trendWindow), [trendWindow]);
+
+  // A filter is about entries, so it hides review-only days too — otherwise a
+  // search for "walk" would still list every day you rated.
+  const dayGroups = useMemo(
+    () =>
+      groupByDay(activeFilterCount > 0 ? [] : reviews, filteredEntries, today),
+    [activeFilterCount, filteredEntries, reviews, today]
   );
 
   const handleSaveEntry = useCallback(
@@ -209,6 +174,22 @@ export default function JournalScreen() {
     setPendingDelete(null);
   }, []);
 
+  const handleReviewDay = useCallback(
+    (date: string) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      router.push({ pathname: '/session', params: { ritual: 'review-day', date } });
+    },
+    [router]
+  );
+
+  const handleOpenDay = useCallback(
+    (date: string) => {
+      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      router.push({ pathname: '/day/[date]', params: { date } });
+    },
+    [router]
+  );
+
   const clearFilters = useCallback(() => {
     setSearchQuery('');
     setSelectedMood(null);
@@ -237,9 +218,7 @@ export default function JournalScreen() {
     setAutoStartVoice(false);
   }, []);
 
-  const activeFilterCount =
-    Number(Boolean(searchQuery.trim())) + Number(Boolean(selectedMood));
-  const showEmptyFeed = entries.length === 0;
+  const showEmptyFeed = entries.length === 0 && reviews.length === 0;
   const showEmptyResults = !showEmptyFeed && filteredEntries.length === 0;
 
   useEffect(() => {
@@ -287,6 +266,13 @@ export default function JournalScreen() {
           />
         }
       >
+        {!showEmptyFeed ? (
+          <>
+            <DayTrendStrip window={trendWindow} />
+            <DayGapChips dates={gaps} onPress={handleReviewDay} />
+          </>
+        ) : null}
+
         <View style={styles.timelineHeader}>
           <View style={styles.timelineTitleGroup}>
             <HeadingLarge>Entries</HeadingLarge>
@@ -370,33 +356,32 @@ export default function JournalScreen() {
           </Animated.View>
         ) : null}
 
-        {groupedEntries.length > 0 ? (
+        {dayGroups.length > 0 ? (
           <View style={styles.entriesList}>
-            {groupedEntries.map((section, sectionIndex) => (
+            {dayGroups.map((group: DayGroup, sectionIndex: number) => (
               <Animated.View
-                key={section.key}
+                key={group.date}
                 entering={FadeInDown.delay(sectionIndex * 35).duration(180)}
                 layout={LinearTransition.duration(180)}
                 style={styles.sectionBlock}
               >
-                <View style={styles.sectionHeader}>
-                  <HeadingLarge>{section.title}</HeadingLarge>
-                  <Caption>{formatCountLabel(section.entries.length, 'entry', 'entries')}</Caption>
-                </View>
+                <DaySummaryRow group={group} onPress={handleOpenDay} />
 
-                <View style={styles.sectionEntries}>
-                  {section.entries.map((entry) => (
-                    <JournalEntryCard
-                      key={entry.id}
-                      entry={entry}
-                      isHighlighted={entry.id === lastSavedEntryId}
-                      onEdit={(selectedEntry) =>
-                        openEditor({ entry: selectedEntry })
-                      }
-                      onDelete={handleDeleteEntry}
-                    />
-                  ))}
-                </View>
+                {group.entries.length > 0 ? (
+                  <View style={styles.sectionEntries}>
+                    {group.entries.map((entry) => (
+                      <JournalEntryCard
+                        key={entry.id}
+                        entry={entry}
+                        isHighlighted={entry.id === lastSavedEntryId}
+                        onEdit={(selectedEntry) =>
+                          openEditor({ entry: selectedEntry })
+                        }
+                        onDelete={handleDeleteEntry}
+                      />
+                    ))}
+                  </View>
+                ) : null}
               </Animated.View>
             ))}
           </View>
