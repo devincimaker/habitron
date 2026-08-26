@@ -87,9 +87,16 @@ export function HabitSectionList({
   // ReorderableList calls onDragStart and onDragEnd from its own worklets, on
   // the UI thread — a plain setState handler there aborts the runtime. onReorder
   // is the exception: it runs on the JS thread.
+  //
+  // Every JS function crosses back as a runOnJS *target*, never as an argument:
+  // inside a worklet onDragStart is only a remote-function placeholder, and
+  // passing it through runOnJS's arguments hands the JS thread a plain object
+  // in a Release build (dev builds keep a back-reference, which is why the
+  // simulator never showed it). See HAB-141.
   const handleDragStart = useCallback(() => {
     'worklet';
-    runOnJS(startDragFeedback)(onDragStart);
+    runOnJS(dragHaptic)();
+    runOnJS(onDragStart)();
   }, [onDragStart]);
 
   const handleDragEnd = useCallback(() => {
@@ -160,9 +167,8 @@ export function HabitSectionList({
 }
 
 /** Runs on the JS thread: Haptics is not available inside a worklet. */
-function startDragFeedback(notify: () => void) {
+function dragHaptic() {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-  notify();
 }
 
 interface DraggableHabitRowProps extends HabitItemProps {
