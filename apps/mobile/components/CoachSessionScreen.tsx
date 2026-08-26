@@ -367,7 +367,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     void ensureBackendSession().catch(() => {});
   }, [ensureBackendSession]);
 
-  const dayRatings = useDayRatings({ opener, ritualDate, messages });
+  const dayRatings = useDayRatings({ opener, ritualDate });
   const { message: ratingsMessage, markSent: markRatingsSent } = dayRatings;
 
   // Send is the ordinary path: one user message, and the coach saves the review.
@@ -567,7 +567,6 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
       {dayRatings.visible && !isRecordingMode && (
         <DayRatingCard
           ratings={dayRatings.ratings}
-          prefilled={dayRatings.prefilled}
           disabled={isLoading}
           onRate={dayRatings.setRating}
           onSend={handleSendRatings}

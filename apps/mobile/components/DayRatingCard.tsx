@@ -20,8 +20,6 @@ const VALUES = [1, 2, 3, 4, 5];
 
 interface DayRatingCardProps {
   ratings: DayRatings;
-  /** True when the values are the coach's reading of what was said, not taps. */
-  prefilled: boolean;
   disabled: boolean;
   onRate: (axis: RatingAxis, value: number) => void;
   onSend: () => void;
@@ -36,7 +34,6 @@ interface DayRatingCardProps {
  */
 export function DayRatingCard({
   ratings,
-  prefilled,
   disabled,
   onRate,
   onSend,
@@ -77,9 +74,7 @@ export function DayRatingCard({
     <View style={styles.card}>
       <View style={styles.header}>
         <Text style={styles.title}>Rate the day</Text>
-        <Text style={styles.hint}>
-          {prefilled ? 'from what you said — change anything?' : '1 – 5, higher is better'}
-        </Text>
+        <Text style={styles.hint}>1 – 5, higher is better</Text>
       </View>
 
       {RATING_AXES.filter((axis) => axis !== 'overall').map(renderRow)}

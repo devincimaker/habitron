@@ -1,8 +1,4 @@
-import {
-  composeRatingsMessage,
-  parseCoachRatings,
-  ratingWord,
-} from '../utils/dayRatings';
+import { composeRatingsMessage, ratingWord } from '../utils/dayRatings';
 
 describe('ratingWord', () => {
   it('names each value on the shared ramp', () => {
@@ -38,48 +34,5 @@ describe('composeRatingsMessage', () => {
 
   it('is empty when nothing is rated', () => {
     expect(composeRatingsMessage({})).toBe('');
-  });
-});
-
-describe('parseCoachRatings', () => {
-  const block = [
-    'Plan 4/6 · Habits 2/3 · 5h20 logged',
-    '',
-    '  Happy      ○ ○ ● ○ ○   ok',
-    '  Energy     ○ ● ○ ○ ○   low',
-    '  Momentum   ○ ○ ○ ● ○   good',
-    '  Calm       ○ ○ ● ○ ○   ok',
-    '  Overall    ○ ○ ○ ● ○   good day',
-    '',
-    'Anything you want to change?',
-  ].join('\n');
-
-  it('reads the scale the coach printed', () => {
-    expect(parseCoachRatings(block)).toEqual({
-      happy: 3,
-      energy: 2,
-      momentum: 4,
-      calm: 3,
-      overall: 4,
-    });
-  });
-
-  // The card pre-fills from what the coach heard, so a partial reading has to
-  // stay partial: the axes it did not mention keep their hollow dots.
-  it('leaves an all-hollow row unrated', () => {
-    const partial = ['  Happy      ○ ○ ○ ○ ●   great', '  Calm       ○ ○ ○ ○ ○'].join('\n');
-    expect(parseCoachRatings(partial)).toEqual({ happy: 5 });
-  });
-
-  it('reads a filled bar as its length', () => {
-    expect(parseCoachRatings('  Energy     ● ● ● ○ ○   ok')).toEqual({ energy: 3 });
-  });
-
-  it('ignores rows that are not axes', () => {
-    expect(parseCoachRatings('  Sleep      ○ ○ ● ○ ○   ok')).toBeNull();
-  });
-
-  it('is null when the message carries no scale', () => {
-    expect(parseCoachRatings('How did today go?')).toBeNull();
   });
 });
