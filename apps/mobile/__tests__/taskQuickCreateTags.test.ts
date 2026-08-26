@@ -3,12 +3,14 @@ jest.mock('@habits-coach/shared', () => ({
 }));
 
 import {
+  applyTagAtSelection,
   buildQuickCreateTodoDraft,
   getActiveInlineTagContext,
   getInlineTagName,
   getInlineScheduledTimeContext,
   getQuickCreateTextSegments,
   insertTagTriggerAtSelection,
+  rankTagSuggestions,
   replaceActiveInlineTagContext,
   stripInlineScheduledTimeToken,
   stripInlineTagTokens,
@@ -33,6 +35,72 @@ describe('taskQuickCreateTags', () => {
     expect(buildQuickCreateTodoDraft('Write launch copy #brand #girls')).toEqual({
       title: 'Write launch copy',
       tagName: 'brand',
+    });
+  });
+
+  it('carries a chosen priority on the draft', () => {
+    expect(buildQuickCreateTodoDraft('Call the bank #admin', undefined, 2)).toEqual({
+      title: 'Call the bank',
+      tagName: 'admin',
+      priority: 2,
+    });
+  });
+
+  it('leaves priority off the draft when none was chosen', () => {
+    expect(buildQuickCreateTodoDraft('Call the bank', '2026-04-20')).toEqual({
+      title: 'Call the bank',
+      scheduledDate: '2026-04-20',
+    });
+  });
+
+  it('ranks tag suggestions by prefix, then substring, then name', () => {
+    const tags = [
+      { name: 'Errands' },
+      { name: 'brand' },
+      { name: 'Admin' },
+      { name: 'breakfast' },
+    ];
+    expect(rankTagSuggestions(tags, 'br').map((tag) => tag.name)).toEqual([
+      'brand',
+      'breakfast',
+    ]);
+    expect(rankTagSuggestions(tags, 'an').map((tag) => tag.name)).toEqual([
+      'brand',
+      'Errands',
+    ]);
+    expect(rankTagSuggestions(tags, '').map((tag) => tag.name)).toEqual([
+      'Admin',
+      'brand',
+      'breakfast',
+      'Errands',
+    ]);
+  });
+
+  it('applies a picked tag by replacing the token under the caret', () => {
+    expect(applyTagAtSelection('Fix sink #he', { start: 12, end: 12 }, 'health')).toEqual({
+      text: 'Fix sink #health ',
+      selection: { start: 17, end: 17 },
+    });
+  });
+
+  it('applies a picked tag by inserting a token when the caret is not on one', () => {
+    expect(applyTagAtSelection('Call the bank', { start: 13, end: 13 }, 'admin')).toEqual({
+      text: 'Call the bank #admin ',
+      selection: { start: 21, end: 21 },
+    });
+  });
+
+  it('applies a picked tag after the word the caret is in, never inside it', () => {
+    expect(applyTagAtSelection('Call the bank', { start: 6, end: 6 }, 'admin')).toEqual({
+      text: 'Call the #admin bank',
+      selection: { start: 15, end: 15 },
+    });
+  });
+
+  it('applies a picked tag on the first line when the caret is on a checklist line', () => {
+    expect(applyTagAtSelection('Buy milk\noat', { start: 11, end: 11 }, 'errands')).toEqual({
+      text: 'Buy milk #errands\noat',
+      selection: { start: 17, end: 17 },
     });
   });
 
