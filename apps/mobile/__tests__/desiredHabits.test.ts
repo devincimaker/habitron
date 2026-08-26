@@ -13,6 +13,7 @@ const habit: Habit = {
   constantReminder: false,
   autoPopupLog: false,
   active: true,
+  position: 0,
   createdAt: new Date('2026-08-01T08:00:00Z').getTime(),
 };
 
