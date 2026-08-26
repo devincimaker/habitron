@@ -121,6 +121,25 @@ export interface HabitDraft extends HabitSchedule, HabitGoal {
   autoPopupLog: boolean;
 }
 
+/**
+ * A habit already decided on but not started, waiting on capacity. Not a goal:
+ * a goal ends, a habit continues.
+ */
+export interface DesiredHabit {
+  id: string;
+  title: string;
+  note?: string;
+  /** The habit currently standing in for it, if any. */
+  habitId?: string;
+  createdAt: number;
+  updatedAt?: number;
+}
+
+export interface DesiredHabitDraft {
+  title: string;
+  note?: string;
+}
+
 export type HabitStatus = 'pending' | 'completed' | 'skipped';
 
 export interface HabitLog {

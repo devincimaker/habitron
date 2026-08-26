@@ -45,6 +45,13 @@ interface SeedHabitLog {
   amount?: number;
 }
 
+interface SeedDesiredHabit {
+  title: string;
+  note?: string;
+  /** Names a habit in `habits` that stands in for it; absent means not started. */
+  habit?: string;
+}
+
 interface SeedJournalEntry {
   entryDate: string;
   content: string;
@@ -58,6 +65,7 @@ export interface SeedFixtures {
   habits: SeedHabit[];
   habitLogs: SeedHabitLog[];
   habitStartDate: string;
+  desiredHabits: SeedDesiredHabit[];
   journal: SeedJournalEntry[];
   profile: { name: string };
 }
@@ -137,6 +145,19 @@ export function buildFixtures(today: string): SeedFixtures {
     habits,
     habitLogs,
     habitStartDate: day(-HABIT_START_DAYS_AGO),
+    // One of each state, so the section has both a started and a not-started
+    // row to photograph.
+    desiredHabits: [
+      {
+        title: 'Strength training twice a week',
+        note: 'The physio asked for this. Running is the smaller version I actually started.',
+        habit: 'Run',
+      },
+      {
+        title: 'Read before bed instead of the phone',
+        note: 'Not while the evenings are this full.',
+      },
+    ],
     journal: [
       {
         entryDate: day(-1),

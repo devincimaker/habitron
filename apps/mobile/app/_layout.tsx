@@ -13,6 +13,7 @@ import { useTodosStore } from '../stores/useTodosStore';
 import { useJournalStore } from '../stores/useJournalStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useDailyPlansStore } from '../stores/useDailyPlansStore';
+import { useDesiredHabitsStore } from '../stores/useDesiredHabitsStore';
 import { useAppStateHandler } from '../hooks/useAppState';
 import { ColorsProvider, useColorsValue } from '../hooks/useColors';
 import {
@@ -59,6 +60,8 @@ export default Sentry.wrap(function RootLayout() {
   const loadSessions = useSessionsStore((state) => state.loadSessions);
   const clearSessions = useSessionsStore((state) => state.clearSessions);
   const clearPlans = useDailyPlansStore((state) => state.clearPlans);
+  const loadDesiredHabits = useDesiredHabitsStore((state) => state.loadDesiredHabits);
+  const clearDesiredHabits = useDesiredHabitsStore((state) => state.clearDesiredHabits);
   const { loadProfile, reset: resetProfile } = useProfileStore();
   const isSessionActive = useSessionStore((state) => state.isActive);
   const router = useRouter();
@@ -83,6 +86,7 @@ export default Sentry.wrap(function RootLayout() {
       loadTodos();
       loadEntries();
       loadSessions();
+      loadDesiredHabits();
       loadProfile();
 
       // Register for push notifications
@@ -99,16 +103,19 @@ export default Sentry.wrap(function RootLayout() {
       clearEntries();
       clearSessions();
       clearPlans();
+      clearDesiredHabits();
       resetProfile();
     }
   }, [
     session,
+    clearDesiredHabits,
     clearEntries,
     clearGoals,
     clearHabits,
     clearPlans,
     clearSessions,
     clearTodos,
+    loadDesiredHabits,
     loadEntries,
     loadGoals,
     loadHabits,
