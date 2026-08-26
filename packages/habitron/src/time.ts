@@ -2,7 +2,7 @@ import type { HabitWeekday } from '@habits-coach/shared';
 
 // Sunday-first, matching HABIT_WEEKDAYS in @habits-coach/shared (type-only import:
 // the shared package is CJS, so its runtime values are not visible from ESM).
-const WEEKDAYS: readonly HabitWeekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+export const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const satisfies readonly HabitWeekday[];
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 // Seconds are optional and ignored. The canonical form is minute-granular, but
