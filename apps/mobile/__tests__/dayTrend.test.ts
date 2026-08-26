@@ -104,8 +104,10 @@ describe('labels', () => {
     expect(formatDayTitle('2026-08-22', '2026-08-25')).toContain('Aug');
   });
 
-  it('keeps a chip short', () => {
-    expect(formatChipLabel('2026-08-22')).toMatch(/^[A-Za-z]{3} 22$/);
+  it('keeps a chip short, weekday before the day, in any locale', () => {
+    const label = formatChipLabel('2026-08-22');
+    expect(label.endsWith(' 22')).toBe(true);
+    expect(label.slice(0, -3).trim().length).toBeGreaterThan(0);
   });
 
   it('names the month once when the range stays inside it', () => {

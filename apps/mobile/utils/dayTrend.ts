@@ -59,12 +59,17 @@ export function formatDayTitle(date: string, today: string): string {
   }).format(parseDayDate(date));
 }
 
-/** The short form the gap chips use: `Sat 16`. */
+/**
+ * The short form the gap chips use: `Sat 16`.
+ *
+ * Composed rather than formatted whole, the way `formatRange` is: asking Intl
+ * for `weekday + day` lets the locale reorder them, and a chip that reads
+ * `16 Sat` next to a strip of day numbers is a chip nobody parses.
+ */
 export function formatChipLabel(date: string): string {
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'short',
-    day: 'numeric',
-  }).format(parseDayDate(date));
+  const day = parseDayDate(date);
+  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
+  return `${weekday} ${day.getDate()}`;
 }
 
 /** `Aug 12 – 25`, the range under the strip. */
