@@ -2,9 +2,10 @@ import { useCallback, useMemo } from 'react';
 import { RefreshControl, StyleSheet, Text, View } from 'react-native';
 import ReorderableList, {
   reorderItems,
+  useReorderableDrag,
   type ReorderableListReorderEvent,
 } from 'react-native-reorderable-list';
-import { Gesture } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { HabitSection, HabitWithStatus } from '@habits-coach/shared';
@@ -20,6 +21,9 @@ import {
 import { useThemedStyles } from '../hooks/useColors';
 import type { HabitOrderUpdate } from '../services/habits';
 import { buildHabitRows, resolveOrderFromRows, type HabitRow } from '../utils/habitOrder';
+
+/** How long a finger rests on a card before it lifts. Shared by the row's hold and the list's pan. */
+const DRAG_HOLD_MS = 250;
 
 type Row = HabitRow<HabitWithStatus>;
 type HabitItemProps = React.ComponentProps<typeof HabitItem>;
@@ -63,8 +67,9 @@ export function HabitSectionList({
   const [styles] = useThemedStyles(createStyles);
 
   // Per instance: a gesture object carries handler state, so a module-level one
-  // shared between mounts silently stops recognising.
-  const dragPan = useMemo(() => Gesture.Pan().activateAfterLongPress(250), []);
+  // shared between mounts silently stops recognising. This pan only *tracks* a
+  // drag; each row's hold is what starts one (see DraggableHabitRow).
+  const dragPan = useMemo(() => Gesture.Pan().activateAfterLongPress(DRAG_HOLD_MS), []);
 
   // Every routine is always in the data, including the empty ones; only their
   // visibility depends on the drag. See habitOrder.ts for why they cannot be
@@ -94,8 +99,8 @@ export function HabitSectionList({
 
   const renderItem = useCallback(
     ({ item }: { item: Row }) => {
-      // Headers and placeholders never call useReorderableDrag, so they cannot
-      // be picked up and the routine boundaries stay put.
+      // Only habit rows carry the hold that starts a drag, so headers and
+      // placeholders cannot be picked up and the routine boundaries stay put.
       // A hidden row still renders a (zero-height) view: ReorderableList wraps
       // every cell in an animated view it measures, and a null cell throws in
       // the worklet that drives the drag.
@@ -107,7 +112,8 @@ export function HabitSectionList({
         return isDragging ? <View style={styles.placeholder} /> : <View />;
       }
       return (
-        <HabitItem
+        <DraggableHabitRow
+          dragPan={dragPan}
           habit={item.habit}
           onStatusChange={onStatusChange}
           onCheckIn={onCheckIn}
@@ -115,7 +121,7 @@ export function HabitSectionList({
         />
       );
     },
-    [isDragging, onCheckIn, onPressHabit, onStatusChange, styles]
+    [dragPan, isDragging, onCheckIn, onPressHabit, onStatusChange, styles]
   );
 
   return (
@@ -123,9 +129,6 @@ export function HabitSectionList({
       data={rows}
       renderItem={renderItem}
       keyExtractor={(item: Row) => item.key}
-      // The list owns the hold that starts a drag. HabitItem's own swipe pan
-      // only activates past 20px horizontally, so a stationary hold never trips
-      // it and the two gestures stay out of each other's way.
       panGesture={dragPan}
       onReorder={handleReorder}
       onDragStart={handleDragStart}
@@ -160,6 +163,40 @@ export function HabitSectionList({
 function startDragFeedback(notify: () => void) {
   void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   notify();
+}
+
+interface DraggableHabitRowProps extends HabitItemProps {
+  dragPan: PanGesture;
+}
+
+// The list's pan never starts a drag on its own: ReorderableList moves a cell
+// only after that cell's drag handler has run. So each habit row owns a hold
+// that fires it. The hold must be declared simultaneous with the list's pan —
+// by default an activating gesture cancels every other one on the touch, and
+// that is exactly what left the card lifted but unmovable. HabitItem's own
+// swipe pan needs 20pt of horizontal travel, so a stationary hold never trips
+// it, and once the hold activates the swipe and the tap are cancelled.
+function DraggableHabitRow({ dragPan, ...itemProps }: DraggableHabitRowProps) {
+  const drag = useReorderableDrag();
+  const hold = useMemo(
+    () =>
+      Gesture.LongPress()
+        .minDuration(DRAG_HOLD_MS)
+        .simultaneousWithExternalGesture(dragPan)
+        .onStart(() => {
+          'worklet';
+          runOnJS(drag)();
+        }),
+    [drag, dragPan]
+  );
+
+  return (
+    <GestureDetector gesture={hold}>
+      <View>
+        <HabitItem {...itemProps} />
+      </View>
+    </GestureDetector>
+  );
 }
 
 const CELL_ANIMATIONS = {
