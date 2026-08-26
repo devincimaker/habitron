@@ -6,6 +6,15 @@ import { useThemedStyles } from '../hooks/useColors';
 
 const DOT = 14;
 
+/**
+ * Fifty-six dots and fourteen bare numbers say nothing out loud, so the plot is
+ * hidden from assistive tech and the footer line carries the whole summary.
+ */
+const DECORATIVE = {
+  accessibilityElementsHidden: true,
+  importantForAccessibility: 'no-hide-descendants',
+} as const;
+
 interface DayTrendStripProps {
   window: TrendDay[];
 }
@@ -43,12 +52,9 @@ export function DayTrendStrip({ window }: DayTrendStripProps) {
   );
 
   return (
-    <View
-      style={styles.card}
-      accessibilityLabel={`Last ${window.length} days, ${reviewed} reviewed`}
-    >
+    <View style={styles.card}>
       {TREND_AXES.map((axis) => (
-        <View key={axis} style={styles.row}>
+        <View key={axis} style={styles.row} {...DECORATIVE}>
           <Text style={styles.axisLabel}>{AXIS_LABELS[axis]}</Text>
           {renderCells((day) => {
             const color = rampColor(colors.primary, day.review?.[axis]);
@@ -61,7 +67,7 @@ export function DayTrendStrip({ window }: DayTrendStripProps) {
         </View>
       ))}
 
-      <View style={styles.daysRow}>
+      <View style={styles.daysRow} {...DECORATIVE}>
         <Text style={styles.axisLabel} />
         {renderCells(
           (day) => (

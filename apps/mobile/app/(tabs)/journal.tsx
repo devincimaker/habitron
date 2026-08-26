@@ -33,7 +33,7 @@ import {
 } from '../../components/ui';
 import { useJournalStore } from '../../stores/useJournalStore';
 import { useRitualsStore } from '../../stores/useRitualsStore';
-import { buildTrendWindow, findGaps, groupByDay, type DayGroup } from '../../utils/dayTrend';
+import { buildTrendWindow, findGaps, groupByDay } from '../../utils/dayTrend';
 import { getTodayDate } from '@habits-coach/shared';
 import {
   BORDER_RADIUS,
@@ -219,7 +219,7 @@ export default function JournalScreen() {
   }, []);
 
   const showEmptyFeed = entries.length === 0 && reviews.length === 0;
-  const showEmptyResults = !showEmptyFeed && filteredEntries.length === 0;
+  const showEmptyResults = !showEmptyFeed && dayGroups.length === 0;
 
   useEffect(() => {
     const composeParam = Array.isArray(params.compose)
@@ -358,7 +358,7 @@ export default function JournalScreen() {
 
         {dayGroups.length > 0 ? (
           <View style={styles.entriesList}>
-            {dayGroups.map((group: DayGroup, sectionIndex: number) => (
+            {dayGroups.map((group, sectionIndex) => (
               <Animated.View
                 key={group.date}
                 entering={FadeInDown.delay(sectionIndex * 35).duration(180)}
@@ -575,13 +575,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   sectionBlock: {
     gap: SPACING.sm,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: SPACING.md,
-    paddingHorizontal: SPACING.xs,
   },
   sectionEntries: {
     gap: SPACING.sm,
