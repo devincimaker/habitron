@@ -62,6 +62,15 @@ export function detailsStateFor(
   };
 }
 
+/** The one rule the pickers cannot enforce: a daily habit needs at least one day. */
+export function scheduleErrorFor(details: HabitDetailsState): string | null {
+  if (details.frequency === 'daily' && details.weeklyDays.length === 0) {
+    return 'Select at least one day for a daily habit.';
+  }
+
+  return null;
+}
+
 export function describeGoal(goal: HabitGoal): string {
   if (goal.goalType === 'boolean') {
     return 'Achieve it all';

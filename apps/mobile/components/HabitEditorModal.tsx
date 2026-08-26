@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
@@ -13,7 +13,12 @@ import { HabitBasicsStep } from './HabitBasicsStep';
 import { HabitDetailsStep } from './HabitDetailsStep';
 import { SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import { buildHabitDraft, detailsStateFor, type HabitDetailsState } from '../utils/habitDraft';
+import {
+  buildHabitDraft,
+  detailsStateFor,
+  scheduleErrorFor,
+  type HabitDetailsState,
+} from '../utils/habitDraft';
 import { getSuggestedHabitIcon, resolveHabitIcon, type HabitIconName } from '../utils/habitIcons';
 
 interface HabitEditorModalProps {
@@ -94,12 +99,12 @@ export function HabitEditorModal({
     setCustomIcon(icon);
   };
 
-  const handleDetailsChange = useCallback((patch: Partial<HabitDetailsState>) => {
+  const handleDetailsChange = (patch: Partial<HabitDetailsState>) => {
     setDetails((current) => ({ ...current, ...patch }));
     if ('frequency' in patch || 'weeklyDays' in patch) {
       setScheduleError(null);
     }
-  }, []);
+  };
 
   const handleAdvance = () => {
     if (!name.trim()) {
@@ -120,8 +125,9 @@ export function HabitEditorModal({
 
   const handleSave = async () => {
     if (!name.trim()) return;
-    if (details.frequency === 'daily' && details.weeklyDays.length === 0) {
-      setScheduleError('Select at least one day for a daily habit.');
+    const error = scheduleErrorFor(details);
+    if (error) {
+      setScheduleError(error);
       Alert.alert('Pick Days', 'Choose at least one day for this daily habit.');
       return;
     }

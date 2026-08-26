@@ -10,7 +10,7 @@ import { createHabitCardStyles } from './habitComposerStyles';
 import { SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import type { HabitDetailsState } from '../utils/habitDraft';
-import { getHabitIconLabel, getHabitIconOption, type HabitIconName } from '../utils/habitIcons';
+import { getHabitIconAccentColor, getHabitIconLabel, type HabitIconName } from '../utils/habitIcons';
 import { formatReminderTime } from '../utils/habitTime';
 
 interface HabitDetailsStepProps {
@@ -100,10 +100,7 @@ export function HabitDetailsStep({
           <View
             style={[
               styles.summaryIcon,
-              {
-                backgroundColor:
-                  getHabitIconOption(summary.icon)?.accentColor ?? colors.primary,
-              },
+              { backgroundColor: getHabitIconAccentColor(summary.icon) ?? colors.primary },
             ]}
           >
             <Ionicons name={summary.icon} size={20} color={colors.white} />

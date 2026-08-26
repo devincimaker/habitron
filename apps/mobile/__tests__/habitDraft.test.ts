@@ -3,6 +3,7 @@ import {
   buildHabitDraft,
   describeGoal,
   detailsStateFor,
+  scheduleErrorFor,
   type HabitDraftState,
 } from '../utils/habitDraft';
 
@@ -114,7 +115,7 @@ describe('detailsStateFor', () => {
       icon: 'water',
     });
 
-    expect(draft).toEqual({
+    expect(draft).toStrictEqual({
       name: 'Hydrate',
       reason: 'clear head',
       icon: 'water',
@@ -134,6 +135,20 @@ describe('detailsStateFor', () => {
       constantReminder: true,
       autoPopupLog: true,
     });
+  });
+});
+
+describe('scheduleErrorFor', () => {
+  it('rejects a daily habit with no days', () => {
+    expect(scheduleErrorFor({ ...BASE, weeklyDays: [] })).toBe(
+      'Select at least one day for a daily habit.'
+    );
+  });
+
+  it('accepts a daily habit with a day, and any other frequency without one', () => {
+    expect(scheduleErrorFor(BASE)).toBeNull();
+    expect(scheduleErrorFor({ ...BASE, frequency: 'weekly', weeklyDays: [] })).toBeNull();
+    expect(scheduleErrorFor({ ...BASE, frequency: 'interval', weeklyDays: [] })).toBeNull();
   });
 });
 
