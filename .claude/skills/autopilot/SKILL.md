@@ -50,7 +50,7 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
 
 - **Ready is the mandate.** Work only on issues in `Ready`. Never invent a
   target, never widen one. If a tick finds something real and out of scope, file
-  it in `Backlog` and carry on.
+  it in `Backlog`, `add filed`, and carry on.
 - **Destructive migrations park; additive ones ride free.** A revert does not
   bring data back. `DROP COLUMN` on a populated column, a type narrowing, a
   delete-and-recreate, a backfill that overwrites: build it, open the PR, and
@@ -73,7 +73,7 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
 - **Spend nothing on a reader who is not there.** A tick that merges itself is
   read by nobody. Proof that catches a regression stays, always. Proof shaped
   for a human — a before/after pair, a recap page — happens only where review
-  actually happens: a park, a refusal, the end-of-run summary.
+  actually happens: a park, a refusal, the run report.
 - **Narrate each phase in one line**, so an unattended run reads back cleanly:
   `[HAB-88 · class B · tick 3] composer clears on echo · jest + one sim shot`
 
@@ -90,23 +90,53 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
     reason in a comment — that is the hand-off to the user's pipeline.
   - **Chains are Linear "blocked by" relations**, declared at promotion time. A
     Ready issue blocked by anything not `Done` is skipped, not taken.
-- **`tmp/autopilot-run.json` is the session log.** Gitignored. Linear survives
-  anything; this file keeps the loop honest across compactions:
+### The run ledger
 
-```json
-{
-  "mode": "continuous",
-  "landed": ["HAB-88"],
-  "parked": [{ "issue": "HAB-91", "pr": 71, "why": "drops journal_entries.mood — destructive" }],
-  "refused": [{ "issue": "HAB-90", "why": "needs a design call on the tab bar" }],
-  "consecutiveRefusals": 0
-}
+**`tmp/autopilot/<run>/` is the run ledger** — one directory per run, in the
+main checkout, gitignored. `run.json` is the structured truth; `report.md` is
+rendered from it after every write, and it is the page the user reads the
+morning after, sections in the order they act on them: what needs their
+decision, what landed and where to look for it in the app, what was filed for
+them, what the bot decided on its own, then the tick log. Linear survives
+anything; the ledger keeps the loop honest across compactions and is all the
+user ever sees of an unattended run.
+
+`scripts/autopilot-run.mjs` is the only way to touch it. It runs from anywhere
+in the repo and finds the main checkout's `tmp/` on its own:
+
+```
+node scripts/autopilot-run.mjs tick                       # Phase 1: open or continue this session's run
+node scripts/autopilot-run.mjs add landed   '{"issue","class","pr","title","proof","seeIt"}'
+node scripts/autopilot-run.mjs add parked   '{"issue","class","pr","title","blockedOn","decide","resume"}'
+node scripts/autopilot-run.mjs add refused  '{"issue","class","why","routedTo"}'   # Todo | Canceled
+node scripts/autopilot-run.mjs add filed    '{"issue","title","why","during"}'
+node scripts/autopilot-run.mjs add decision '{"issue","note"}'
+node scripts/autopilot-run.mjs add log      '[HAB-88 · B · tick 3] merged #71 · …'
+node scripts/autopilot-run.mjs add idle     'nothing Ready · 2 blocked behind HAB-111'
+node scripts/autopilot-run.mjs close        'stopped'   # or 'halted: <why>'
+node scripts/autopilot-run.mjs status
 ```
 
-Read it first, write it last, every tick. Missing? Start it fresh and say so —
-Linear is authoritative and nothing in this file is precious. If it carries a
-`cap`, honour it (a bounded overnight run); by default there is none, because
-the user meters the run by what they promote.
+**A run is one Claude Code session.** `tick` reads `CLAUDE_CODE_SESSION_ID`: the
+same session (a `--resume` included) continues its run; any other session
+closes the newest open run retroactively as `session ended` at its last tick,
+then opens a new one. That is the only boundary. A run that was killed, slept
+or crashed is closed by the next run's first tick, and its report says when it
+last moved. Idle never closes a run. `add` refuses on a closed run and refuses
+an entry with a field missing, so the report never has a hole where a decision
+should be. The counter behind the three-refusals stop lives here too: `refused`
+increments it, `landed` and `parked` reset it. If `run.json` carries a `cap`,
+honour it (a bounded overnight run); by default there is none, because the user
+meters the run by what they promote.
+
+Write entries for a reader who was not there. `seeIt` is the deep link or the
+taps that put the change on screen — the user walks the app with the report
+open; A and C carry none, and the report prints `nothing on screen`. A park's
+`blockedOn`, `decide` and `resume` are one line each: what stopped it, the
+choice being asked, and the command that lands it (`/merge NN` from
+`<worktree>`). A `decision` is any call the tick made that the user did not —
+a premise corrected, a review finding filed instead of fixed, a checklist row
+ticked as stale, an issue closed because its premise was gone.
 
 ## The four classes of work
 
@@ -217,17 +247,20 @@ behaves.
 
 ## Phase 1 — Pick up the run
 
-1. Read `tmp/autopilot-run.json`. Missing? Start it fresh and say so.
-2. **Stop now, before any setup, if** `consecutiveRefusals >= 3`, or the file
-   carries a `cap` that `landed.length` has reached. Report the run summary
-   (Phase 8) and call `ScheduleWakeup` with `stop: true`.
+1. `node scripts/autopilot-run.mjs tick`. It says whether it opened a run,
+   continued this session's, or closed a previous session's first, and prints
+   the tick number, `consecutiveRefusals`, `cap` and the landed count.
+2. **Stop now, before any setup, if** `consecutiveRefusals >= 3`, or `cap` is
+   set and the landed count has reached it: `close 'halted: <which>'`, hand
+   back the report (Phase 8) and call `ScheduleWakeup` with `stop: true`.
 3. `git -C <main checkout> pull` on `master`. Every tick starts from a master
    that already contains the previous tick's merge, which is why this loop never
    rebases and never conflicts with itself.
 4. List team **Habitron**'s `Ready` issues and drop the blocked ones (any
    `blocked by` relation not `Done`). **None left?** That is an idle tick, not a
-   stop: narrate `[idle] nothing Ready · N blocked behind <issue>`,
-   `ScheduleWakeup` with `noop: true` and 1200–1800s, and end the invocation.
+   stop: `add idle 'nothing Ready · N blocked behind <issue>'` (which logs the
+   line and marks the run idle from this tick), narrate it, `ScheduleWakeup`
+   with `noop: true` and 1200–1800s, and end the invocation.
 5. Take the first unblocked issue in this order: **anything carrying the `next`
    label**, then class ascending A→D, then priority, then oldest. `next` is the
    user's pin — it exists so "do this one first" is a label and not a plea, and
@@ -271,14 +304,15 @@ Open the files the issue names and confirm its claims. An issue specced last
 week can be stale: the line may already have moved, the fix may already be in.
 
 **If the issue's premise is gone, that is a success, not a failure.** Close it as
-Done with a comment saying so, reclaim the worktree, and let the tick count as
-neither landed nor refused. Then stop; the next tick takes the next issue.
+Done with a comment saying so, reclaim the worktree, `add decision` with what
+was claimed and what was found, `add log` the tick, and let it count as neither
+landed nor refused. Then stop; the next tick takes the next issue.
 
 **A premise that is wrong but leaves real work is corrected, not obeyed.** Test
 the issue's claims before building on them; when one falls, do what the corrected
-premise implies and record the correction in the PR body and on the issue — what
-was claimed, what was found, how you know. The issue's scope still bounds the
-work: a fallen premise never widens it.
+premise implies and record the correction in the PR body, on the issue, and as
+an `add decision` — what was claimed, what was found, how you know. The issue's
+scope still bounds the work: a fallen premise never widens it.
 
 ## Phase 4 — Build it
 
@@ -374,9 +408,9 @@ Refuse and move on, never soldier through, when:
 
 To refuse: comment the reason on the issue, then route it — **back to `Todo`**
 when a better spec could save it, or **Canceled** when the idea itself is dead.
-`pnpm wt:rm <branch>` from the main checkout, increment `consecutiveRefusals`,
-write the run file, and **take the next issue**. Three in a row ends the run
-(Phase 1).
+`pnpm wt:rm <branch>` from the main checkout, `add refused` with the class, the
+reason and where it went (the ledger counts the streak), `add log` the tick,
+and **take the next issue**. Three in a row ends the run (Phase 1).
 
 ## Phase 7 — Simplify, PR, review, then merge
 
@@ -418,9 +452,9 @@ review confirms:
 
 - confirmed and inside the issue's scope: fix it now, re-run the gate, push, and
   let the merge wait on the new head's CI run;
-- confirmed, but in code this PR did not touch: **file it in `Backlog` and
-  merge**. A finding next door does not make this diff wrong, and parking a
-  correct PR over it stalls the queue for nothing;
+- confirmed, but in code this PR did not touch: **file it in `Backlog`,
+  `add filed`, and merge**. A finding next door does not make this diff wrong,
+  and parking a correct PR over it stalls the queue for nothing;
 - confirmed, inside this diff, and not fixable within the issue's scope:
   **park** — never widen the diff to chase it;
 - unconfirmed: drop it.
@@ -447,18 +481,22 @@ result shot. (The worktree is still standing, which is what keeps that before
 shot reachable this late.) Leave the PR open with its proof complete and a
 comment naming the reason — the confirmed finding, the destructive migration, or
 the issue's `park` tag; move the issue to **In Review** with the same comment;
-append to `parked` in the run file and reset `consecutiveRefusals` — a park found
-safe work, it just found a decision riding along with it. The worktree stays
+`add parked` with what was built, what blocked it, the decision being asked and
+the `/merge NN` line that resumes it. The refusal streak resets on a park — it
+found safe work, it just found a decision riding along with it. The worktree stays
 standing: the user lands the PR later with `/merge` from inside it, so the reap
 hook still fires. Dependents of a parked issue stay blocked until the user merges
 or cancels it.
 
 ## Phase 8 — Record and hand back
 
-1. Append to `landed` (or `parked`), reset `consecutiveRefusals` to 0, write
-   `tmp/autopilot-run.json`. If the issue carried `next`, remove the label now. For a checklist issue, append the row rather than
-   the issue, and leave the issue In Progress until its last row is ticked.
-2. One line per tick, so the loop reads back as a list:
+1. `add landed` with the class, the PR, what changed, the proof and — for B and
+   D — `seeIt`, where in the app the user looks for it. A park was already
+   recorded in Phase 7. If the issue carried `next`, remove the label now. For a
+   checklist issue, the row is the title, and the issue stays In Progress until
+   its last row is ticked.
+2. One line per tick, narrated and `add log`ged, so the loop reads back as a
+   list:
    `[HAB-88 · B · tick 3] merged #71 · composer clears on echo · jest + one shot`
 3. **Under `/loop`**: after a landed or parked tick, `ScheduleWakeup` with
    `noop: false` and a short delay (60–120s — the next tick's work is local, and
@@ -470,9 +508,9 @@ or cancels it.
    polling, a fallback heartbeat, and an idle tick with nothing to watch: a
    finished tick with a non-empty queue is none of them, and rounding it to the
    last one buys 20–30 minutes of dead time before the next build starts.
-   If Phase 1's stop conditions are met, call it with `stop: true` and print the
-   run summary: what landed, what is parked and what each park waits on, what was
-   refused and where it went, what was filed for the user to decide.
+   If Phase 1's stop conditions are met, call it with `stop: true` and hand back
+   the report: its path, and its *Needs your decision* section inline. The
+   report is the run summary; do not write a second one.
 
 ## `/autopilot sweep` — feed the spec pipeline
 
@@ -530,5 +568,7 @@ smaller class to jump the queue.
 ## `/autopilot status` / `stop`
 
 `status`: print the `Ready` list in pick order, with blocked flags and the
-`next` pin marked, the issue in `In Progress` if any, and the run file. No work. `stop`: `ScheduleWakeup` with `stop: true` and
-print the Phase 8 summary.
+`next` pin marked, the issue in `In Progress` if any, and the output of
+`node scripts/autopilot-run.mjs status` — the report's header line and path. No
+work. `stop`: `node scripts/autopilot-run.mjs close stopped`, then
+`ScheduleWakeup` with `stop: true` and hand back the report as Phase 8 does.

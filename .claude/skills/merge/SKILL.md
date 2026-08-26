@@ -28,8 +28,8 @@ that returned zero proves nothing on its own.
 - **Then leave, because the merge deletes the directory you are standing in.**
   That is the hook working, not a fault — but a session still pinned inside the
   worktree loses its workspace at the moment it succeeds, and everything from
-  Phase 4 on lives in the main checkout: the CI watch,
-  `tmp/autopilot-run.json`, the next `pnpm wt:new`. `ExitWorktree` the moment
+  Phase 4 on lives in the main checkout: the CI watch, the autopilot run
+  ledger under `tmp/autopilot/`, the next `pnpm wt:new`. `ExitWorktree` the moment
   the merge returns. A loop that merges from inside and stays there ends its own
   run on a green merge.
 - **A browser merge skips the hook entirely.** It only fires on the Bash tool

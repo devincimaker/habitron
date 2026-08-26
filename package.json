@@ -18,7 +18,7 @@
     "typecheck": "turbo typecheck",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
-    "test": "turbo test",
+    "test": "turbo test && node --test 'scripts/**/*.test.mjs'",
     "test:coverage": "turbo test:coverage",
     "clean": "turbo clean && rm -rf node_modules",
     "seed": "pnpm --filter @habits-coach/api seed",
