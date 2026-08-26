@@ -1,4 +1,5 @@
 import type { DailyPlanItemOutcome, HabitStatus } from '@habits-coach/shared';
+import { buildScorecard } from './scorecard.js';
 import type { Db, DesiredHabitRecord, Habit, Task } from './db.js';
 import { addDays, localDateOf, localNow, weekRange, weekdayOf } from './time.js';
 
@@ -102,18 +103,20 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
   const week = weekRange(date);
   const lookbackStart = addDays(date, -14);
 
-  const [tasks, allHabits, logs, plan, journal, memories, recentPlans, desired] = await Promise.all([
-    db.listAllTasks(),
-    // Archived habits included, so a desired habit's abandoned attempt still
-    // resolves; the `habits` field below filters back down to the active ones.
-    db.listHabits(true),
-    db.listHabitLogs(lookbackStart < week.start ? lookbackStart : week.start, week.end),
-    db.getActivePlan(date),
-    db.listRecentJournalEntries(5),
-    db.listMemories(),
-    db.listPlans(lookbackStart, addDays(date, -1)),
-    db.listDesiredHabits(),
-  ]);
+  const [tasks, allHabits, logs, plan, journal, memories, recentPlans, desired, review] =
+    await Promise.all([
+      db.listAllTasks(),
+      // Archived habits included, so a desired habit's abandoned attempt still
+      // resolves; the `habits` field below filters back down to the active ones.
+      db.listHabits(true),
+      db.listHabitLogs(lookbackStart < week.start ? lookbackStart : week.start, week.end),
+      db.getActivePlan(date),
+      db.listRecentJournalEntries(5),
+      db.listMemories(),
+      db.listPlans(lookbackStart, addDays(date, -1)),
+      db.listDesiredHabits(),
+      db.getDayReview(date),
+    ]);
 
   const open = tasks.filter((t) => t.status === 'open');
   const planOutcomeByTodo = new Map(
@@ -182,6 +185,8 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
     versionsPerDay.set(p.planDate, Math.max(versionsPerDay.get(p.planDate) ?? 0, p.version));
   }
 
+  const activeHabits = habitsForDay.filter((habit) => habit.active);
+
   return {
     date,
     weekday: weekdayOf(date),
@@ -204,8 +209,17 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
       },
       scheduledEstimateMinutes: scheduled.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0),
     },
-    habits: habitsForDay.filter((habit) => habit.active),
+    habits: activeHabits,
     desiredHabits: resolveDesiredHabits(desired, habitsForDay),
+    // The day in numbers, so a review opens with the facts instead of asking for
+    // them. Recomputed every call — nothing here is stored on `day_reviews`.
+    scorecard: buildScorecard({
+      planItems: plan?.items ?? null,
+      habits: activeHabits,
+      completedTasks: completedOnDate,
+    }),
+    /** Today's review if one exists, so a second visit resumes instead of restarting. */
+    review,
     recentJournal: journal,
     memories,
     recentPlanning: {

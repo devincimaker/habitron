@@ -1,6 +1,8 @@
 import type { HabitStatus, HabitWeekday } from '@habits-coach/shared';
+import { summariseReviews } from './dayReview.js';
 import type { Db, Habit, HabitLogRecord } from './db.js';
-import { addDays, localDateOf, localNow, weekdayOf } from './time.js';
+import { round } from './numbers.js';
+import { addDays, localDateOf, localNow, weekdayOf, windowMidpoint } from './time.js';
 
 const WEEKDAYS: HabitWeekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -12,11 +14,6 @@ function eachDay(start: string, end: string): string[] {
   const days: string[] = [];
   for (let d = start; d <= end; d = addDays(d, 1)) days.push(d);
   return days;
-}
-
-function round(value: number, places = 2): number {
-  const f = 10 ** places;
-  return Math.round(value * f) / f;
 }
 
 /** Is the habit expected on this date? Weekly-count habits have no fixed days, so only daily/pinned/interval habits return true. */
@@ -73,7 +70,7 @@ export async function buildHabitHistory(db: Db, timezone: string, args: { days: 
     throw new Error(`Habit not found: ${args.habitId}`);
   }
 
-  const midpoint = addDays(start, Math.floor(args.days / 2));
+  const midpoint = windowMidpoint(start, args.days);
 
   const report = selected.map((habit) => {
     const own = logs.filter((l) => l.habitId === habit.id);
@@ -247,6 +244,20 @@ export async function buildTaskHistory(db: Db, timezone: string, args: { days: n
       checklist: t.checklist,
     })),
   };
+}
+
+/** A streak is not a property of the window, so it is measured well behind it. */
+const STREAK_LOOKBACK_DAYS = 365;
+
+export async function buildDayReviewHistory(db: Db, timezone: string, args: { days: number }) {
+  const end = localNow(timezone).date;
+  const start = addDays(end, -(args.days - 1));
+  // One query covering both: the averages and the trend belong to the window,
+  // but a 7-day window asking for "the current streak" must not answer 7 when
+  // the real run is 30. Reading the window alone silently truncates it.
+  const lookback = await db.listDayReviews(addDays(end, -(STREAK_LOOKBACK_DAYS - 1)), end);
+  const reviews = lookback.filter((r) => r.reviewDate >= start);
+  return summariseReviews(reviews, { start, end, days: args.days }, end, lookback);
 }
 
 export async function buildJournalHistory(db: Db, timezone: string, args: { days: number }) {
