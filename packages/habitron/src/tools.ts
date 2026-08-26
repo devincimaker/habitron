@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import type { Db, PlanItemInput } from './db.js';
 import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
-import { isIsoDate, today } from './time.js';
+import { instantFrom, isIsoDate, isIsoDateTime, today } from './time.js';
 
 /**
  * One tool definition, independent of the host. `apps/mcp` registers these on a
@@ -33,6 +33,10 @@ const timeSchema = z
   .string()
   .regex(/^([01][0-9]|2[0-3]):[0-5][0-9]$/, 'Expected HH:MM (24h)')
   .describe('HH:MM, 24h');
+const dateTimeSchema = z
+  .string()
+  .refine(isIsoDateTime, 'Expected YYYY-MM-DDTHH:MM')
+  .describe('YYYY-MM-DDTHH:MM, local wall clock (seconds optional, ignored)');
 const prioritySchema = z
   .union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)])
   .describe('1 = highest, 4 = lowest');
@@ -177,7 +181,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'create_task',
       title: 'Create task',
       description:
-        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks.',
+        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -191,8 +195,21 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
           .array(z.string().min(1))
           .optional()
           .describe('Checklist item titles in order (e.g. ["milk", "eggs", "bread"])'),
+        completedAt: dateTimeSchema
+          .optional()
+          .describe('When it was actually done. Creates the task already completed'),
+        actualMinutes: z
+          .int()
+          .positive()
+          .optional()
+          .describe('How long it took. Only with completedAt'),
       },
-      handler: (args) => db.createTask(args),
+      // The local wall clock becomes an instant here, so db.ts stays timezone-free.
+      handler: ({ completedAt, ...rest }) =>
+        db.createTask({
+          ...rest,
+          ...(completedAt ? { completedAt: instantFrom(completedAt, timezone) } : {}),
+        }),
     }),
 
     defineTool({

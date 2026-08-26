@@ -1,6 +1,6 @@
 import type { DailyPlanItemOutcome, HabitStatus } from '@habits-coach/shared';
 import type { Db, Habit, Task } from './db.js';
-import { addDays, localNow, weekRange, weekdayOf } from './time.js';
+import { addDays, localDateOf, localNow, weekRange, weekdayOf } from './time.js';
 
 export type DayContext = Awaited<ReturnType<typeof buildDayContext>>;
 
@@ -78,7 +78,7 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
     return item ? { ...task, planItemId: item.id, planOutcome: item.outcome } : task;
   });
   const completedOnDate = tasks
-    .filter((t) => t.status === 'completed' && t.completedAt?.slice(0, 10) === date)
+    .filter((t) => t.status === 'completed' && t.completedAt && localDateOf(t.completedAt, timezone) === date)
     .map(withChecklistProgress);
   const overdue = open
     .filter((t) => t.dueDate && t.dueDate < date && t.scheduledDate !== date)

@@ -98,6 +98,13 @@ export interface TaskInput {
   tagId?: string;
   /** Checklist item titles in order. */
   checklist?: string[];
+  /**
+   * An ISO instant, already converted from local wall clock by the tool layer.
+   * Its presence means the task is being logged as already done.
+   */
+  completedAt?: string;
+  /** How long it actually took. Only meaningful alongside `completedAt`. */
+  actualMinutes?: number;
 }
 
 /** `null` clears a field; `undefined` leaves it untouched. */
@@ -388,6 +395,12 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   }
 
   async function createTask(input: TaskInput): Promise<Task> {
+    if (input.actualMinutes !== undefined && !input.completedAt) {
+      throw new Error(
+        'actualMinutes records how long something already done took, so it needs completedAt. ' +
+          'To record it on a task that already exists, use set_task_status.'
+      );
+    }
     if (input.tagId) await assertTagExists(input.tagId);
     const listId = await inboxListId();
     const row = unwrap(
@@ -405,6 +418,9 @@ export function createDb(supabase: SupabaseClient, userId: string) {
           estimate_minutes: input.estimateMinutes ?? null,
           tag_id: input.tagId ?? null,
           sort_order: Date.now(),
+          status: input.completedAt ? 'completed' : 'open',
+          completed_at: input.completedAt ?? null,
+          actual_minutes: input.actualMinutes ?? null,
         })
         .select(TODO_COLUMNS)
         .single()
