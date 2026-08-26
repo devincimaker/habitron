@@ -1,13 +1,10 @@
-/* eslint-disable max-lines -- HAB-89: split pending */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
+  TextInput,
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
@@ -17,12 +14,12 @@ import type {
   JournalEntryDraft,
   JournalMood,
 } from '@habits-coach/shared';
-import { BodyMedium, Caption, HeadingLarge, Input, Label } from './ui';
-import { OptionChips } from './OptionChips';
-import { VoiceInputButton } from './VoiceInputButton';
+import { Caption, HeadingLarge } from './ui';
+import { JournalComposerBar } from './JournalComposerBar';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { JOURNAL_MOODS, JOURNAL_PROMPTS } from '../constants/journal';
-import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
+import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { JOURNAL_PROMPTS } from '../constants/journal';
+import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
 interface JournalEntryModalProps {
@@ -33,11 +30,6 @@ interface JournalEntryModalProps {
   onClose: () => void;
   onSave: (draft: JournalEntryDraft) => Promise<void>;
 }
-
-const MOOD_OPTIONS = JOURNAL_MOODS.map((mood) => ({
-  label: `${mood.emoji} ${mood.label}`,
-  value: mood.value,
-}));
 
 function formatSheetDate(entry?: JournalEntry | null): string {
   const referenceDate = entry?.entryDate
@@ -61,6 +53,7 @@ export function JournalEntryModal({
 }: JournalEntryModalProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
+  const keyboardHeight = useKeyboardHeight();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
   const [isSaving, setIsSaving] = useState(false);
@@ -89,12 +82,7 @@ export function JournalEntryModal({
     });
   }, []);
 
-  const {
-    voiceInputProps,
-    handleCancelRecording,
-    isRecordingMode,
-    isTranscribing,
-  } = useVoiceInput({
+  const { voiceInputProps, handleCancelRecording } = useVoiceInput({
     onStopSuccess: appendTranscription,
     onSend: async (text) => {
       appendTranscription(text);
@@ -110,7 +98,6 @@ export function JournalEntryModal({
     void voiceInputProps.onMicPress();
   }, [autoStartVoice, visible, voiceInputProps]);
 
-  const isVoiceActive = isRecordingMode || isTranscribing;
   const sheetTitle = entry
     ? 'Edit entry'
     : autoStartVoice
@@ -125,21 +112,6 @@ export function JournalEntryModal({
       mood !== initialMood
     );
   }, [content, mood, entry]);
-
-  const moodSection = (
-    <View style={styles.metaGroup}>
-      <Label>Mood</Label>
-      <OptionChips
-        options={MOOD_OPTIONS}
-        selectedValue={mood}
-        onChange={(value) => setMood(value)}
-        allowDeselect
-        onClear={() => setMood(undefined)}
-        size="sm"
-        wrap
-      />
-    </View>
-  );
 
   const forceClose = useCallback(async () => {
     allowTranscriptionRef.current = false;
@@ -189,10 +161,7 @@ export function JournalEntryModal({
       presentationStyle="pageSheet"
       onRequestClose={() => void handleDismiss()}
     >
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      >
+      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         <View style={styles.topBar}>
           <View style={styles.topBarCopy}>
             <Caption color={colors.primaryDark}>{formatSheetDate(entry)}</Caption>
@@ -208,81 +177,35 @@ export function JournalEntryModal({
           </Pressable>
         </View>
 
-        <ScrollView
-          contentInsetAdjustmentBehavior="automatic"
-          contentContainerStyle={styles.content}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
-        >
+        <View style={styles.page}>
           {prompt ? (
-            <View style={styles.promptCard}>
-              <Caption color={colors.primaryDark}>Prompt</Caption>
-              <HeadingLarge style={styles.promptText}>{prompt}</HeadingLarge>
-            </View>
+            <Caption color={colors.primaryDark} style={styles.promptCaption}>
+              {prompt}
+            </Caption>
           ) : null}
 
-          <View style={styles.composerCard}>
-            <View style={styles.editorHeader}>
-              <Label>Entry</Label>
-              {!isVoiceActive ? <VoiceInputButton {...voiceInputProps} /> : null}
-            </View>
-
-            <Input
-              placeholder={placeholderPrompt}
-              value={content}
-              onChangeText={setContent}
-              multiline
-              autoFocus={!autoStartVoice}
-              containerStyle={[styles.fieldNoMargin, styles.expandingField]}
-              inputStyle={styles.expandingInput}
-            />
-
-            {isVoiceActive ? (
-              <View style={styles.recordingRow}>
-                <VoiceInputButton {...voiceInputProps} />
-              </View>
-            ) : null}
-
-            {!entry ? moodSection : null}
-          </View>
-
-          {entry ? (
-            <View style={styles.metaCard}>
-              {moodSection}
-            </View>
-          ) : null}
-        </ScrollView>
-
-        <View
-          style={[
-            styles.footer,
-            { paddingBottom: insets.bottom + SPACING.md },
-          ]}
-        >
-          <Pressable
-            style={[styles.footerButton, styles.footerSecondaryButton]}
-            onPress={() => void handleDismiss()}
-            accessibilityRole="button"
-          >
-            <BodyMedium color={colors.textSecondary}>Cancel</BodyMedium>
-          </Pressable>
-
-          <Pressable
-            style={[
-              styles.footerButton,
-              styles.footerPrimaryButton,
-              (!content.trim() || isSaving) && styles.footerPrimaryButtonDisabled,
-            ]}
-            onPress={() => void handleSave()}
-            disabled={!content.trim() || isSaving}
-            accessibilityRole="button"
-          >
-            <BodyMedium color={colors.white} style={styles.footerPrimaryButtonText}>
-              {isSaving ? 'Saving...' : entry ? 'Save changes' : 'Save entry'}
-            </BodyMedium>
-          </Pressable>
+          <TextInput
+            style={styles.editor}
+            placeholder={placeholderPrompt}
+            placeholderTextColor={colors.textLight}
+            value={content}
+            onChangeText={setContent}
+            multiline
+            autoFocus={!autoStartVoice}
+            accessibilityLabel="Journal entry"
+          />
         </View>
-      </KeyboardAvoidingView>
+
+        <JournalComposerBar
+          mood={mood}
+          onMoodChange={setMood}
+          canSave={Boolean(content.trim()) && !isSaving}
+          isSaving={isSaving}
+          onSave={() => void handleSave()}
+          voice={voiceInputProps}
+          paddingBottom={keyboardHeight > 0 ? 0 : insets.bottom}
+        />
+      </View>
     </Modal>
   );
 }
@@ -290,23 +213,22 @@ export function JournalEntryModal({
 const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: colors.surface,
+    backgroundColor: colors.background,
   },
   topBar: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
     gap: SPACING.md,
-    backgroundColor: colors.background,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
   topBarCopy: {
     flex: 1,
-    gap: SPACING.xs,
+    gap: 2,
   },
   dismissButton: {
     width: 44,
@@ -316,92 +238,21 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: colors.surface,
   },
-  content: {
-    flexGrow: 1,
+  page: {
+    flex: 1,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.md,
-    gap: SPACING.lg,
   },
-  promptCard: {
-    gap: SPACING.xs,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
+  promptCaption: {
+    marginBottom: SPACING.sm,
   },
-  promptText: {
+  editor: {
+    flex: 1,
+    ...TYPOGRAPHY.editorBody,
     color: colors.text,
-  },
-  composerCard: {
-    flex: 1,
-    gap: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  editorHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  fieldNoMargin: {
-    marginBottom: 0,
-  },
-  expandingField: {
-    flex: 1,
-  },
-  expandingInput: {
-    flex: 1,
-  },
-  recordingRow: {
-    padding: SPACING.sm,
-    borderRadius: BORDER_RADIUS.lg,
-    backgroundColor: colors.surface,
-  },
-  metaCard: {
-    gap: SPACING.md,
-    padding: SPACING.md,
-    borderRadius: BORDER_RADIUS.xl,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-  },
-  metaGroup: {
-    gap: SPACING.sm,
-  },
-  footer: {
-    flexDirection: 'row',
-    gap: SPACING.md,
-    paddingTop: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    backgroundColor: colors.surface,
-    borderTopWidth: 1,
-    borderTopColor: colors.border,
-  },
-  footerButton: {
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: BORDER_RADIUS.md,
-    paddingHorizontal: SPACING.lg,
-  },
-  footerSecondaryButton: {
-    flex: 1,
-    backgroundColor: 'transparent',
-  },
-  footerPrimaryButton: {
-    flex: 1.4,
-    backgroundColor: colors.primaryDark,
-  },
-  footerPrimaryButtonDisabled: {
-    backgroundColor: colors.border,
-  },
-  footerPrimaryButtonText: {
-    fontWeight: '600',
+    // A multiline TextInput carries its own top inset; zero it so the first
+    // line sits on the page's padding and not 5pt below it.
+    paddingTop: 0,
+    paddingBottom: SPACING.md,
   },
 });
