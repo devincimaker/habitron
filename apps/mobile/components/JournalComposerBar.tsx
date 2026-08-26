@@ -43,74 +43,94 @@ export function JournalComposerBar({
 }: JournalComposerBarProps) {
   const [styles] = useThemedStyles(createStyles);
   const isDark = useColorTheme() === 'dark';
-  const isVoiceActive = voice.mode !== 'idle' || Boolean(voice.error);
+  // A failed recording keeps its error until the sheet is reopened, so the
+  // error gets its own row rather than standing where the chips go — losing
+  // the mic for the rest of an entry is the recorder's bug to fix, losing the
+  // moods with it would be this bar's.
+  const voiceState = voice.error
+    ? 'error'
+    : voice.mode === 'idle'
+      ? 'idle'
+      : 'capturing';
+
+  const moodChips = JOURNAL_MOODS.map((option) => {
+    const isSelected = mood === option.value;
+    const moodStyle = JOURNAL_MOOD_STYLES[option.value];
+
+    return (
+      <Pressable
+        key={option.value}
+        style={[
+          styles.chip,
+          isSelected && {
+            backgroundColor: isDark
+              ? `${moodStyle.border}${DARK_SELECTED_FILL_ALPHA}`
+              : moodStyle.surface,
+            borderColor: moodStyle.border,
+          },
+        ]}
+        hitSlop={2}
+        onPress={() => onMoodChange(isSelected ? undefined : option.value)}
+        accessibilityRole="button"
+        accessibilityLabel={option.label}
+        accessibilityState={{ selected: isSelected }}
+      >
+        <Text style={styles.chipEmoji}>{option.emoji}</Text>
+      </Pressable>
+    );
+  });
 
   return (
     <View style={[styles.bar, { paddingBottom }]}>
-      {isVoiceActive ? null : (
-        <View style={styles.moodRow}>
-          {JOURNAL_MOODS.map((option) => {
-            const isSelected = mood === option.value;
-            const moodStyle = JOURNAL_MOOD_STYLES[option.value];
-
-            return (
-              <Pressable
-                key={option.value}
-                style={[
-                  styles.chip,
-                  isSelected && {
-                    backgroundColor: isDark
-                      ? `${moodStyle.border}${DARK_SELECTED_FILL_ALPHA}`
-                      : moodStyle.surface,
-                    borderColor: moodStyle.border,
-                  },
-                ]}
-                hitSlop={2}
-                onPress={() =>
-                  onMoodChange(isSelected ? undefined : option.value)
-                }
-                accessibilityRole="button"
-                accessibilityLabel={option.label}
-                accessibilityState={{ selected: isSelected }}
-              >
-                <Text style={styles.chipEmoji}>{option.emoji}</Text>
-              </Pressable>
-            );
-          })}
+      {voiceState === 'error' ? (
+        <View style={styles.voiceRow}>
+          <VoiceInputButton {...voice} />
         </View>
-      )}
+      ) : null}
 
-      <VoiceInputButton {...voice} />
+      <View style={styles.controlRow}>
+        {voiceState === 'capturing' ? null : (
+          <View style={styles.moodRow}>{moodChips}</View>
+        )}
 
-      <Pressable
-        style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
-        onPress={onSave}
-        disabled={!canSave}
-        accessibilityRole="button"
-        accessibilityLabel="Save entry"
-      >
-        <Text
-          style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}
-          numberOfLines={1}
+        {voiceState === 'error' ? null : <VoiceInputButton {...voice} />}
+
+        <Pressable
+          style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+          onPress={onSave}
+          disabled={!canSave}
+          accessibilityRole="button"
+          accessibilityLabel="Save entry"
         >
-          {isSaving ? 'Saving...' : 'Save'}
-        </Text>
-      </Pressable>
+          <Text
+            style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}
+            numberOfLines={1}
+          >
+            {isSaving ? 'Saving...' : 'Save'}
+          </Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
 
 const createStyles = (colors: Colors) => StyleSheet.create({
   bar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-    minHeight: 56,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
+  },
+  controlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    minHeight: 48,
+  },
+  voiceRow: {
+    flexDirection: 'row',
+    marginBottom: SPACING.xs,
   },
   moodRow: {
     flex: 1,
