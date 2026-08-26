@@ -29,9 +29,11 @@ import { useMemoriesStore, ExtractedMemory } from '../stores/useMemoriesStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import { ChatMessage } from './ChatMessage';
 import { MemoryReviewCard } from './MemoryReviewCard';
+import { DayRatingCard } from './DayRatingCard';
 import { VoiceInputButton } from './VoiceInputButton';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
+import { useDayRatings } from '../hooks/useDayRatings';
 import { streamCoachTurn } from '../services/api';
 import {
   getCoachRequestErrorMessage,
@@ -365,6 +367,17 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     void ensureBackendSession().catch(() => {});
   }, [ensureBackendSession]);
 
+  const dayRatings = useDayRatings({ opener, ritualDate, messages });
+  const { message: ratingsMessage, markSent: markRatingsSent } = dayRatings;
+
+  // Send is the ordinary path: one user message, and the coach saves the review.
+  const handleSendRatings = useCallback(() => {
+    if (!ratingsMessage || isLoading || isSendingRef.current) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    markRatingsSent();
+    void sendUserMessage(ratingsMessage);
+  }, [isLoading, markRatingsSent, ratingsMessage, sendUserMessage]);
+
   const {
     isRecordingMode,
     voiceInputProps,
@@ -551,6 +564,16 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         }
       />
 
+      {dayRatings.visible && !isRecordingMode && (
+        <DayRatingCard
+          ratings={dayRatings.ratings}
+          prefilled={dayRatings.prefilled}
+          disabled={isLoading}
+          onRate={dayRatings.setRating}
+          onSend={handleSendRatings}
+        />
+      )}
+
       <View
         style={[
           styles.inputContainer,
@@ -568,7 +591,9 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
               style={styles.input}
               value={inputText}
               onChangeText={setInputText}
-              placeholder="Type your message..."
+              placeholder={
+                dayRatings.visible ? 'Or just tell me how it went…' : 'Type your message...'
+              }
               placeholderTextColor={colors.textLight}
               multiline
               maxLength={500}
