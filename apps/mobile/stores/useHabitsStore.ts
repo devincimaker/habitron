@@ -15,6 +15,7 @@ import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
 import { syncHabitReminders } from '../services/habitReminders';
 import { getLast7Days } from '../utils/dateUtils';
+import { applyHabitOrder } from '../utils/habitOrder';
 import {
   isHabitDueOnDate,
   resolveLogForAmount,
@@ -33,6 +34,7 @@ interface HabitsState {
   setSelectedDate: (date: string) => Promise<void>;
   addHabit: (draft: HabitDraft) => Promise<Habit>;
   removeHabit: (habitId: string) => Promise<void>;
+  reorderHabits: (updates: habitsService.HabitOrderUpdate[]) => Promise<void>;
   updateHabit: (habitId: string, changes: Partial<HabitDraft>) => Promise<Habit>;
   archiveHabit: (habitId: string) => Promise<Habit>;
   restoreHabit: (habitId: string) => Promise<Habit>;
@@ -108,6 +110,21 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     } catch (error) {
       console.error('Failed to add habit:', error);
       throw error;
+    }
+  },
+
+  reorderHabits: async (updates) => {
+    if (!updates.length) return;
+    // Optimistic: the list has already animated the drop, so the order it shows
+    // has to survive the round trip rather than wait for it.
+    const previous = get().habits;
+    set({ habits: applyHabitOrder(previous, updates) });
+
+    try {
+      await habitsService.reorderHabits(updates);
+    } catch (error) {
+      console.error('Failed to reorder habits:', error);
+      await get().loadHabits();
     }
   },
 

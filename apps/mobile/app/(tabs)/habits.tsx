@@ -2,11 +2,8 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import {
   Alert,
-  RefreshControl,
-  SectionList,
   StyleSheet,
   Pressable,
-  Text,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,7 +29,7 @@ import { DesiredHabitsSection } from '../../components/DesiredHabitsSection';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
 import { HabitLogSheet } from '../../components/HabitLogSheet';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
-import { HabitItem } from '../../components/HabitItem';
+import { HabitSectionList } from '../../components/HabitSectionList';
 import { HeaderIconButton } from '../../components/HeaderIconButton';
 import { MiniCalendar } from '../../components/MiniCalendar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
@@ -61,12 +58,6 @@ const SWIPE_THRESHOLD = 25;
 
 type TransitionDirection = 'forward' | 'backward';
 
-interface HabitSectionData {
-  key: string;
-  title: string | null;
-  data: HabitWithStatus[];
-}
-
 export default function HabitsScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -81,6 +72,7 @@ export default function HabitsScreen() {
     archiveHabit,
     restoreHabit,
     removeHabit,
+    reorderHabits,
     addSection,
     removeSection,
     setHabitStatus,
@@ -112,29 +104,6 @@ export default function HabitsScreen() {
     [habitsWithStatus, loggingHabitId]
   );
 
-  const listSections = useMemo<HabitSectionData[]>(() => {
-    const bySection = new Map<string | undefined, HabitWithStatus[]>();
-    for (const habit of habitsWithStatus) {
-      const bucket = bySection.get(habit.sectionId) ?? [];
-      bucket.push(habit);
-      bySection.set(habit.sectionId, bucket);
-    }
-
-    const result: HabitSectionData[] = [];
-    for (const section of sections) {
-      const data = bySection.get(section.id);
-      if (data?.length) {
-        result.push({ key: section.id, title: section.name, data });
-      }
-    }
-    const unsorted = habitsWithStatus.filter(
-      (habit) => !habit.sectionId || !sections.some((section) => section.id === habit.sectionId)
-    );
-    if (unsorted.length) {
-      result.push({ key: 'unsorted', title: null, data: unsorted });
-    }
-    return result;
-  }, [habitsWithStatus, sections]);
 
   useEffect(() => {
     void loadHabits();
@@ -283,12 +252,23 @@ export default function HabitsScreen() {
     }
   }, [handleSelectDate, selectedDate]);
 
+  const [isDragging, setIsDragging] = useState(false);
+  const handleDragStart = useCallback(() => setIsDragging(true), []);
+  const handleDragEnd = useCallback(() => setIsDragging(false), []);
+  const handlePressHabit = useCallback(
+    (habitId: string) => {
+      const selected = habits.find((candidate) => candidate.id === habitId);
+      if (selected) openHabitEditor(selected);
+    },
+    [habits, openHabitEditor]
+  );
+
   const daySwipeGesture = useMemo(
     () =>
       Gesture.Pan()
         .activeOffsetX([-SWIPE_THRESHOLD, SWIPE_THRESHOLD])
         .failOffsetY([-12, 12])
-        .enabled(!showHabitEditor && !showHabitManager && !loggingHabitId)
+        .enabled(!showHabitEditor && !showHabitManager && !loggingHabitId && !isDragging)
         .onEnd((event) => {
           if (event.translationX > SWIPE_THRESHOLD) {
             runOnJS(navigateToPreviousDay)();
@@ -296,30 +276,14 @@ export default function HabitsScreen() {
             runOnJS(navigateToNextDay)();
           }
         }),
-    [loggingHabitId, navigateToNextDay, navigateToPreviousDay, showHabitEditor, showHabitManager]
-  );
-  const renderHabitRow = useCallback(
-    ({ item }: { item: HabitWithStatus }) => (
-      <HabitItem
-        habit={item}
-        onStatusChange={handleStatusChange}
-        onCheckIn={handleCheckIn}
-        onPress={(habitId) => {
-          const selected = habits.find((candidate) => candidate.id === habitId);
-          if (selected) {
-            openHabitEditor(selected);
-          }
-        }}
-      />
-    ),
-    [habits, handleCheckIn, handleStatusChange, openHabitEditor]
-  );
-  const renderSectionHeader = useCallback(
-    ({ section }: { section: HabitSectionData }) =>
-      section.title ? (
-        <Text style={styles.sectionHeader}>{section.title}</Text>
-      ) : null,
-    [styles]
+    [
+      isDragging,
+      loggingHabitId,
+      navigateToNextDay,
+      navigateToPreviousDay,
+      showHabitEditor,
+      showHabitManager,
+    ]
   );
   const handleEditFromManager = useCallback(
     (habit: Habit) => {
@@ -417,44 +381,39 @@ export default function HabitsScreen() {
             entering={listEntering}
             exiting={listExiting}
           >
-            <SectionList
-              sections={listSections}
-              renderItem={renderHabitRow}
-              renderSectionHeader={renderSectionHeader}
-              keyExtractor={(habit) => habit.id}
-              ListEmptyComponent={isLoading ? null : renderEmptyState}
-              contentContainerStyle={styles.listContent}
-              contentInsetAdjustmentBehavior="automatic"
-              stickySectionHeadersEnabled={false}
-              refreshControl={
-                <RefreshControl
-                  refreshing={isRefreshing}
-                  onRefresh={() => void handleRefresh()}
-                  tintColor={colors.primary}
-                />
-              }
-              ListFooterComponent={
-                <>
-                  <DesiredHabitsSection onStartHabit={handleStartDesiredHabit} />
-                  <View style={styles.footer} />
-                </>
-              }
-              showsVerticalScrollIndicator={false}
+            <HabitSectionList
+              sections={sections}
+              habits={habitsWithStatus}
+              isDragging={isDragging}
+              isLoading={isLoading}
+              isRefreshing={isRefreshing}
+              refreshTintColor={colors.primary}
+              emptyComponent={renderEmptyState()}
+              onRefresh={() => void handleRefresh()}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onReorder={(updates) => void reorderHabits(updates)}
+              onStatusChange={handleStatusChange}
+              onCheckIn={handleCheckIn}
+              onPressHabit={handlePressHabit}
+              footer={<DesiredHabitsSection onStartHabit={handleStartDesiredHabit} />}
             />
           </Animated.View>
         </View>
 
-        <Pressable
-          style={[
-            styles.fab,
-            { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
-          ]}
-          onPress={() => openHabitEditor()}
-          accessibilityRole="button"
-          accessibilityLabel="Add a new habit"
-        >
-          <Ionicons name="add" size={28} color={colors.white} />
-        </Pressable>
+        {isDragging ? null : (
+          <Pressable
+            style={[
+              styles.fab,
+              { bottom: TAB_BAR.height + insets.bottom + SPACING.lg },
+            ]}
+            onPress={() => openHabitEditor()}
+            accessibilityRole="button"
+            accessibilityLabel="Add a new habit"
+          >
+            <Ionicons name="add" size={28} color={colors.white} />
+          </Pressable>
+        )}
 
         <HabitManagerModal
           visible={showHabitManager}
@@ -517,9 +476,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   emptyCard: {
     marginHorizontal: SPACING.md,
     marginTop: SPACING.md,
-  },
-  footer: {
-    height: TAB_BAR.height + SPACING.xxl,
   },
   headerActions: {
     flexDirection: 'row',

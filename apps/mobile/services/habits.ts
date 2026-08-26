@@ -31,6 +31,7 @@ interface DbHabit {
   check_in_mode: HabitCheckInMode;
   record_increment: number | string | null;
   section_id: string | null;
+  position: number;
   constant_reminder: boolean;
   auto_popup_log: boolean;
   reason: string | null;
@@ -85,6 +86,7 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
     checkInMode: dbHabit.check_in_mode,
     recordIncrement: toNumber(dbHabit.record_increment),
     sectionId: dbHabit.section_id ?? undefined,
+    position: dbHabit.position,
     reminderTimes: (dbHabit.habit_reminders ?? [])
       .map((reminder) => toReminderTime(reminder.time))
       .sort(),
@@ -187,6 +189,7 @@ export async function getHabits(): Promise<Habit[]> {
     .from('habits')
     .select(HABIT_SELECT)
     .order('active', { ascending: false })
+    .order('position', { ascending: true })
     .order('created_at', { ascending: true });
 
   if (error) {
@@ -197,12 +200,30 @@ export async function getHabits(): Promise<Habit[]> {
   return (data as DbHabit[]).map(mapDbHabitToHabit);
 }
 
+/** The next free slot at the bottom of a routine, or 0 when it is empty. */
+export async function nextPositionForSection(sectionId: string | null): Promise<number> {
+  let query = supabase.from('habits').select('position');
+  query = sectionId === null ? query.is('section_id', null) : query.eq('section_id', sectionId);
+
+  const { data, error } = await query.order('position', { ascending: false }).limit(1);
+
+  if (error) {
+    console.error('Error reading habit positions:', error);
+    throw error;
+  }
+
+  const highest = (data as { position: number }[])[0];
+  return highest ? highest.position + 1 : 0;
+}
+
 export async function addHabit(draft: HabitDraft): Promise<Habit> {
   const userId = await requireUserId();
+  // A new habit belongs at the bottom of its routine, not at 0.
+  const position = await nextPositionForSection(draft.sectionId ?? null);
 
   const { data, error } = await supabase
     .from('habits')
-    .insert({ user_id: userId, active: true, ...toDbHabitFields(draft) })
+    .insert({ user_id: userId, active: true, position, ...toDbHabitFields(draft) })
     .select('id')
     .single();
 
@@ -213,6 +234,34 @@ export async function addHabit(draft: HabitDraft): Promise<Habit> {
 
   await replaceReminders(data.id, userId, draft.reminderTimes);
   return fetchHabit(data.id);
+}
+
+export interface HabitOrderUpdate {
+  id: string;
+  sectionId: string | null;
+  position: number;
+}
+
+/**
+ * One update per changed row. A single upsert is not an option: habits.user_id
+ * and habits.name are NOT NULL with no default, so a partial upsert fails. A
+ * drop touches at most two routines' worth of rows.
+ */
+export async function reorderHabits(updates: HabitOrderUpdate[]): Promise<void> {
+  const results = await Promise.all(
+    updates.map((update) =>
+      supabase
+        .from('habits')
+        .update({ section_id: update.sectionId, position: update.position })
+        .eq('id', update.id)
+    )
+  );
+
+  const failure = results.find((result) => result.error);
+  if (failure?.error) {
+    console.error('Error reordering habits:', failure.error);
+    throw failure.error;
+  }
 }
 
 export async function removeHabit(habitId: string): Promise<void> {
@@ -227,10 +276,27 @@ export async function removeHabit(habitId: string): Promise<void> {
 export async function updateHabit(habitId: string, draft: HabitDraft): Promise<Habit> {
   const userId = await requireUserId();
 
-  const { error } = await supabase
+  // The editor's section picker moves a habit between routines too, so it has to
+  // land at the end of the new one. `position` is absent from HabitDraft, so an
+  // edit that leaves the routine alone cannot disturb the order.
+  const { data: current, error: readError } = await supabase
     .from('habits')
-    .update(toDbHabitFields(draft))
-    .eq('id', habitId);
+    .select('section_id')
+    .eq('id', habitId)
+    .single();
+
+  if (readError) {
+    console.error('Error reading habit before update:', readError);
+    throw readError;
+  }
+
+  const nextSectionId = draft.sectionId ?? null;
+  const movedRoutine = (current as { section_id: string | null }).section_id !== nextSectionId;
+  const fields = movedRoutine
+    ? { ...toDbHabitFields(draft), position: await nextPositionForSection(nextSectionId) }
+    : toDbHabitFields(draft);
+
+  const { error } = await supabase.from('habits').update(fields).eq('id', habitId);
 
   if (error) {
     console.error('Error updating habit:', error);

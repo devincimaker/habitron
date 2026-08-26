@@ -107,6 +107,8 @@ export interface Habit extends HabitSchedule, HabitGoal {
   constantReminder: boolean;
   autoPopupLog: boolean;
   active: boolean;
+  /** Dense 0..n index within the habit's routine. Ordering lives here, not in createdAt. */
+  position: number;
   createdAt: number;
   updatedAt?: number;
 }

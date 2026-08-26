@@ -22,6 +22,7 @@ const createdAt = new Date('2026-04-01T09:00:00Z').getTime();
 
 const baseHabit: Omit<Habit, 'id' | 'name'> = {
   frequency: 'daily',
+  position: 0,
   startDate: '2026-04-01',
   goalType: 'boolean',
   checkInMode: 'auto',
