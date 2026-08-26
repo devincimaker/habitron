@@ -225,12 +225,16 @@ carrying a `- [ ]` list. A tick then:
 2. does that row and nothing else — one row, one PR, one squash commit;
 3. ticks the row in the issue body (`save_issue` with a `patch`) as part of the
    same tick;
-4. leaves the issue **In Progress**, and stops.
+4. returns the issue to **Ready** (state id
+   `0961eb24-c62b-47b2-bc52-d991e7b3f8be`) with the row ticked, and stops.
 
-The issue closes when the last row is ticked. Phase 1 may take a checklist
-issue that is already In Progress — it is the one case where In Progress is not
-another session's claim, because the rows are independent. Phase 8 records the
-row, not the issue: `[HAB-89 · C · tick 4] merged #74 · split TaskCalendar.tsx · 18 rows left`.
+The issue closes when the last row is ticked. Between rows it sits in Ready,
+because that is what it is: takeable. In Progress means a tick is on it right
+now and nothing else — there is no second queue to scan. A row's PR body says
+`Part of HAB-NN`, never `Closes HAB-NN`: Linear's GitHub integration reads only
+the identifier, so `Closes HAB-NN row 1` closes the whole issue on merge. Only
+the last row's PR says `Closes`. Phase 8 records the row, not the issue:
+`[HAB-89 · C · tick 4] merged #74 · split TaskCalendar.tsx · 18 rows left`.
 
 Rows can go stale: an earlier row may have moved shared code, so re-measure
 before starting one. A row whose premise is gone is ticked with a note, not
@@ -266,11 +270,12 @@ behaves.
    user's pin — it exists so "do this one first" is a label and not a plea, and
    it outranks class because the user has already weighed the size. Two `next`
    issues fall back to the rest of the order. Remove the label when the issue
-   leaves Ready (Phase 8), so it never lingers as a stale pin. Move the pick to
-   **In Progress** (state id
+   closes or parks (Phase 8), so it never lingers as a stale pin; a checklist
+   issue keeps it between rows, since the user pinned the issue, not a row.
+   Move the pick to **In Progress** (state id
    `50df3fb4-1360-4f1c-9134-530709806d5d`; re-resolve with
-   `list_issue_statuses` if that fails). A **checklist issue** already In
-   Progress is takeable and sorts by its top unchecked row.
+   `list_issue_statuses` if that fails). A **checklist issue** sorts by its top
+   unchecked row.
 
 ## Phase 2 — Worktree
 
@@ -426,8 +431,9 @@ gh pr create --title "<imperative>, matching the repo's convention (HAB-NN)" --b
 ```
 
 The body describes **this** PR and nothing after it (AGENTS.md §8): no
-follow-ups, no "left alone", no future work. It ends with `## See it working`
-(§10):
+follow-ups, no "left alone", no future work. It names the issue as
+`Closes HAB-NN`, or `Part of HAB-NN` for a checklist row that is not the last.
+It ends with `## See it working` (§10):
 
 - **A**: the swap, and that it is value-identical — each literal and the token
   that already held it.
@@ -493,8 +499,8 @@ or cancels it.
 1. `add landed` with the class, the PR, what changed, the proof and — for B and
    D — `seeIt`, where in the app the user looks for it. A park was already
    recorded in Phase 7. If the issue carried `next`, remove the label now. For a
-   checklist issue, the row is the title, and the issue stays In Progress until
-   its last row is ticked.
+   checklist issue, the row is the title, and the issue goes back to Ready —
+   `next` still on it — until its last row is ticked.
 2. One line per tick, narrated and `add log`ged, so the loop reads back as a
    list:
    `[HAB-88 · B · tick 3] merged #71 · composer clears on echo · jest + one shot`
