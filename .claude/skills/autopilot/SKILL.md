@@ -463,6 +463,13 @@ or cancels it.
 3. **Under `/loop`**: after a landed or parked tick, `ScheduleWakeup` with
    `noop: false` and a short delay (60–120s — the next tick's work is local, and
    nothing is being waited on). After an idle tick, `noop: true` and 1200–1800s.
+   **"Idle" here means Phase 1 found nothing Ready — never the tick you just
+   finished.** A tick that merged or parked hands straight back to work already
+   sitting in the queue, so it takes the short delay. This line overrides
+   `ScheduleWakeup`'s own pacing guidance, whose three cases are external
+   polling, a fallback heartbeat, and an idle tick with nothing to watch: a
+   finished tick with a non-empty queue is none of them, and rounding it to the
+   last one buys 20–30 minutes of dead time before the next build starts.
    If Phase 1's stop conditions are met, call it with `stop: true` and print the
    run summary: what landed, what is parked and what each park waits on, what was
    refused and where it went, what was filed for the user to decide.
