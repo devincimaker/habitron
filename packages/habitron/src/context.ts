@@ -1,5 +1,5 @@
 import type { DailyPlanItemOutcome, HabitStatus } from '@habits-coach/shared';
-import type { Db, Habit, Task } from './db.js';
+import type { Db, DesiredHabitRecord, Habit, Task } from './db.js';
 import { addDays, localDateOf, localNow, weekRange, weekdayOf } from './time.js';
 
 export type DayContext = Awaited<ReturnType<typeof buildDayContext>>;
@@ -11,6 +11,51 @@ export interface HabitForDay extends Habit {
   amountOnDate?: number;
   completedThisWeek: number;
   completedLast14Days: number;
+}
+
+/** The stand-in habit, cut down to what a planning decision actually needs. */
+type StandInHabit = Pick<
+  HabitForDay,
+  'id' | 'name' | 'active' | 'frequency' | 'startDate' | 'completedLast14Days'
+>;
+
+/** A desired habit with whatever is standing in for it already resolved. */
+export interface DesiredHabitForDay {
+  id: string;
+  title: string;
+  note?: string;
+  workingOnIt: StandInHabit | null;
+}
+
+/**
+ * Resolves each desired habit's stand-in against **every** habit, archived ones
+ * included: an abandoned attempt is signal about what was tried, not noise. A
+ * `habitId` with no matching habit reads the same as none — the row's habit was
+ * deleted and the FK nulled it, or the list is momentarily ahead of the habits.
+ */
+export function resolveDesiredHabits(
+  desired: DesiredHabitRecord[],
+  habits: HabitForDay[]
+): DesiredHabitForDay[] {
+  const byId = new Map(habits.map((habit) => [habit.id, habit]));
+  return desired.map((row) => {
+    const habit = row.habitId ? byId.get(row.habitId) : undefined;
+    return {
+      id: row.id,
+      title: row.title,
+      note: row.note,
+      workingOnIt: habit
+        ? {
+            id: habit.id,
+            name: habit.name,
+            active: habit.active,
+            frequency: habit.frequency,
+            startDate: habit.startDate,
+            completedLast14Days: habit.completedLast14Days,
+          }
+        : null,
+    };
+  });
 }
 
 function daysBetween(from: string, to: string): number {
@@ -57,14 +102,17 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
   const week = weekRange(date);
   const lookbackStart = addDays(date, -14);
 
-  const [tasks, habits, logs, plan, journal, memories, recentPlans] = await Promise.all([
+  const [tasks, allHabits, logs, plan, journal, memories, recentPlans, desired] = await Promise.all([
     db.listAllTasks(),
-    db.listHabits(),
+    // Archived habits included, so a desired habit's abandoned attempt still
+    // resolves; the `habits` field below filters back down to the active ones.
+    db.listHabits(true),
     db.listHabitLogs(lookbackStart < week.start ? lookbackStart : week.start, week.end),
     db.getActivePlan(date),
     db.listRecentJournalEntries(5),
     db.listMemories(),
     db.listPlans(lookbackStart, addDays(date, -1)),
+    db.listDesiredHabits(),
   ]);
 
   const open = tasks.filter((t) => t.status === 'open');
@@ -99,7 +147,7 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
     .sort((a, b) => (a.priority ?? 5) - (b.priority ?? 5))
     .map(withChecklistProgress);
 
-  const habitsForDay: HabitForDay[] = habits.map((habit) => {
+  const habitsForDay: HabitForDay[] = allHabits.map((habit) => {
     const own = logs.filter((l) => l.habitId === habit.id);
     const onDate = own.find((l) => l.date === date);
     return {
@@ -156,7 +204,8 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
       },
       scheduledEstimateMinutes: scheduled.reduce((sum, t) => sum + (t.estimateMinutes ?? 0), 0),
     },
-    habits: habitsForDay,
+    habits: habitsForDay.filter((habit) => habit.active),
+    desiredHabits: resolveDesiredHabits(desired, habitsForDay),
     recentJournal: journal,
     memories,
     recentPlanning: {

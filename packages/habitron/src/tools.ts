@@ -416,6 +416,61 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       handler: ({ habitId }) => db.setHabitActive(habitId, true),
     }),
 
+    // --------------------------------------------------------- desired habits
+
+    defineTool({
+      name: 'list_desired_habits',
+      title: 'List desired habits',
+      description:
+        'Habits the user has decided they want but has not started. get_day_context already includes these with their stand-in habit resolved; call this only when you need the list on its own.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+      handler: () => db.listDesiredHabits(),
+    }),
+
+    defineTool({
+      name: 'add_desired_habit',
+      title: 'Add desired habit',
+      description:
+        'Write down a habit the user wants but is not starting yet. Starting one now is create_habit instead.',
+      inputSchema: {
+        title: z.string().min(1),
+        note: z.string().optional().describe('Why it is on the list, and what it depends on'),
+      },
+      handler: ({ title, note }) => db.addDesiredHabit(title, note),
+    }),
+
+    defineTool({
+      name: 'update_desired_habit',
+      title: 'Update desired habit',
+      description:
+        'Edit a desired habit, or record which habit is standing in for it. A patch: only what you pass is written.',
+      inputSchema: {
+        id: z.uuid(),
+        title: z.string().min(1).optional(),
+        note: z.string().nullable().optional(),
+        habitId: z
+          .uuid()
+          .nullable()
+          .optional()
+          .describe('The habit standing in for it; null puts it back to not-started'),
+      },
+      handler: ({ id, ...patch }) => db.updateDesiredHabit(id, patch),
+    }),
+
+    defineTool({
+      name: 'delete_desired_habit',
+      title: 'Delete desired habit',
+      description:
+        'Take a habit off the desired list — it is running for real now, or the user no longer wants it.',
+      inputSchema: { id: z.uuid() },
+      annotations: { destructiveHint: true },
+      handler: async ({ id }) => {
+        await db.deleteDesiredHabit(id);
+        return { deleted: id };
+      },
+    }),
+
     // ------------------------------------------------------------------ plans
 
     defineTool({
