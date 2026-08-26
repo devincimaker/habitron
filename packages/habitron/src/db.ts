@@ -6,6 +6,7 @@ import type {
   DailyPlanItemOutcome,
   DailyPlanSource,
   DailyPlanStatus,
+  DesiredHabit,
   HabitStatus,
   HabitWeekday,
   JournalEntry,
@@ -187,6 +188,16 @@ export interface Habit {
   icon?: string;
   active: boolean;
 }
+
+interface DbDesiredHabit {
+  id: string;
+  title: string;
+  note: string | null;
+  habit_id: string | null;
+}
+
+/** The app's desired habit, minus timestamps this layer has no use for. */
+export type DesiredHabitRecord = Omit<DesiredHabit, 'createdAt' | 'updatedAt'>;
 
 export interface HabitLogRecord {
   habitId: string;
@@ -873,6 +884,88 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // Desired habits
+  // ---------------------------------------------------------------------------
+
+  const DESIRED_HABIT_COLUMNS = 'id, title, note, habit_id';
+
+  function mapDesiredHabit(row: DbDesiredHabit): DesiredHabitRecord {
+    return {
+      id: row.id,
+      title: row.title,
+      note: row.note ?? undefined,
+      habitId: row.habit_id ?? undefined,
+    };
+  }
+
+  /**
+   * Oldest first: the list has no ordering of its own, so `created_at` is it.
+   * `id` breaks ties, because rows inserted in one statement share a timestamp
+   * and an update would otherwise reshuffle them — the coach says "first on your
+   * list" out loud, so that has to mean the same thing on the next turn.
+   */
+  async function listDesiredHabits(): Promise<DesiredHabitRecord[]> {
+    const rows = unwrap(
+      await supabase
+        .from('desired_habits')
+        .select(DESIRED_HABIT_COLUMNS)
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
+        .order('id', { ascending: true })
+    ) as DbDesiredHabit[];
+    return rows.map(mapDesiredHabit);
+  }
+
+  async function addDesiredHabit(title: string, note?: string): Promise<DesiredHabitRecord> {
+    const row = unwrap(
+      await supabase
+        .from('desired_habits')
+        .insert({ user_id: userId, title, note: note ?? null })
+        .select(DESIRED_HABIT_COLUMNS)
+        .single()
+    ) as DbDesiredHabit;
+    return mapDesiredHabit(row);
+  }
+
+  /** `habitId: null` clears the stand-in; omitting a field leaves it alone. */
+  async function updateDesiredHabit(
+    id: string,
+    patch: { title?: string; note?: string | null; habitId?: string | null }
+  ): Promise<DesiredHabitRecord> {
+    const update: Record<string, unknown> = {};
+    if (patch.title !== undefined) update.title = patch.title;
+    if (patch.note !== undefined) update.note = patch.note;
+    if (patch.habitId !== undefined) update.habit_id = patch.habitId;
+
+    if (Object.keys(update).length === 0) {
+      const current = unwrap(
+        await supabase
+          .from('desired_habits')
+          .select(DESIRED_HABIT_COLUMNS)
+          .eq('user_id', userId)
+          .eq('id', id)
+          .single()
+      ) as DbDesiredHabit;
+      return mapDesiredHabit(current);
+    }
+
+    const row = unwrap(
+      await supabase
+        .from('desired_habits')
+        .update(update)
+        .eq('user_id', userId)
+        .eq('id', id)
+        .select(DESIRED_HABIT_COLUMNS)
+        .single()
+    ) as DbDesiredHabit;
+    return mapDesiredHabit(row);
+  }
+
+  async function deleteDesiredHabit(id: string): Promise<void> {
+    unwrap(await supabase.from('desired_habits').delete().eq('user_id', userId).eq('id', id));
+  }
+
   async function listMemories(): Promise<Memory[]> {
     const rows = unwrap(
       await supabase
@@ -1095,6 +1188,10 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     logHabit,
     listRecentJournalEntries,
     addJournalEntry,
+    listDesiredHabits,
+    addDesiredHabit,
+    updateDesiredHabit,
+    deleteDesiredHabit,
     listMemories,
     addMemory,
     deleteMemory,
