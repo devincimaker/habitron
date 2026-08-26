@@ -6,6 +6,7 @@ import { Gesture, GestureDetector, Swipeable } from 'react-native-gesture-handle
 import { runOnJS } from 'react-native-reanimated';
 import type { Todo } from '@habits-coach/shared';
 import { BodyMedium, Caption } from './ui';
+import { TodoTagPill } from './TodoTagPill';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { formatRelativeDateLabel, getTaskDateBadge } from '../utils/dateUtils';
 import {
@@ -14,9 +15,9 @@ import {
   getEstimateDelta,
   incrementDuration,
 } from '../utils/todoEstimate';
-import { getTodoTagChipColors } from '../utils/todoTagColors';
+import { getTodoPriorityOption } from '../utils/todoPriority';
 import { formatTodoScheduledTime } from '../utils/todoTime';
-import { useColorTheme, useThemedStyles } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 
 export interface TaskStatusToggleOptions {
@@ -68,8 +69,7 @@ export function TaskRow({
   isLast = false,
 }: TaskRowProps) {
   const [styles, colors] = useThemedStyles(createStyles);
-  const colorTheme = useColorTheme();
-  const tagChip = getTodoTagChipColors(todo.tag?.color, colorTheme);
+  const openCheckboxColor = getTodoPriorityOption(todo.priority)?.color ?? colors.textLight;
   const rowRef = useRef<View>(null);
   const swipeableRef = useRef<Swipeable>(null);
   const setChecklistItemDone = useTodosStore((state) => state.setChecklistItemDone);
@@ -348,7 +348,7 @@ export function TaskRow({
               <Ionicons
                 name={todo.status === 'completed' ? 'checkmark-circle' : 'ellipse-outline'}
                 size={24}
-                color={todo.status === 'completed' ? colors.success : colors.textLight}
+                color={todo.status === 'completed' ? colors.success : openCheckboxColor}
               />
             </Pressable>
 
@@ -365,16 +365,7 @@ export function TaskRow({
               <View style={[styles.taskMeta, isCompact && styles.compactTaskMeta]}>
                 {todo.tag ? (
                   isCompact ? (
-                    <View
-                      style={[
-                        styles.tagPill,
-                        tagChip
-                          ? { backgroundColor: tagChip.background, borderColor: 'transparent' }
-                          : undefined,
-                      ]}
-                    >
-                      <Caption color={tagChip?.label ?? colors.textSecondary}>{todo.tag.name}</Caption>
-                    </View>
+                    <TodoTagPill name={todo.tag.name} color={todo.tag.color} />
                   ) : (
                     <Caption>#{todo.tag.name}</Caption>
                   )
@@ -585,18 +576,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   },
   checklistItemDone: {
     textDecorationLine: 'line-through',
-  },
-  tagPill: {
-    borderRadius: BORDER_RADIUS.full,
-    // A tag with no colour keeps this outline: the coach's create_tag stores
-    // color as null, and surface-on-background is ~1.05:1, so without it the
-    // pill has no visible shape at all. A coloured chip overrides the border to
-    // transparent rather than dropping the width, so both are the same height.
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
   },
   swipeActionsContainer: {
     width: SWIPE_ACTION_WIDTH * 2,

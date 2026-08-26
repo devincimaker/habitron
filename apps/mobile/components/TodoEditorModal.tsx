@@ -10,6 +10,7 @@ import { QuickDatePickerModal } from './QuickDatePickerModal';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
 import { useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
+import { TODO_PRIORITY_OPTIONS } from '../utils/todoPriority';
 import { resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodoEditorModalProps {
@@ -21,13 +22,6 @@ interface TodoEditorModalProps {
   onClose: () => void;
   onSave: (draft: TodoDraft) => Promise<void>;
 }
-
-const PRIORITY_OPTIONS = [
-  { label: 'Urgent', value: 1 as const },
-  { label: 'High', value: 2 as const },
-  { label: 'Normal', value: 3 as const },
-  { label: 'Low', value: 4 as const },
-];
 
 export function TodoEditorModal({
   visible,
@@ -253,7 +247,7 @@ export function TodoEditorModal({
             <View style={styles.section}>
               <Label>Priority</Label>
               <OptionChips
-                options={PRIORITY_OPTIONS}
+                options={TODO_PRIORITY_OPTIONS}
                 selectedValue={priority}
                 onChange={(value) => setPriority(value)}
               />

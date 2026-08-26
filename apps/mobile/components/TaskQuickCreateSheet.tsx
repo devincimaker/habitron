@@ -7,7 +7,6 @@ import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -17,22 +16,27 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { TodoDraft } from '@habits-coach/shared';
+import type { Priority, TodoDraft } from '@habits-coach/shared';
 import { DatePickerModal } from './DatePickerModal';
-import { BodyMedium } from './ui';
+import {
+  TaskQuickCreatePopover,
+  type TaskQuickCreatePopoverContent,
+} from './TaskQuickCreatePopover';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
-import { useColorTheme, useThemedStyles } from '../hooks/useColors';
+import { useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
 import {
+  applyTagAtSelection,
   buildQuickCreateTodoDraft,
   getActiveInlineTagContext,
+  getInlineTagName,
   getQuickCreateTextSegments,
   insertTagTriggerAtSelection,
-  replaceActiveInlineTagContext,
+  rankTagSuggestions,
   type TextSelectionRange,
 } from '../utils/taskQuickCreateTags';
-import { getTodoTagChipColors } from '../utils/todoTagColors';
+import { getTodoPriorityOption } from '../utils/todoPriority';
 
 interface TaskQuickCreateSheetProps {
   visible: boolean;
@@ -41,32 +45,9 @@ interface TaskQuickCreateSheetProps {
   defaultScheduledDate?: string;
 }
 
-const QUICK_ACTIONS = [
-  { icon: 'calendar-outline', label: 'Schedule task', action: 'date' },
-  { icon: 'flag-outline', label: 'Set priority', action: null },
-  { icon: 'pricetag-outline', label: 'Set category', action: 'tag' },
-  { icon: 'ellipsis-horizontal', label: 'More task actions', action: null },
-] as const;
+type QuickCreatePicker = 'priority' | 'tags';
 
 const INITIAL_SELECTION: TextSelectionRange = { start: 0, end: 0 };
-
-function getTagSuggestionRank(tagName: string, normalizedQuery: string) {
-  const normalizedTagName = tagName.toLowerCase();
-
-  if (!normalizedQuery) {
-    return 0;
-  }
-
-  if (normalizedTagName.startsWith(normalizedQuery)) {
-    return 0;
-  }
-
-  if (normalizedTagName.includes(normalizedQuery)) {
-    return 1;
-  }
-
-  return 2;
-}
 
 export function TaskQuickCreateSheet({
   visible,
@@ -75,45 +56,35 @@ export function TaskQuickCreateSheet({
   defaultScheduledDate,
 }: TaskQuickCreateSheetProps) {
   const [styles, colors] = useThemedStyles(createStyles);
-  const colorTheme = useColorTheme();
   const insets = useSafeAreaInsets();
   const tags = useTodosStore((state) => state.tags);
   const inputRef = useRef<TextInput>(null);
+  const sheetRef = useRef<View>(null);
+  const priorityButtonRef = useRef<View>(null);
+  const tagButtonRef = useRef<View>(null);
   const [title, setTitle] = useState('');
   const [selection, setSelection] = useState<TextSelectionRange>(INITIAL_SELECTION);
   const [isSaving, setIsSaving] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(defaultScheduledDate);
+  const [priority, setPriority] = useState<Priority | undefined>();
   const [isPickingDate, setIsPickingDate] = useState(false);
+  const [picker, setPicker] = useState<QuickCreatePicker | null>(null);
   const saveDraft = useMemo(
-    () => buildQuickCreateTodoDraft(title, scheduledDate),
-    [scheduledDate, title]
+    () => buildQuickCreateTodoDraft(title, scheduledDate, priority),
+    [priority, scheduledDate, title]
   );
   const highlightedTextSegments = useMemo(() => getQuickCreateTextSegments(title), [title]);
   const activeInlineTag = useMemo(
     () => getActiveInlineTagContext(title, selection),
     [selection, title]
   );
-  const tagSuggestions = useMemo(() => {
-    if (!activeInlineTag) {
-      return [];
-    }
-
-    const normalizedQuery = activeInlineTag.query.trim().toLowerCase();
-    return tags
-      .filter((tag) =>
-        normalizedQuery ? tag.name.toLowerCase().includes(normalizedQuery) : true
-      )
-      .slice()
-      .sort(
-        (leftTag, rightTag) =>
-          getTagSuggestionRank(leftTag.name, normalizedQuery) -
-            getTagSuggestionRank(rightTag.name, normalizedQuery) ||
-          leftTag.name.localeCompare(rightTag.name)
-      );
-  }, [activeInlineTag, tags]);
-  const hasText = title.trim().length > 0;
+  const tagSuggestions = useMemo(
+    () => (activeInlineTag ? rankTagSuggestions(tags, activeInlineTag.query) : []),
+    [activeInlineTag, tags]
+  );
   const canSave = Boolean(saveDraft) && !isSaving;
-  const shouldShowTagSuggestions = Boolean(activeInlineTag) && tagSuggestions.length > 0;
+  const priorityOption = getTodoPriorityOption(priority);
+  const hasInlineTag = Boolean(getInlineTagName(title));
 
   const focusComposer = useCallback((delayMs = 0) => {
     requestAnimationFrame(() => {
@@ -134,6 +105,8 @@ export function TaskQuickCreateSheet({
       setSelection(INITIAL_SELECTION);
       setIsSaving(false);
       setIsPickingDate(false);
+      setPriority(undefined);
+      setPicker(null);
       return;
     }
 
@@ -185,22 +158,74 @@ export function TaskQuickCreateSheet({
     []
   );
 
-  const handleInsertTagTrigger = useCallback(() => {
-    const nextState = insertTagTriggerAtSelection(title, selection);
-    updateTitleAndSelection(nextState.text, nextState.selection);
-  }, [selection, title, updateTitleAndSelection]);
+  const closePicker = () => setPicker(null);
 
-  const handleSelectTagSuggestion = useCallback(
-    (tagName: string) => {
-      if (!activeInlineTag) {
-        return;
-      }
-
-      const nextState = replaceActiveInlineTagContext(title, activeInlineTag, tagName);
+  const handleOpenTagPicker = () => {
+    if (tags.length === 0) {
+      // Nothing to pick from: drop a `#` at the caret so a new tag can be typed.
+      const nextState = insertTagTriggerAtSelection(title, selection);
       updateTitleAndSelection(nextState.text, nextState.selection);
+      return;
+    }
+    setPicker('tags');
+  };
+
+  const handleSelectPriority = (nextPriority: Priority | undefined) => {
+    setPriority(nextPriority);
+    setPicker(null);
+  };
+
+  const handleSelectTag = (tagName: string) => {
+    const nextState = applyTagAtSelection(title, selection, tagName);
+    updateTitleAndSelection(nextState.text, nextState.selection);
+    setPicker(null);
+  };
+
+  // The tag button lists every tag; typing `#` lists the matches, above the same button.
+  const pickerTags = picker === 'tags' ? tags : picker === null ? tagSuggestions : [];
+  const pickerContent: TaskQuickCreatePopoverContent | null =
+    picker === 'priority'
+      ? { kind: 'priority', selected: priority, onSelect: handleSelectPriority }
+      : pickerTags.length > 0
+        ? { kind: 'tags', tags: pickerTags, onSelect: handleSelectTag }
+        : null;
+
+  const quickActions = [
+    {
+      key: 'date',
+      ref: undefined,
+      icon: 'calendar-outline' as const,
+      iconColor: undefined,
+      label: scheduledDate
+        ? `Scheduled ${formatRelativeDateLabel(scheduledDate)}, change date`
+        : 'Schedule task',
+      badge: scheduledDate ? formatRelativeDateLabel(scheduledDate) : undefined,
+      isActive: !!scheduledDate,
+      onPress: handleOpenDatePicker,
     },
-    [activeInlineTag, title, updateTitleAndSelection]
-  );
+    {
+      key: 'priority',
+      ref: priorityButtonRef,
+      icon: priorityOption ? ('flag' as const) : ('flag-outline' as const),
+      iconColor: priorityOption?.color,
+      label: priorityOption
+        ? `Priority ${priorityOption.label}, change priority`
+        : 'Set priority',
+      badge: undefined,
+      isActive: !!priorityOption || picker === 'priority',
+      onPress: () => setPicker('priority'),
+    },
+    {
+      key: 'tag',
+      ref: tagButtonRef,
+      icon: 'pricetag-outline' as const,
+      iconColor: undefined,
+      label: 'Set category',
+      badge: undefined,
+      isActive: hasInlineTag || picker === 'tags',
+      onPress: handleOpenTagPicker,
+    },
+  ];
 
   return (
     <Modal
@@ -214,39 +239,13 @@ export function TaskQuickCreateSheet({
         style={styles.overlay}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
-        <Pressable style={styles.backdrop} onPress={handleClose} />
+        <Pressable style={styles.backdrop} onPress={picker ? closePicker : handleClose} />
 
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + SPACING.md }]}>
+        <View
+          ref={sheetRef}
+          style={[styles.sheet, { paddingBottom: insets.bottom + SPACING.md }]}
+        >
           <View style={styles.handle} />
-
-          {shouldShowTagSuggestions ? (
-            <View style={styles.tagSuggestionsPanel}>
-              <ScrollView
-                style={styles.tagSuggestionsScroll}
-                contentContainerStyle={styles.tagSuggestionsContent}
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
-              >
-                {tagSuggestions.map((tag) => {
-                  const chip = getTodoTagChipColors(tag.color, colorTheme);
-                  return (
-                    <Pressable
-                      key={tag.id}
-                      style={[
-                        styles.tagSuggestionButton,
-                        chip ? { backgroundColor: chip.background } : undefined,
-                      ]}
-                      onPress={() => handleSelectTagSuggestion(tag.name)}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Use tag #${tag.name}`}
-                    >
-                      <BodyMedium color={chip?.label ?? colors.text}>#{tag.name}</BodyMedium>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </View>
-          ) : null}
 
           <View style={styles.composer}>
             <View style={styles.inputStack}>
@@ -291,48 +290,31 @@ export function TaskQuickCreateSheet({
 
             <View style={styles.actionsRow}>
               <View style={styles.quickActions}>
-                {QUICK_ACTIONS.map((action) => {
-                  const isActive =
-                    (action.action === 'tag' && !!activeInlineTag) ||
-                    (action.action === 'date' && !!scheduledDate);
-
-                  return (
-                    <Pressable
-                      key={action.label}
-                      style={[
-                        styles.quickActionButton,
-                        action.action && styles.quickActionButtonEnabled,
-                        isActive && styles.quickActionButtonActive,
-                      ]}
-                      onPress={
-                        action.action === 'tag'
-                          ? handleInsertTagTrigger
-                          : action.action === 'date'
-                            ? handleOpenDatePicker
-                            : undefined
+                {quickActions.map((action) => (
+                  <Pressable
+                    key={action.key}
+                    ref={action.ref}
+                    style={[
+                      styles.quickActionButton,
+                      action.isActive && styles.quickActionButtonActive,
+                    ]}
+                    onPress={action.onPress}
+                    accessibilityRole="button"
+                    accessibilityLabel={action.label}
+                  >
+                    <Ionicons
+                      name={action.icon}
+                      size={18}
+                      color={
+                        action.iconColor ??
+                        (action.isActive ? colors.primaryDark : colors.textSecondary)
                       }
-                      accessibilityRole="button"
-                      accessibilityLabel={
-                        action.action === 'date' && scheduledDate
-                          ? `Scheduled ${formatRelativeDateLabel(scheduledDate)}, change date`
-                          : action.label
-                      }
-                      accessibilityState={{ disabled: !action.action }}
-                      disabled={!action.action}
-                    >
-                      <Ionicons
-                        name={action.icon}
-                        size={18}
-                        color={isActive ? colors.primaryDark : colors.textSecondary}
-                      />
-                      {action.action === 'date' && scheduledDate ? (
-                        <Text style={styles.quickActionBadge}>
-                          {formatRelativeDateLabel(scheduledDate)}
-                        </Text>
-                      ) : null}
-                    </Pressable>
-                  );
-                })}
+                    />
+                    {action.badge ? (
+                      <Text style={styles.quickActionBadge}>{action.badge}</Text>
+                    ) : null}
+                  </Pressable>
+                ))}
               </View>
 
               <Pressable
@@ -343,27 +325,34 @@ export function TaskQuickCreateSheet({
                 onPress={canSave ? handleSave : undefined}
                 disabled={isSaving || !canSave}
                 accessibilityRole="button"
-                accessibilityLabel={
-                  canSave ? 'Create task' : hasText ? 'Task title required' : 'Voice task input'
-                }
+                accessibilityLabel={canSave ? 'Create task' : 'Task title required'}
               >
                 {isSaving ? (
                   <ActivityIndicator
                     size="small"
                     color={canSave ? colors.white : colors.textSecondary}
                   />
-                ) : hasText ? (
+                ) : (
                   <Ionicons
                     name="arrow-up"
                     size={18}
                     color={canSave ? colors.white : colors.textSecondary}
                   />
-                ) : (
-                  <Ionicons name="mic-outline" size={18} color={colors.textSecondary} />
                 )}
               </Pressable>
             </View>
           </View>
+
+          {pickerContent ? (
+            <TaskQuickCreatePopover
+              // Remount on a change of anchor, so the card re-measures its place.
+              key={pickerContent.kind}
+              anchorRef={pickerContent.kind === 'priority' ? priorityButtonRef : tagButtonRef}
+              containerRef={sheetRef}
+              content={pickerContent}
+              onClose={picker ? closePicker : undefined}
+            />
+          ) : null}
         </View>
 
         <DatePickerModal
@@ -416,29 +405,6 @@ const createStyles = (colors: Colors) =>
       borderRadius: BORDER_RADIUS.full,
       backgroundColor: colors.border,
       marginBottom: SPACING.md,
-    },
-    tagSuggestionsPanel: {
-      width: '62%',
-      maxHeight: 220,
-      marginBottom: SPACING.sm,
-      backgroundColor: colors.background,
-      borderRadius: 22,
-      borderWidth: 1,
-      borderColor: colors.border,
-      ...SHADOWS.small,
-    },
-    tagSuggestionsScroll: {
-      maxHeight: 220,
-    },
-    tagSuggestionsContent: {
-      paddingVertical: SPACING.xs,
-    },
-    tagSuggestionButton: {
-      paddingHorizontal: SPACING.md,
-      paddingVertical: 10,
-      marginHorizontal: SPACING.xs,
-      marginVertical: 2,
-      borderRadius: BORDER_RADIUS.lg,
     },
     composer: {
       backgroundColor: colors.background,
@@ -506,15 +472,11 @@ const createStyles = (colors: Colors) =>
       height: 32,
       paddingHorizontal: SPACING.xs,
       borderRadius: BORDER_RADIUS.full,
-      opacity: 0.45,
     },
     quickActionBadge: {
       ...TYPOGRAPHY.caption,
       color: colors.primaryDark,
       fontWeight: '600',
-    },
-    quickActionButtonEnabled: {
-      opacity: 1,
     },
     quickActionButtonActive: {
       backgroundColor: colors.primaryLight,

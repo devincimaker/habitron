@@ -1,4 +1,4 @@
-import type { TodoDraft } from '@habits-coach/shared';
+import type { Priority, TodoDraft } from '@habits-coach/shared';
 import { getInlineEstimateContext, stripInlineEstimateToken } from './todoEstimate';
 import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from './todoTime';
 
@@ -125,7 +125,8 @@ function splitQuickCreateInput(text: string): {
 
 export function buildQuickCreateTodoDraft(
   text: string,
-  defaultScheduledDate?: string
+  defaultScheduledDate?: string,
+  priority?: Priority
 ): TodoDraft | null {
   const { firstLine, checklistItems } = splitQuickCreateInput(text);
   const schedule = resolveNewTodoSchedule(
@@ -148,6 +149,7 @@ export function buildQuickCreateTodoDraft(
   return {
     title,
     ...(tagName ? { tagName } : {}),
+    ...(priority ? { priority } : {}),
     ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
     ...(estimate ? { estimateMinutes: estimate.minutes } : {}),
     ...(checklistItems.length > 0 ? { checklist: checklistItems } : {}),
@@ -282,4 +284,30 @@ export function replaceActiveInlineTagContext(
       end: nextCaret,
     },
   };
+}
+
+/** The tags matching an inline `#query`: prefix matches first, then substring
+ * matches, alphabetical within each; an empty query lists every tag. */
+export function rankTagSuggestions<T extends { name: string }>(tags: T[], query: string): T[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const isPrefixMatch = (tag: T) => tag.name.toLowerCase().startsWith(normalizedQuery);
+  return tags
+    .filter((tag) => tag.name.toLowerCase().includes(normalizedQuery))
+    .sort(
+      (leftTag, rightTag) =>
+        Number(isPrefixMatch(rightTag)) - Number(isPrefixMatch(leftTag)) ||
+        leftTag.name.localeCompare(rightTag.name)
+    );
+}
+
+/** Puts `#tagName` at the caret: the `#…` token under it is replaced, otherwise
+ * one is inserted first. */
+export function applyTagAtSelection(
+  text: string,
+  selection: TextSelectionRange,
+  tagName: string
+) {
+  const trigger = insertTagTriggerAtSelection(text, selection);
+  const context = getActiveInlineTagContext(trigger.text, trigger.selection);
+  return context ? replaceActiveInlineTagContext(trigger.text, context, tagName) : trigger;
 }
