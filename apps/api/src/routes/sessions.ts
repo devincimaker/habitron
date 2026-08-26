@@ -4,47 +4,29 @@ import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
+import {
+  SESSION_OPENERS,
+  loadSessionMemories,
+  toSessionDetail,
+  type DbSession,
+} from '../services/sessionRows.js';
 import type {
-  CoachingSessionMessage,
   CoachingSessionSummary,
   CreateSessionRequest,
   UpdateSessionRequest,
   FinalizeSessionRequest,
   ErrorResponse,
-  MemoryCategory,
 } from '@habits-coach/shared';
 
 const router: Router = Router();
 const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
-
-interface DbSession {
-  id: string;
-  user_id: string;
-  name: string | null;
-  messages: CoachingSessionMessage[];
-  started_at: string;
-  ended_at: string | null;
-  is_processed: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-interface DbMemory {
-  id: string;
-  content: string;
-  category: MemoryCategory;
-  session_id: string | null;
-  source_session_at: string | null;
-  created_at: string;
-  updated_at: string;
-}
 
 // GET /api/sessions - List sessions (last 50)
 router.get('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const { data: sessions, error } = await supabase
       .from('coaching_sessions')
-      .select('id, name, started_at, ended_at')
+      .select('id, name, started_at, ended_at, opener, ritual_date')
       .eq('user_id', req.user!.id)
       .order('started_at', { ascending: false })
       .limit(50);
@@ -53,7 +35,7 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
 
     const sessionRows = (sessions ?? []) as Pick<
       DbSession,
-      'id' | 'name' | 'started_at' | 'ended_at'
+      'id' | 'name' | 'started_at' | 'ended_at' | 'opener' | 'ritual_date'
     >[];
     const sessionIds = sessionRows.map((session) => session.id);
 
@@ -82,6 +64,8 @@ router.get('/', authMiddleware, async (req: Request, res: Response): Promise<voi
       startedAt: new Date(session.started_at).getTime(),
       endedAt: session.ended_at ? new Date(session.ended_at).getTime() : null,
       memoryCount: memoryCountMap.get(session.id) || 0,
+      opener: session.opener,
+      ritualDate: session.ritual_date,
     }));
 
     res.json({ sessions: result });
@@ -109,36 +93,9 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
       return;
     }
 
-    const { data: memories, error: memError } = await supabase
-      .from('memories')
-      .select('*')
-      .eq('session_id', id)
-      .order('created_at', { ascending: true });
+    const memories = await loadSessionMemories(id);
 
-    if (memError) throw memError;
-
-    const s = session as DbSession;
-
-    res.json({
-      session: {
-        id: s.id,
-        name: s.name,
-        startedAt: new Date(s.started_at).getTime(),
-        endedAt: s.ended_at ? new Date(s.ended_at).getTime() : null,
-        messages: s.messages || [],
-        memories: ((memories ?? []) as DbMemory[]).map((memory) => ({
-          id: memory.id,
-          content: memory.content,
-          category: memory.category,
-          sessionId: memory.session_id,
-          sourceSessionAt: memory.source_session_at
-            ? new Date(memory.source_session_at).getTime()
-            : undefined,
-          createdAt: new Date(memory.created_at).getTime(),
-          updatedAt: new Date(memory.updated_at).getTime(),
-        })),
-      },
-    });
+    res.json({ session: toSessionDetail(session as DbSession, memories) });
   } catch (error) {
     console.error('Get session error:', error);
     res.status(500).json({ error: 'Failed to fetch session' } satisfies ErrorResponse);
@@ -148,7 +105,42 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 // POST /api/sessions - Create new session
 router.post('/', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    const { startedAt } = req.body as CreateSessionRequest;
+    const { startedAt, opener = 'coach', ritualDate } = req.body as CreateSessionRequest;
+
+    if (!SESSION_OPENERS.includes(opener)) {
+      res.status(400).json({
+        error: `opener must be one of ${SESSION_OPENERS.join(', ')}`,
+      } satisfies ErrorResponse);
+      return;
+    }
+
+    if ((opener === 'coach') !== (ritualDate === undefined)) {
+      res.status(400).json({
+        error: 'A ritual opener needs a ritualDate, and a coach session must not have one',
+      } satisfies ErrorResponse);
+      return;
+    }
+
+    // One session per ritual per day: tapping the card again that day — open or
+    // ended — lands back in the same session rather than starting a second one.
+    // The unique index is what makes this safe against a double tap; this lookup
+    // is what makes the common case return the existing session instead of an error.
+    if (ritualDate) {
+      const { data: existing, error: findError } = await supabase
+        .from('coaching_sessions')
+        .select('*')
+        .eq('user_id', req.user!.id)
+        .eq('opener', opener)
+        .eq('ritual_date', ritualDate)
+        .maybeSingle();
+
+      if (findError) throw findError;
+      if (existing) {
+        const session = existing as DbSession;
+        res.json({ session: toSessionDetail(session, await loadSessionMemories(session.id)) });
+        return;
+      }
+    }
 
     const { data, error } = await supabase
       .from('coaching_sessions')
@@ -156,18 +148,15 @@ router.post('/', authMiddleware, async (req: Request, res: Response): Promise<vo
         user_id: req.user!.id,
         started_at: startedAt ? new Date(startedAt).toISOString() : new Date().toISOString(),
         messages: [],
+        opener,
+        ritual_date: ritualDate ?? null,
       })
       .select()
       .single();
 
     if (error) throw error;
 
-    res.json({
-      session: {
-        id: data.id,
-        startedAt: new Date(data.started_at).getTime(),
-      },
-    });
+    res.json({ session: toSessionDetail(data as DbSession, []) });
   } catch (error) {
     console.error('Create session error:', error);
     res.status(500).json({ error: 'Failed to create session' } satisfies ErrorResponse);

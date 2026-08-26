@@ -77,3 +77,11 @@ export function buildMemoryWarning(memoryCount: number | undefined): string {
   const noun = memoryCount === 1 ? 'memory' : 'memories';
   return `\n\nThis will also delete ${memoryCount} associated ${noun}.`;
 }
+
+/** The verdict word for a 1-5 `overall`, matching the review card's wording. */
+const VERDICT_LABELS = ['Bad day', 'Rough day', 'OK day', 'Good day', 'Great day'];
+
+export function formatVerdict(overall: number | undefined): string | null {
+  if (!overall) return null;
+  return VERDICT_LABELS[overall - 1] ?? null;
+}

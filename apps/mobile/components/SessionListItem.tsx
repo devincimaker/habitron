@@ -7,24 +7,45 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import { Ionicons } from '@expo/vector-icons';
-import type { CoachingSessionSummary } from '@habits-coach/shared';
-import { FONT_SIZES, type Colors } from '../constants/theme';
+import type {
+  CoachingSessionSummary,
+  DayReviewSummary,
+  SessionOpener,
+} from '@habits-coach/shared';
+import { FONT_SIZES, SPACING, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import { formatSessionMeta, isSessionOpen } from '../utils/coachSessions';
+import { formatSessionMeta, formatVerdict, isSessionOpen } from '../utils/coachSessions';
 
 const SWIPE_THRESHOLD = 80;
 
 interface SessionListItemProps {
   session: CoachingSessionSummary;
+  /** The review for a `review-day` session's date, when one was saved. */
+  review?: DayReviewSummary | null;
   onPress: (id: string) => void;
   onDelete?: (session: CoachingSessionSummary) => void;
 }
 
+/** The four axes, in card order. `overall` is the verdict, not an axis. */
+const AXES = ['happy', 'energy', 'momentum', 'calm'] as const;
+
+/** A ritual session reads as its practice at a glance, not as another chat. */
+const SESSION_ICONS: Record<SessionOpener, keyof typeof Ionicons.glyphMap> = {
+  'coach': 'chatbubble-outline',
+  'plan-day': 'sunny-outline',
+  'review-day': 'moon-outline',
+};
+
 export function SessionListItem({
-  session, onPress, onDelete }: SessionListItemProps) {
+  session,
+  review,
+  onPress,
+  onDelete,
+}: SessionListItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
   const open = isSessionOpen(session);
+  const verdict = review ? formatVerdict(review.overall) : null;
 
   const handleDelete = () => onDelete?.(session);
   const handlePress = () => onPress(session.id);
@@ -71,7 +92,7 @@ export function SessionListItem({
         >
           <View style={[styles.iconContainer, open && styles.iconContainerOpen]}>
             <Ionicons
-              name="chatbubble-outline"
+              name={SESSION_ICONS[session.opener]}
               size={22}
               color={open ? colors.primary : colors.textSecondary}
             />
@@ -83,8 +104,20 @@ export function SessionListItem({
             <View style={styles.metaRow}>
               {open && <View style={styles.openDot} />}
               <Text style={styles.meta} numberOfLines={1}>
-                {formatSessionMeta(session)}
+                {verdict ?? formatSessionMeta(session)}
               </Text>
+              {/* A reviewed day says how it went and how far the review got:
+                  one dot per axis, filled for the ones actually rated. */}
+              {review && (
+                <View style={styles.axisDots}>
+                  {AXES.map((axis) => (
+                    <View
+                      key={axis}
+                      style={[styles.axisDot, review[axis] !== undefined && styles.axisDotRated]}
+                    />
+                  ))}
+                </View>
+              )}
             </View>
           </View>
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
@@ -139,6 +172,20 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     fontWeight: '600',
     color: colors.text,
     marginBottom: 2,
+  },
+  axisDots: {
+    flexDirection: 'row',
+    gap: 3,
+    marginLeft: SPACING.xs,
+  },
+  axisDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: colors.hairline,
+  },
+  axisDotRated: {
+    backgroundColor: colors.primary,
   },
   metaRow: {
     flexDirection: 'row',

@@ -11,12 +11,16 @@ import {
 } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import type { CoachingSessionSummary } from '@habits-coach/shared';
+import { getTodayDate } from '@habits-coach/shared';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useMemoriesStore } from '../stores/useMemoriesStore';
+import { useRitualsStore } from '../stores/useRitualsStore';
 import { SessionListItem } from './SessionListItem';
+import { RitualCard } from './RitualCard';
+import { RITUALS, type RitualDefinition } from '../constants/rituals';
 import {
   BORDER_RADIUS,
   SHADOWS,
@@ -37,6 +41,8 @@ export function CoachHubScreen() {
   const router = useRouter();
   const { sessions, isLoading, loadSessions, deleteSession } = useSessionsStore();
   const { memories, loadMemories } = useMemoriesStore();
+  const { load: loadRituals, ritualState, reviewFor } = useRitualsStore();
+  const today = getTodayDate();
 
   const [refreshing, setRefreshing] = useState(false);
   const sortedSessions = useMemo(() => sortSessions(sessions), [sessions]);
@@ -45,20 +51,23 @@ export function CoachHubScreen() {
     void loadMemories();
   }, [loadMemories]);
 
+  // Rituals reload on focus too: accepting a plan or saving a review happens
+  // inside the session, so the card is stale the moment you come back.
   useFocusEffect(
     useCallback(() => {
       void loadSessions();
-    }, [loadSessions])
+      void loadRituals();
+    }, [loadSessions, loadRituals])
   );
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     try {
-      await Promise.all([loadSessions(), loadMemories()]);
+      await Promise.all([loadSessions(), loadMemories(), loadRituals()]);
     } finally {
       setRefreshing(false);
     }
-  }, [loadSessions, loadMemories]);
+  }, [loadSessions, loadMemories, loadRituals]);
 
   const handleSessionPress = useCallback((id: string) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -82,6 +91,11 @@ export function CoachHubScreen() {
       ]
     );
   }, [deleteSession]);
+
+  const handleRitualPress = useCallback((ritual: RitualDefinition) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push({ pathname: '/session', params: { ritual: ritual.id, date: today } });
+  }, [router, today]);
 
   const handleNewSession = useCallback(() => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -110,6 +124,17 @@ export function CoachHubScreen() {
           />
         }
       >
+        <View style={styles.rituals}>
+          {RITUALS.map((ritual) => (
+            <RitualCard
+              key={ritual.id}
+              ritual={ritual}
+              state={ritualState(ritual.id, today)}
+              onPress={handleRitualPress}
+            />
+          ))}
+        </View>
+
         {sortedSessions.length === 0 ? (
           <View style={styles.emptyState}>
             {isLoading ? (
@@ -131,6 +156,11 @@ export function CoachHubScreen() {
             <SessionListItem
               key={session.id}
               session={session}
+              review={
+                session.opener === 'review-day' && session.ritualDate
+                  ? reviewFor(session.ritualDate)
+                  : null
+              }
               onPress={handleSessionPress}
               onDelete={handleSwipeDelete}
             />
@@ -182,6 +212,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   content: {
     padding: SPACING.md,
     paddingTop: SPACING.sm,
+  },
+  rituals: {
+    marginBottom: SPACING.md,
   },
   emptyState: {
     alignItems: 'center',

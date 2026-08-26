@@ -16,6 +16,8 @@ function session(overrides: Partial<CoachingSessionSummary>): CoachingSessionSum
     startedAt: day('2026-08-22T09:00:00'),
     endedAt: day('2026-08-22T09:30:00'),
     memoryCount: 0,
+    opener: 'coach',
+    ritualDate: null,
     ...overrides,
   };
 }
