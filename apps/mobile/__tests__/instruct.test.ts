@@ -7,6 +7,7 @@ import {
   formatApplied,
   formatElapsed,
   holdHint,
+  holdOutcome,
   instructReducer,
   parseProposal,
   sheetHint,
@@ -176,6 +177,52 @@ describe('parseProposal', () => {
       kind: 'notice',
       message: 'Which run — the morning or the evening one?',
     });
+  });
+});
+
+describe('holdOutcome', () => {
+  it('submits a clean release that never rose past the cancel line', () => {
+    expect(holdOutcome(true, 0)).toBe('submit');
+    expect(holdOutcome(true, CANCEL_LIFT)).toBe('submit');
+  });
+
+  it('cancels a release above the cancel line, however fast the flick', () => {
+    expect(holdOutcome(true, CANCEL_LIFT + 1)).toBe('cancel');
+    expect(holdOutcome(true, 200)).toBe('cancel');
+  });
+
+  it('cancels a gesture that ended without a release', () => {
+    expect(holdOutcome(false, 0)).toBe('cancel');
+    expect(holdOutcome(false, 200)).toBe('cancel');
+  });
+});
+
+describe('abort', () => {
+  const working = run([{ type: 'hold-start' }, { type: 'submit' }]);
+
+  it('returns a fresh propose to the plain screen', () => {
+    const aborted = instructReducer(
+      instructReducer(working, { type: 'session', claudeSessionId: 'claude-1' }),
+      { type: 'abort' }
+    );
+    expect(aborted).toEqual(INITIAL_INSTRUCT_STATE);
+  });
+
+  it('closes the sheet a correction interrupted, session and all', () => {
+    const correcting = run([{ type: 'hold-start' }, { type: 'submit' }], proposed);
+    const aborted = instructReducer(correcting, { type: 'abort' });
+    // The session has already taken the correction, so the proposal on that
+    // sheet is stale and its Apply would write what was just cancelled.
+    expect(aborted).toEqual(INITIAL_INSTRUCT_STATE);
+    expect(aborted.claudeSessionId).toBeNull();
+    expect(aborted.proposal).toBeNull();
+  });
+
+  it('leaves every other phase alone, applying included', () => {
+    const applying = run([{ type: 'apply' }], proposed);
+    expect(instructReducer(applying, { type: 'abort' })).toBe(applying);
+    expect(instructReducer(proposed, { type: 'abort' })).toBe(proposed);
+    expect(instructReducer(INITIAL_INSTRUCT_STATE, { type: 'abort' })).toBe(INITIAL_INSTRUCT_STATE);
   });
 });
 
