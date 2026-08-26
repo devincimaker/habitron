@@ -396,12 +396,35 @@ export interface CoachingSessionMessage {
   timestamp: number;
 }
 
+/** A day's ratings, as the app reads them. The coach owns the full row. */
+export interface DayReviewSummary {
+  reviewDate: string;
+  happy?: number;
+  energy?: number;
+  momentum?: number;
+  calm?: number;
+  overall?: number;
+}
+
+/** The two daily coach practices. A session that is neither is a plain `coach` chat. */
+export type RitualId = 'plan-day' | 'review-day';
+
+/** The skill a session's first turn sends. */
+export type SessionOpener = 'coach' | RitualId;
+
 export interface CoachingSessionSummary {
   id: string;
   name: string | null;
   startedAt: number;
   endedAt: number | null;
   memoryCount?: number;
+  opener: SessionOpener;
+  /**
+   * The day the ritual is *for*, which is not always the day it happened — a
+   * review of last night done this morning belongs to last night. Null for a
+   * plain chat.
+   */
+  ritualDate: string | null;
 }
 
 export interface CoachingSessionDetail extends CoachingSessionSummary {
@@ -411,13 +434,15 @@ export interface CoachingSessionDetail extends CoachingSessionSummary {
 
 export interface CreateSessionRequest {
   startedAt?: number;  // Optional, defaults to now
+  /** Defaults to `coach`. A ritual opener requires `ritualDate`. */
+  opener?: SessionOpener;
+  /** YYYY-MM-DD. With a ritual opener this finds the day's session or creates it. */
+  ritualDate?: string;
 }
 
 export interface CreateSessionResponse {
-  session: {
-    id: string;
-    startedAt: number;
-  };
+  /** The whole session: for a ritual this may be the day's existing one, transcript and all. */
+  session: CoachingSessionDetail;
 }
 
 export interface UpdateSessionRequest {

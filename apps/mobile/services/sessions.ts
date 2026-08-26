@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import type {
   CoachingSessionSummary,
   CoachingSessionDetail,
+  RitualId,
   UpdateSessionRequest,
 } from '@habits-coach/shared';
 import { handleFetchError } from './fetchErrorHandler';
@@ -45,7 +46,17 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
   return data.session;
 }
 
-export async function createSession(): Promise<{ id: string; startedAt: number }> {
+/**
+ * Creates a session, or — for a ritual — returns the day's existing one. The
+ * backend does the finding, so a double tap cannot open two.
+ */
+/** Opening a ritual: which practice, and the day it is for. */
+export interface RitualStart {
+  opener: RitualId;
+  ritualDate: string;
+}
+
+export async function createSession(ritual?: RitualStart): Promise<CoachingSessionDetail> {
   const token = await getAuthToken();
 
   const response = await fetch(createApiUrl('/api/sessions'), {
@@ -54,6 +65,7 @@ export async function createSession(): Promise<{ id: string; startedAt: number }
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     },
+    body: JSON.stringify(ritual ?? {}),
   });
 
   if (!response.ok) {

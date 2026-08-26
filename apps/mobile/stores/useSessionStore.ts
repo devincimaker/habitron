@@ -1,7 +1,13 @@
 import { create } from 'zustand';
-import type { ChatMessage, CoachingSessionDetail, UpdateSessionRequest } from '@habits-coach/shared';
+import type {
+  ChatMessage,
+  CoachingSessionDetail,
+  SessionOpener,
+  UpdateSessionRequest,
+} from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import * as sessionsService from '../services/sessions';
+import type { RitualStart } from '../services/sessions';
 import { deriveSessionName } from '../utils/sessionName';
 
 interface SessionState {
@@ -15,13 +21,17 @@ interface SessionState {
   isLoading: boolean;
   isSyncing: boolean;  // True while syncing to backend
   startError: string | null;  // Set when the backend session could not be created
+  /** The skill this session's first turn sends. */
+  opener: SessionOpener;
+  /** The day a ritual session is for; null for a plain chat. */
+  ritualDate: string | null;
 
   // Actions
-  startSession: () => Promise<void>;
+  startSession: (ritual?: RitualStart) => Promise<void>;
   /** Opens a session from the hub in place: transcript, identity, and whether it was ended. */
   hydrateSession: (session: CoachingSessionDetail) => void;
   /** The backend session id, creating the session if needed. Throws when the backend is unreachable. */
-  ensureBackendSession: () => Promise<string>;
+  ensureBackendSession: (ritual?: RitualStart) => Promise<string>;
   /** Leaves without ending: the transcript is persisted and the session stays open. */
   leaveSession: () => Promise<void>;
   endSession: () => Promise<void>;
@@ -65,6 +75,8 @@ const EMPTY_STATE: Pick<
   | 'messages'
   | 'isLoading'
   | 'startError'
+  | 'opener'
+  | 'ritualDate'
 > = {
   isActive: false,
   sessionId: null,
@@ -72,6 +84,8 @@ const EMPTY_STATE: Pick<
   startedAt: null,
   endedAt: null,
   lastActiveAt: null,
+  opener: 'coach',
+  ritualDate: null,
   messages: [],
   isLoading: false,
   startError: null,
@@ -81,7 +95,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
   ...EMPTY_STATE,
   isSyncing: false,
 
-  startSession: async () => {
+  startSession: async (ritual) => {
     // Prevent duplicate session starts from rapid taps
     if (get().isActive) return;
 
@@ -91,11 +105,13 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       isActive: true,
       startedAt: now,
       lastActiveAt: now,
+      opener: ritual?.opener ?? 'coach',
+      ritualDate: ritual?.ritualDate ?? null,
     });
 
     // The coach speaks first, so the backend session exists from the start.
     try {
-      await get().ensureBackendSession();
+      await get().ensureBackendSession(ritual);
     } catch {
       // startError is set; the screen offers a retry.
     }
@@ -116,21 +132,27 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       name: session.name,
       startedAt: session.startedAt,
       endedAt: session.endedAt,
+      opener: session.opener,
+      ritualDate: session.ritualDate,
       lastActiveAt: messages[messages.length - 1]?.timestamp ?? session.startedAt,
       messages,
     });
   },
 
-  ensureBackendSession: async () => {
+  ensureBackendSession: async (ritual) => {
     const existing = get().sessionId;
     if (existing) return existing;
 
     if (!pendingSessionCreation) {
       pendingSessionCreation = sessionsService
-        .createSession()
-        .then(({ id }) => {
-          set({ sessionId: id, startError: null });
-          return id;
+        .createSession(ritual)
+        .then((session) => {
+          // A ritual card tapped twice in a day gets the same session back, so
+          // the transcript comes with it — otherwise the reopened session would
+          // start empty, re-send the opener, and overwrite what was there.
+          if (session.messages.length > 0) get().hydrateSession(session);
+          else set({ sessionId: session.id, startError: null });
+          return session.id;
         })
         .catch((error) => {
           console.warn('Failed to create session in backend:', error);

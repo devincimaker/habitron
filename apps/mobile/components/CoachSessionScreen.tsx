@@ -37,7 +37,7 @@ import {
   getCoachRequestErrorMessage,
   getCoachSessionStartErrorMessage,
 } from '../services/apiUrl';
-import type { ChatMessage as ChatMessageType } from '@habits-coach/shared';
+import type { ChatMessage as ChatMessageType, SessionOpener } from '@habits-coach/shared';
 import {
   SPACING,
   BORDER_RADIUS,
@@ -59,8 +59,17 @@ interface CoachSessionScreenProps {
   onDismiss: () => void;
 }
 
-/** The skill command that opens a session: the coach speaks first, grounded in the data. */
-const OPENER_COMMAND = '/coach';
+/**
+ * The skill command that opens a session: the coach speaks first, grounded in
+ * the data. A ritual session opens with its own skill, and carries the date when
+ * the ritual is for a day other than today — a review of last night done this
+ * morning has to review last night.
+ */
+function openerCommand(opener: SessionOpener, ritualDate: string | null): string {
+  if (opener === 'coach') return '/coach';
+  const today = getTodayDate();
+  return ritualDate && ritualDate !== today ? `/${opener} ${ritualDate}` : `/${opener}`;
+}
 
 export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -71,6 +80,8 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     sessionId,
     startedAt,
     endedAt,
+    opener,
+    ritualDate,
     messages,
     isLoading,
     startError,
@@ -254,8 +265,8 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     }
 
     hasSentOpener.current = true;
-    void runTurn(OPENER_COMMAND, { echoUser: false });
-  }, [isActive, isLoading, messages.length, reviewState.phase, runTurn, sessionId]);
+    void runTurn(openerCommand(opener, ritualDate), { echoUser: false });
+  }, [isActive, isLoading, messages.length, opener, reviewState.phase, ritualDate, runTurn, sessionId]);
 
   const performEndSession = useCallback(async () => {
     if (messages.length <= 2) {

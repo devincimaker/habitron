@@ -9,6 +9,18 @@
  */
 
 const mockCreateSession = jest.fn();
+
+/** What POST /api/sessions returns for a session with nothing in it yet. */
+const createdSession = (id: string) => ({
+  id,
+  name: null,
+  startedAt: Date.now(),
+  endedAt: null,
+  opener: 'coach' as const,
+  ritualDate: null,
+  messages: [],
+  memories: [],
+});
 const mockUpdateSession = jest.fn();
 const mockFinalizeSession = jest.fn();
 const mockDeleteSession = jest.fn();
@@ -30,6 +42,8 @@ function buildDetail(overrides: Partial<CoachingSessionDetail> = {}): CoachingSe
     startedAt: 1_700_000_000_000,
     endedAt: 1_700_000_600_000,
     memoryCount: 1,
+    opener: 'coach',
+    ritualDate: null,
     messages: [
       { role: 'assistant', content: 'Hi', timestamp: 1_700_000_000_000 },
       { role: 'user', content: 'Help me with mornings', timestamp: 1_700_000_100_000 },
@@ -60,7 +74,7 @@ describe('useSessionStore', () => {
   });
 
   it('creates the backend session on start with an empty transcript', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
 
     await useSessionStore.getState().startSession();
 
@@ -80,13 +94,13 @@ describe('useSessionStore', () => {
     expect(useSessionStore.getState().sessionId).toBeNull();
     expect(useSessionStore.getState().startError).toBe('Network error');
 
-    mockCreateSession.mockResolvedValueOnce({ id: 'retry-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValueOnce(createdSession('retry-id'));
     await expect(useSessionStore.getState().ensureBackendSession()).resolves.toBe('retry-id');
     expect(useSessionStore.getState().startError).toBeNull();
   });
 
   it('does not create a second backend session once one exists', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
 
     await useSessionStore.getState().startSession();
     await useSessionStore.getState().ensureBackendSession();
@@ -97,7 +111,7 @@ describe('useSessionStore', () => {
   });
 
   it('names the session after the first user message, once', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
     await useSessionStore.getState().startSession();
 
     await useSessionStore.getState().addMessage({
@@ -118,7 +132,7 @@ describe('useSessionStore', () => {
   });
 
   it('streams into a message locally and syncs when finalized', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
     await useSessionStore.getState().startSession();
 
     const id = useSessionStore.getState().addLocalMessage({ role: 'assistant', content: 'Hel' });
@@ -135,7 +149,7 @@ describe('useSessionStore', () => {
   });
 
   it('deletes the session on end when the user never replied', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
     await useSessionStore.getState().startSession();
     useSessionStore.getState().addLocalMessage({ role: 'assistant', content: 'How is today going?' });
 
@@ -149,7 +163,7 @@ describe('useSessionStore', () => {
   });
 
   it('syncs and finalizes on end when the user took part', async () => {
-    mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+    mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
     mockFinalizeSession.mockResolvedValue({ name: 'Test Session' });
     await useSessionStore.getState().startSession();
     await useSessionStore.getState().addMessage({ role: 'user', content: 'User message' });
@@ -164,7 +178,7 @@ describe('useSessionStore', () => {
 
   describe('leaving', () => {
     it('persists the transcript and clears state without finalizing', async () => {
-      mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+      mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
       await useSessionStore.getState().startSession();
       await useSessionStore.getState().addMessage({ role: 'user', content: 'Hello' });
       mockUpdateSession.mockClear();
@@ -183,7 +197,7 @@ describe('useSessionStore', () => {
     });
 
     it('deletes the session when the user never replied', async () => {
-      mockCreateSession.mockResolvedValue({ id: 'test-session-id', startedAt: Date.now() });
+      mockCreateSession.mockResolvedValue(createdSession('test-session-id'));
       await useSessionStore.getState().startSession();
       useSessionStore.getState().addLocalMessage({ role: 'assistant', content: 'How is today going?' });
 
@@ -191,6 +205,43 @@ describe('useSessionStore', () => {
 
       expect(mockDeleteSession).toHaveBeenCalledWith('test-session-id');
       expect(mockUpdateSession).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('rituals', () => {
+    it('starts the day\'s ritual empty, so the opener runs', async () => {
+      mockCreateSession.mockResolvedValue({
+        ...createdSession('ritual-id'),
+        opener: 'review-day',
+        ritualDate: '2026-08-26',
+      });
+
+      await useSessionStore
+        .getState()
+        .startSession({ opener: 'review-day', ritualDate: '2026-08-26' });
+
+      const state = useSessionStore.getState();
+      expect(state.opener).toBe('review-day');
+      expect(state.ritualDate).toBe('2026-08-26');
+      expect(state.messages).toEqual([]);
+    });
+
+    // Tapping the card again that day gets the same session back. Starting it
+    // empty would re-send the opener and overwrite the transcript on first sync.
+    it('resumes the transcript when the day already has that ritual', async () => {
+      mockCreateSession.mockResolvedValue(
+        buildDetail({ id: 'ritual-id', opener: 'review-day', ritualDate: '2026-08-26' })
+      );
+
+      await useSessionStore
+        .getState()
+        .startSession({ opener: 'review-day', ritualDate: '2026-08-26' });
+
+      const state = useSessionStore.getState();
+      expect(state.sessionId).toBe('ritual-id');
+      expect(state.opener).toBe('review-day');
+      expect(state.ritualDate).toBe('2026-08-26');
+      expect(state.messages).toHaveLength(3);
     });
   });
 
