@@ -12,7 +12,7 @@ interface TodoTagPillProps {
   onPress?: () => void;
 }
 
-/** The one shape a tag takes on screen: the row's label and the picker's choice. */
+/** The tag pill the compact task row draws, and the quick-create picker offers. */
 export function TodoTagPill({ name, color, onPress }: TodoTagPillProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const colorTheme = useColorTheme();

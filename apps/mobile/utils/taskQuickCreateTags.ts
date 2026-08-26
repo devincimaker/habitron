@@ -300,14 +300,26 @@ export function rankTagSuggestions<T extends { name: string }>(tags: T[], query:
     );
 }
 
-/** Puts `#tagName` at the caret: the `#…` token under it is replaced, otherwise
- * one is inserted first. */
+/**
+ * Puts `#tagName` at the caret: the `#…` token under it is replaced, otherwise
+ * one is inserted. The category lives on the first line and a token is a whole
+ * word, so a caret on a checklist line or inside a word first moves to the end
+ * of the first line's word — never splitting one.
+ */
 export function applyTagAtSelection(
   text: string,
   selection: TextSelectionRange,
   tagName: string
 ) {
-  const trigger = insertTagTriggerAtSelection(text, selection);
+  const firstLineEnd = text.indexOf('\n');
+  const lineEnd = firstLineEnd === -1 ? text.length : firstLineEnd;
+  let caret = clampSelectionValue(selection.start, lineEnd);
+  while (caret < lineEnd && !isWhitespace(text[caret])) {
+    caret += 1;
+  }
+
+  const trigger = insertTagTriggerAtSelection(text, { start: caret, end: caret });
   const context = getActiveInlineTagContext(trigger.text, trigger.selection);
-  return context ? replaceActiveInlineTagContext(trigger.text, context, tagName) : trigger;
+  if (!context) return trigger;
+  return replaceActiveInlineTagContext(trigger.text, context, tagName);
 }

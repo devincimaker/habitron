@@ -47,7 +47,7 @@ describe('taskQuickCreateTags', () => {
   });
 
   it('leaves priority off the draft when none was chosen', () => {
-    expect(buildQuickCreateTodoDraft('Call the bank', '2026-04-20', undefined)).toEqual({
+    expect(buildQuickCreateTodoDraft('Call the bank', '2026-04-20')).toEqual({
       title: 'Call the bank',
       scheduledDate: '2026-04-20',
     });
@@ -87,6 +87,20 @@ describe('taskQuickCreateTags', () => {
     expect(applyTagAtSelection('Call the bank', { start: 13, end: 13 }, 'admin')).toEqual({
       text: 'Call the bank #admin ',
       selection: { start: 21, end: 21 },
+    });
+  });
+
+  it('applies a picked tag after the word the caret is in, never inside it', () => {
+    expect(applyTagAtSelection('Call the bank', { start: 6, end: 6 }, 'admin')).toEqual({
+      text: 'Call the #admin bank',
+      selection: { start: 15, end: 15 },
+    });
+  });
+
+  it('applies a picked tag on the first line when the caret is on a checklist line', () => {
+    expect(applyTagAtSelection('Buy milk\noat', { start: 11, end: 11 }, 'errands')).toEqual({
+      text: 'Buy milk #errands\noat',
+      selection: { start: 17, end: 17 },
     });
   });
 

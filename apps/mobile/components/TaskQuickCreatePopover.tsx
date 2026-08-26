@@ -1,5 +1,5 @@
 import { useEffect, useState, type RefObject } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Priority, TodoTag } from '@habits-coach/shared';
 import { TodoTagPill } from './TodoTagPill';
@@ -118,7 +118,11 @@ export function TaskQuickCreatePopover({
             );
           })
         ) : (
-          <View style={styles.tagRow}>
+          <ScrollView
+            style={styles.tagScroll}
+            contentContainerStyle={styles.tagRow}
+            keyboardShouldPersistTaps="handled"
+          >
             {content.tags.map((tag) => (
               <TodoTagPill
                 key={tag.id}
@@ -127,7 +131,7 @@ export function TaskQuickCreatePopover({
                 onPress={() => content.onSelect(tag.name)}
               />
             ))}
-          </View>
+          </ScrollView>
         )}
       </View>
     </>
@@ -158,6 +162,9 @@ const createStyles = (colors: Colors) =>
       ...TYPOGRAPHY.bodyMedium,
       color: colors.text,
       flex: 1,
+    },
+    tagScroll: {
+      maxHeight: 160,
     },
     tagRow: {
       flexDirection: 'row',

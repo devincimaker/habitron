@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- HAB-89: split pending */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -47,6 +47,18 @@ interface TaskQuickCreateSheetProps {
 
 type QuickCreatePicker = 'priority' | 'tags';
 
+interface QuickAction {
+  key: string;
+  ref?: RefObject<View | null>;
+  icon: keyof typeof Ionicons.glyphMap;
+  /** Set when the icon carries its own colour (the priority flag). */
+  iconColor?: string;
+  label: string;
+  badge?: string;
+  isActive: boolean;
+  onPress: () => void;
+}
+
 const INITIAL_SELECTION: TextSelectionRange = { start: 0, end: 0 };
 
 export function TaskQuickCreateSheet({
@@ -84,7 +96,8 @@ export function TaskQuickCreateSheet({
   );
   const canSave = Boolean(saveDraft) && !isSaving;
   const priorityOption = getTodoPriorityOption(priority);
-  const hasInlineTag = Boolean(getInlineTagName(title));
+  // Only the first line's tag is the category; checklist lines below do not count.
+  const hasInlineTag = Boolean(getInlineTagName(title.split('\n')[0] ?? ''));
 
   const focusComposer = useCallback((delayMs = 0) => {
     requestAnimationFrame(() => {
@@ -181,8 +194,14 @@ export function TaskQuickCreateSheet({
     setPicker(null);
   };
 
+  const handleChangeTitle = (nextTitle: string) => {
+    setTitle(nextTitle);
+    // Typing is a dismissal, like tapping outside; the inline `#` list takes over.
+    setPicker(null);
+  };
+
   // The tag button lists every tag; typing `#` lists the matches, above the same button.
-  const pickerTags = picker === 'tags' ? tags : picker === null ? tagSuggestions : [];
+  const pickerTags = picker === 'tags' ? tags : tagSuggestions;
   const pickerContent: TaskQuickCreatePopoverContent | null =
     picker === 'priority'
       ? { kind: 'priority', selected: priority, onSelect: handleSelectPriority }
@@ -190,12 +209,10 @@ export function TaskQuickCreateSheet({
         ? { kind: 'tags', tags: pickerTags, onSelect: handleSelectTag }
         : null;
 
-  const quickActions = [
+  const quickActions: QuickAction[] = [
     {
       key: 'date',
-      ref: undefined,
-      icon: 'calendar-outline' as const,
-      iconColor: undefined,
+      icon: 'calendar-outline',
       label: scheduledDate
         ? `Scheduled ${formatRelativeDateLabel(scheduledDate)}, change date`
         : 'Schedule task',
@@ -206,22 +223,19 @@ export function TaskQuickCreateSheet({
     {
       key: 'priority',
       ref: priorityButtonRef,
-      icon: priorityOption ? ('flag' as const) : ('flag-outline' as const),
+      icon: priorityOption ? 'flag' : 'flag-outline',
       iconColor: priorityOption?.color,
       label: priorityOption
         ? `Priority ${priorityOption.label}, change priority`
         : 'Set priority',
-      badge: undefined,
       isActive: !!priorityOption || picker === 'priority',
       onPress: () => setPicker('priority'),
     },
     {
       key: 'tag',
       ref: tagButtonRef,
-      icon: 'pricetag-outline' as const,
-      iconColor: undefined,
+      icon: 'pricetag-outline',
       label: 'Set category',
-      badge: undefined,
       isActive: hasInlineTag || picker === 'tags',
       onPress: handleOpenTagPicker,
     },
@@ -277,7 +291,7 @@ export function TaskQuickCreateSheet({
                 placeholder="What needs to happen?"
                 placeholderTextColor={colors.textLight}
                 value={title}
-                onChangeText={setTitle}
+                onChangeText={handleChangeTitle}
                 selection={selection}
                 onSelectionChange={handleSelectionChange}
                 selectionColor={colors.primary}
@@ -345,8 +359,9 @@ export function TaskQuickCreateSheet({
 
           {pickerContent ? (
             <TaskQuickCreatePopover
-              // Remount on a change of anchor, so the card re-measures its place.
-              key={pickerContent.kind}
+              // Remount when the anchor changes, or the date badge moves it: the card
+              // measures its place once, on mount.
+              key={`${pickerContent.kind}-${scheduledDate ?? ''}`}
               anchorRef={pickerContent.kind === 'priority' ? priorityButtonRef : tagButtonRef}
               containerRef={sheetRef}
               content={pickerContent}
@@ -391,6 +406,9 @@ const createStyles = (colors: Colors) =>
     },
     sheet: {
       minHeight: 284,
+      // Slack under minHeight sits above the composer, so the actions row always
+      // rides the bottom edge the popover is measured from.
+      justifyContent: 'flex-end',
       backgroundColor: colors.background,
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
