@@ -33,6 +33,7 @@ const FIXTURE_TABLES = [
   'habit_reminders',
   'habits',
   'habit_sections',
+  'desired_habits',
   'journal_entries',
 ] as const;
 
@@ -153,6 +154,17 @@ for (const log of fixtures.habitLogs) {
   if (!id) throw new Error(`No habit named ${log.habit} to log against`);
   await habitron.db.logHabit({ habitId: id, date: log.date, status: 'completed', amount: log.amount });
 }
+
+step(`Writing ${fixtures.desiredHabits.length} desired habits`);
+const { error: desiredError } = await supabase.from('desired_habits').insert(
+  fixtures.desiredHabits.map((desired) => ({
+    user_id: user.id,
+    title: desired.title,
+    note: desired.note ?? null,
+    habit_id: desired.habit ? (habitId.get(desired.habit) ?? null) : null,
+  }))
+);
+if (desiredError) throw new Error(`Failed to write desired habits: ${desiredError.message}`);
 
 step(`Writing ${fixtures.journal.length} journal entries`);
 for (const entry of fixtures.journal) {

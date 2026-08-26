@@ -22,11 +22,13 @@ import Animated, {
   runOnJS,
 } from 'react-native-reanimated';
 import type {
+  DesiredHabit,
   Habit,
   HabitDraft,
   HabitStatus,
   HabitWithStatus,
 } from '@habits-coach/shared';
+import { DesiredHabitsSection } from '../../components/DesiredHabitsSection';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
 import { HabitLogSheet } from '../../components/HabitLogSheet';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
@@ -36,6 +38,7 @@ import { MiniCalendar } from '../../components/MiniCalendar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
 import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
+import { useDesiredHabitsStore } from '../../stores/useDesiredHabitsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import {
   HEADER,
@@ -87,11 +90,14 @@ export default function HabitsScreen() {
     setSelectedDate,
   } = useHabitsStore();
   const { plansByDate, loadPlan, updateOutcomeForHabit } = useDailyPlansStore();
+  const linkDesiredHabit = useDesiredHabitsStore((state) => state.updateDesiredHabit);
 
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
   const [showHabitEditor, setShowHabitEditor] = useState(false);
   const [showHabitManager, setShowHabitManager] = useState(false);
   const [loggingHabitId, setLoggingHabitId] = useState<string | null>(null);
+  /** The desired habit whose "Start this habit" opened the editor, if any. */
+  const [startingDesired, setStartingDesired] = useState<DesiredHabit | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [transitionDirection, setTransitionDirection] =
     useState<TransitionDirection>('backward');
@@ -225,20 +231,32 @@ export default function HabitsScreen() {
     async (draft: HabitDraft) => {
       if (editingHabit) {
         await updateHabit(editingHabit.id, draft);
-      } else {
-        await addHabit(draft);
+        return;
+      }
+
+      const created = await addHabit(draft);
+      if (startingDesired) {
+        await linkDesiredHabit(startingDesired.id, { habitId: created.id });
       }
     },
-    [addHabit, editingHabit, updateHabit]
+    [addHabit, editingHabit, linkDesiredHabit, startingDesired, updateHabit]
   );
 
   const closeHabitEditor = useCallback(() => {
     setShowHabitEditor(false);
     setEditingHabit(null);
+    setStartingDesired(null);
+  }, []);
+
+  const handleStartDesiredHabit = useCallback((desired: DesiredHabit) => {
+    setStartingDesired(desired);
+    setEditingHabit(null);
+    setShowHabitEditor(true);
   }, []);
 
   const openHabitEditor = useCallback((habit?: Habit | null) => {
     setEditingHabit(habit ?? null);
+    setStartingDesired(null);
     setShowHabitEditor(true);
   }, []);
   const handleSelectDate = useCallback(
@@ -415,7 +433,12 @@ export default function HabitsScreen() {
                   tintColor={colors.primary}
                 />
               }
-              ListFooterComponent={<View style={styles.footer} />}
+              ListFooterComponent={
+                <>
+                  <DesiredHabitsSection onStartHabit={handleStartDesiredHabit} />
+                  <View style={styles.footer} />
+                </>
+              }
               showsVerticalScrollIndicator={false}
             />
           </Animated.View>
@@ -447,6 +470,7 @@ export default function HabitsScreen() {
         <HabitEditorModal
           visible={showHabitEditor}
           habit={editingHabit}
+          initialName={startingDesired?.title}
           sections={sections}
           allHabits={habits}
           onClose={closeHabitEditor}

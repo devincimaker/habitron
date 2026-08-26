@@ -52,6 +52,8 @@ import {
 interface HabitEditorModalProps {
   visible: boolean;
   habit?: Habit | null;
+  /** Prefills the name when creating, so a desired habit can start itself. */
+  initialName?: string;
   sections: HabitSection[];
   /** All habits, used to surface previously created custom units. */
   allHabits: Habit[];
@@ -90,6 +92,7 @@ function describeGoal(goal: HabitGoal): string {
 export function HabitEditorModal({
   visible,
   habit,
+  initialName,
   sections,
   allHabits,
   onClose,
@@ -142,7 +145,7 @@ export function HabitEditorModal({
     if (!visible) return;
 
     setStep(habit ? 'details' : 'basics');
-    setName(habit?.name ?? '');
+    setName(habit?.name ?? initialName ?? '');
     setReason(habit?.reason ?? '');
     setFrequency(habit?.frequency ?? 'daily');
     setWeeklyDays(habit?.weeklyDays ?? getDefaultWeeklyDays());
@@ -165,12 +168,12 @@ export function HabitEditorModal({
     setReminderTimes(habit?.reminderTimes ?? []);
     setConstantReminder(habit?.constantReminder ?? false);
     setAutoPopupLog(habit?.autoPopupLog ?? false);
-    setSelectedIcon(resolveHabitIcon(habit?.name, habit?.icon));
+    setSelectedIcon(resolveHabitIcon(habit?.name ?? initialName, habit?.icon));
     setHasCustomIcon(Boolean(habit?.icon));
     setScheduleError(null);
     setActivePicker(null);
     setEditingReminder(null);
-  }, [visible, habit, defaultSectionId]);
+  }, [visible, habit, initialName, defaultSectionId]);
 
   useEffect(() => {
     if (!visible || hasCustomIcon) {

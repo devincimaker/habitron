@@ -82,6 +82,17 @@ describe('buildFixtures', () => {
     }
   });
 
+  it('gives the desired habits section one started and one not-started row', () => {
+    expect(fixtures.desiredHabits.map((desired) => desired.habit)).toEqual(['Run', undefined]);
+  });
+
+  it('names a habit that exists for every desired habit that has one', () => {
+    const habits = new Set(fixtures.habits.map((habit) => habit.name));
+    for (const desired of fixtures.desiredHabits) {
+      if (desired.habit) expect(habits.has(desired.habit), desired.title).toBe(true);
+    }
+  });
+
   it('holds no absolute date: a different today shifts every date by the same amount', () => {
     const later = buildFixtures('2026-09-04'); // ten days on
 
