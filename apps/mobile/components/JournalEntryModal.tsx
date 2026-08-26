@@ -191,7 +191,7 @@ export function JournalEntryModal({
             value={content}
             onChangeText={setContent}
             multiline
-            autoFocus={!autoStartVoice}
+            autoFocus={!entry && !autoStartVoice}
             accessibilityLabel="Journal entry"
           />
         </View>
