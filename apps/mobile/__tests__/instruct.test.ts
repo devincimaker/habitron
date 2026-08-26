@@ -208,15 +208,14 @@ describe('abort', () => {
     expect(aborted).toEqual(INITIAL_INSTRUCT_STATE);
   });
 
-  it('returns a correction to the sheet it interrupted, intact', () => {
+  it('closes the sheet a correction interrupted, session and all', () => {
     const correcting = run([{ type: 'hold-start' }, { type: 'submit' }], proposed);
     const aborted = instructReducer(correcting, { type: 'abort' });
-    expect(aborted.phase).toBe('proposal');
-    expect(aborted.proposal).toEqual(proposal);
-    expect(aborted.transcript).toBe('move my run');
-    expect(aborted.claudeSessionId).toBe('claude-1');
-    expect(aborted.correcting).toBe(false);
-    expect(aborted.activity).toBeNull();
+    // The session has already taken the correction, so the proposal on that
+    // sheet is stale and its Apply would write what was just cancelled.
+    expect(aborted).toEqual(INITIAL_INSTRUCT_STATE);
+    expect(aborted.claudeSessionId).toBeNull();
+    expect(aborted.proposal).toBeNull();
   });
 
   it('leaves every other phase alone, applying included', () => {

@@ -139,12 +139,14 @@ export function instructReducer(state: InstructState, action: InstructAction): I
       if (!state.correcting) return INITIAL_INSTRUCT_STATE;
       return { ...state, phase: sheetPhase(state), correcting: false, cancelArmed: false };
 
-    case 'abort': {
+    // Stopping a turn stops the whole thing. A correction has already reached
+    // the session by the time it can be aborted, so the sheet behind it now
+    // quotes a proposal the session has moved past: returning to it would offer
+    // an Apply that writes the correction the user cancelled and never saw.
+    // The session goes with it.
+    case 'abort':
       if (!canAbort(state)) return state;
-      const phase = sheetPhase(state);
-      if (phase === 'idle') return INITIAL_INSTRUCT_STATE;
-      return { ...state, phase, correcting: false, activity: null };
-    }
+      return INITIAL_INSTRUCT_STATE;
 
     case 'submit':
       if (state.phase !== 'recording') return state;
