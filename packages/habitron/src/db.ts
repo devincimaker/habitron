@@ -16,6 +16,7 @@ import type {
   Priority,
   TodoStatus,
 } from '@habits-coach/shared';
+import { reviewPatch } from './dayReview.js';
 import { habitRowFromInput, type HabitFields } from './habitInput.js';
 import { today } from './time.js';
 
@@ -206,6 +207,41 @@ export interface HabitLogRecord {
   /** Progress for quantity habits (0 for boolean habits). */
   amount: number;
 }
+
+/** How far a review got. The floor is banked before depth is ever offered. */
+export type ReviewDepth = 'quick' | 'standard' | 'deep';
+
+interface DbDayReview {
+  id: string;
+  review_date: string;
+  happy: number | null;
+  energy: number | null;
+  momentum: number | null;
+  calm: number | null;
+  overall: number | null;
+  highlight: string | null;
+  friction: string | null;
+  depth: ReviewDepth;
+  reviewed_at: string;
+}
+
+/** One day rated on four axes plus a verdict. An absent axis was not asked. */
+export interface DayReviewRecord {
+  id: string;
+  reviewDate: string;
+  happy?: number;
+  energy?: number;
+  momentum?: number;
+  calm?: number;
+  overall?: number;
+  highlight?: string;
+  friction?: string;
+  depth: ReviewDepth;
+  reviewedAt: string;
+}
+
+/** Every field optional: a call writes only what it passes. */
+export type DayReviewInput = Partial<Omit<DayReviewRecord, 'id' | 'reviewDate' | 'reviewedAt'>>;
 
 interface DbJournalEntry {
   id: string;
@@ -885,6 +921,83 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   }
 
   // ---------------------------------------------------------------------------
+  // Day reviews
+  // ---------------------------------------------------------------------------
+
+  const DAY_REVIEW_COLUMNS =
+    'id, review_date, happy, energy, momentum, calm, overall, highlight, friction, depth, reviewed_at';
+
+  function mapDayReview(row: DbDayReview): DayReviewRecord {
+    return {
+      id: row.id,
+      reviewDate: row.review_date,
+      happy: row.happy ?? undefined,
+      energy: row.energy ?? undefined,
+      momentum: row.momentum ?? undefined,
+      calm: row.calm ?? undefined,
+      overall: row.overall ?? undefined,
+      highlight: row.highlight ?? undefined,
+      friction: row.friction ?? undefined,
+      depth: row.depth,
+      reviewedAt: row.reviewed_at,
+    };
+  }
+
+  async function getDayReview(date: string): Promise<DayReviewRecord | null> {
+    const row = unwrap(
+      await supabase
+        .from('day_reviews')
+        .select(DAY_REVIEW_COLUMNS)
+        .eq('user_id', userId)
+        .eq('review_date', date)
+        .maybeSingle()
+    ) as DbDayReview | null;
+    return row ? mapDayReview(row) : null;
+  }
+
+  async function listDayReviews(start: string, end: string): Promise<DayReviewRecord[]> {
+    const rows = unwrap(
+      await supabase
+        .from('day_reviews')
+        .select(DAY_REVIEW_COLUMNS)
+        .eq('user_id', userId)
+        .gte('review_date', start)
+        .lte('review_date', end)
+        .order('review_date', { ascending: true })
+    ) as DbDayReview[];
+    return rows.map(mapDayReview);
+  }
+
+  /**
+   * Merges into the day's row, creating it if there is none. `reviewPatch` holds
+   * the rules; the read before it is what makes the `depth` clamp possible, and
+   * costs one extra round trip on a call the coach makes three times an evening.
+   */
+  async function saveDayReview(date: string, input: DayReviewInput): Promise<DayReviewRecord> {
+    const current = await getDayReview(date);
+    const patch = reviewPatch(current, input);
+
+    // A call that writes nothing must not create a row: an empty review would
+    // still count towards the streak and would make the skill offer to "add to"
+    // a review that recorded nothing.
+    if (Object.keys(patch).length === 0) {
+      if (current) return current;
+      throw new Error(
+        `Nothing to save for ${date}. Pass at least one rating, highlight or friction.`
+      );
+    }
+
+    const row = unwrap(
+      await supabase
+        .from('day_reviews')
+        .upsert({ user_id: userId, review_date: date, ...patch }, { onConflict: 'user_id,review_date' })
+        .select(DAY_REVIEW_COLUMNS)
+        .single()
+    ) as DbDayReview;
+    return mapDayReview(row);
+  }
+
+  // ---------------------------------------------------------------------------
   // Desired habits
   // ---------------------------------------------------------------------------
 
@@ -1188,6 +1301,9 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     logHabit,
     listRecentJournalEntries,
     addJournalEntry,
+    getDayReview,
+    listDayReviews,
+    saveDayReview,
     listDesiredHabits,
     addDesiredHabit,
     updateDesiredHabit,

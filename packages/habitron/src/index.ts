@@ -1,11 +1,20 @@
 import { createClient } from '@supabase/supabase-js';
 import { buildDayContext } from './context.js';
 import { createDb, type Db } from './db.js';
-import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
+import {
+  buildDayReviewHistory,
+  buildHabitHistory,
+  buildJournalHistory,
+  buildTaskHistory,
+} from './history.js';
 import { createTools, type AnyHabitronTool } from './tools.js';
 
 export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskPatch } from './db.js';
 export type { DayContext, HabitForDay } from './context.js';
+// One definition of "reviewed" for the ritual card HAB-86 adds. Note the hub is
+// in `apps/mobile`, which depends on `@habits-coach/shared` and not on this
+// package, so HAB-86 reaches this through `apps/api` or moves it — see the PR.
+export { reviewStreak, type ReviewStreak } from './dayReview.js';
 export type { AnyHabitronTool, HabitronTool } from './tools.js';
 export { addDays, isIsoDate, localNow, today, weekRange, weekdayOf, type LocalNow } from './time.js';
 
@@ -27,6 +36,7 @@ export interface Habitron {
   buildHabitHistory: (args: { days: number; habitId?: string }) => ReturnType<typeof buildHabitHistory>;
   buildTaskHistory: (args: { days: number }) => ReturnType<typeof buildTaskHistory>;
   buildJournalHistory: (args: { days: number }) => ReturnType<typeof buildJournalHistory>;
+  buildDayReviewHistory: (args: { days: number }) => ReturnType<typeof buildDayReviewHistory>;
 }
 
 /** Habitron's data and coaching tools for one user, backed by the service-role Supabase client. */
@@ -45,5 +55,6 @@ export function createHabitron(config: HabitronConfig): Habitron {
     buildHabitHistory: (args) => buildHabitHistory(db, timezone, args),
     buildTaskHistory: (args) => buildTaskHistory(db, timezone, args),
     buildJournalHistory: (args) => buildJournalHistory(db, timezone, args),
+    buildDayReviewHistory: (args) => buildDayReviewHistory(db, timezone, args),
   };
 }

@@ -2,7 +2,12 @@
 import { z } from 'zod';
 import { buildDayContext } from './context.js';
 import type { Db, PlanItemInput } from './db.js';
-import { buildHabitHistory, buildJournalHistory, buildTaskHistory } from './history.js';
+import {
+  buildDayReviewHistory,
+  buildHabitHistory,
+  buildJournalHistory,
+  buildTaskHistory,
+} from './history.js';
 import { instantFrom, isIsoDate, isIsoDateTime, today, WEEKDAYS } from './time.js';
 
 /**
@@ -37,6 +42,8 @@ const dateTimeSchema = z
   .string()
   .refine(isIsoDateTime, 'Expected YYYY-MM-DDTHH:MM')
   .describe('YYYY-MM-DDTHH:MM, local wall clock (seconds optional, ignored)');
+/** Every review axis: 1-5, higher always better, absent means not asked. */
+const ratingSchema = z.int().min(1).max(5).optional();
 const weekdaySchema = z.enum(WEEKDAYS);
 const habitFrequencySchema = z.enum(['daily', 'weekly', 'interval']);
 const habitGoalTypeSchema = z.enum(['boolean', 'quantity']);
@@ -116,7 +123,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'get_day_context',
       title: 'Get day context',
       description:
-        'The planning packet for one day: local now, tasks (scheduled for the date, overdue, due soon, unscheduled), active habits with completion signal, the active accepted plan, recent journal entries, memories, and a summary of how the last 14 days of plans went. Call this first before planning, replanning, or reviewing a day.',
+        'The planning packet for one day: local now, tasks (scheduled for the date, overdue, due soon, unscheduled), active habits with completion signal, the active accepted plan, desired habits with their stand-in resolved, recent journal entries, memories, and a summary of how the last 14 days of plans went. It also carries `scorecard` — the day already counted, so never recompute plan adherence, habit counts or minutes yourself — and `review`, the day\'s rating row if one exists. Call this first before planning, replanning, or reviewing a day.',
       inputSchema: { date: dateSchema.optional().describe('Defaults to today') },
       annotations: { readOnlyHint: true },
       handler: ({ date }) => buildDayContext(db, timezone, date ?? now()),
@@ -189,6 +196,40 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       inputSchema: { days: z.int().min(7).max(365).optional().describe('Window ending today; default 30') },
       annotations: { readOnlyHint: true },
       handler: ({ days }) => buildJournalHistory(db, timezone, { days: days ?? 30 }),
+    }),
+
+    defineTool({
+      name: 'get_day_review_history',
+      title: 'Get day review history',
+      description:
+        'Day reviews over a window (default 30 days, max 365): the rows, per-axis averages and first-half/second-half trend, how many of the days were reviewed, and the current streak. Axes run 1-5 and higher is always better.',
+      inputSchema: { days: z.int().min(7).max(365).optional().describe('Window ending today; default 30') },
+      annotations: { readOnlyHint: true },
+      handler: ({ days }) => buildDayReviewHistory(db, timezone, { days: days ?? 30 }),
+    }),
+
+    defineTool({
+      name: 'save_day_review',
+      title: 'Save day review',
+      description:
+        "Rate a day on four axes plus a verdict. Merges into the day's row, so each beat of the review is its own call and a later one never blanks an earlier one. Pass only what the user actually gave: an axis left out stays unrated, and an unrated day must never be recorded as a middling one.",
+      inputSchema: {
+        date: dateSchema.optional().describe('The day being reviewed; defaults to today'),
+        happy: ratingSchema.describe('Is doing what I plan making me happy? 1 rough - 5 great'),
+        energy: ratingSchema.describe('Am I overexerting? 1 empty - 5 buzzing'),
+        momentum: ratingSchema.describe('Did it move the needle toward what I want? 1 stuck - 5 flying'),
+        calm: ratingSchema.describe('Is the plan crowding me? 1 frazzled - 5 calm'),
+        overall: ratingSchema.describe(
+          'The verdict, from the gut. Never computed from the axes, and allowed to disagree with them'
+        ),
+        highlight: z.string().optional(),
+        friction: z.string().optional(),
+        depth: z
+          .enum(['quick', 'standard', 'deep'])
+          .optional()
+          .describe('quick after the ratings, standard after the one question, deep after the open lane'),
+      },
+      handler: ({ date, ...input }) => db.saveDayReview(date ?? today(timezone), input),
     }),
 
     defineTool({

@@ -121,6 +121,15 @@ export function addDays(date: string, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Where a window splits for a first-half/second-half trend. The middle day of an
+ * odd window belongs to the second half. One definition, because habit trends
+ * and review trends are read side by side and must not disagree about it.
+ */
+export function windowMidpoint(start: string, days: number): string {
+  return addDays(start, Math.floor(days / 2));
+}
+
 /** Sunday-based week containing `date`, matching HABIT_WEEKDAYS ordering. */
 export function weekRange(date: string): { start: string; end: string } {
   const dow = new Date(`${date}T00:00:00Z`).getUTCDay();
