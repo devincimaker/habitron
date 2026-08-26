@@ -1,6 +1,6 @@
 import type { HabitStatus, HabitWeekday } from '@habits-coach/shared';
 import type { Db, Habit, HabitLogRecord } from './db.js';
-import { addDays, localNow, weekdayOf } from './time.js';
+import { addDays, localDateOf, localNow, weekdayOf } from './time.js';
 
 const WEEKDAYS: HabitWeekday[] = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -156,16 +156,23 @@ export async function buildTaskHistory(db: Db, timezone: string, args: { days: n
   const start = addDays(end, -(args.days - 1));
   const [tasks, plans] = await Promise.all([db.listAllTasks(), db.listPlans(start, end)]);
 
+  // The local completion date is read once per task and carried, rather than
+  // recomputed at each of the four places below that group by it.
   const completed = tasks
-    .filter((t) => t.status === 'completed' && t.completedAt && t.completedAt.slice(0, 10) >= start && t.completedAt.slice(0, 10) <= end)
-    .sort((a, b) => (a.completedAt ?? '').localeCompare(b.completedAt ?? ''));
-  const canceled = tasks.filter((t) => t.status === 'canceled' && t.canceledAt && t.canceledAt.slice(0, 10) >= start);
-  const created = tasks.filter((t) => t.createdAt.slice(0, 10) >= start);
+    .flatMap((t) =>
+      t.status === 'completed' && t.completedAt
+        ? // Restating completedAt narrows it to string for everything downstream.
+          [{ ...t, completedAt: t.completedAt, completedOn: localDateOf(t.completedAt, timezone) }]
+        : []
+    )
+    .filter((t) => t.completedOn >= start && t.completedOn <= end)
+    .sort((a, b) => a.completedAt.localeCompare(b.completedAt));
+  const canceled = tasks.filter((t) => t.status === 'canceled' && t.canceledAt && localDateOf(t.canceledAt, timezone) >= start);
+  const created = tasks.filter((t) => localDateOf(t.createdAt, timezone) >= start);
 
   const perDay = new Map<string, number>();
   for (const t of completed) {
-    const d = (t.completedAt ?? '').slice(0, 10);
-    perDay.set(d, (perDay.get(d) ?? 0) + 1);
+    perDay.set(t.completedOn, (perDay.get(t.completedOn) ?? 0) + 1);
   }
   const daysWithCompletions = perDay.size;
 
@@ -183,7 +190,7 @@ export async function buildTaskHistory(db: Db, timezone: string, args: { days: n
 
   const byWeekday = WEEKDAYS.map((weekday) => ({
     weekday,
-    completed: completed.filter((t) => weekdayOf((t.completedAt ?? '').slice(0, 10)) === weekday).length,
+    completed: completed.filter((t) => weekdayOf(t.completedOn) === weekday).length,
   }));
   const byScheduledTime: Record<string, number> = {};
   for (const t of completed) {
@@ -199,7 +206,7 @@ export async function buildTaskHistory(db: Db, timezone: string, args: { days: n
 
   const openAgeDays = tasks
     .filter((t) => t.status === 'open')
-    .map((t) => daysBetween(t.createdAt.slice(0, 10), end));
+    .map((t) => daysBetween(localDateOf(t.createdAt, timezone), end));
 
   // Completed work per category, so the coach can spot neglected areas of life.
   const byTag: Record<string, { tagId: string | null; completed: number; minutes: number }> = {};

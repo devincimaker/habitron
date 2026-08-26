@@ -1,5 +1,15 @@
 import { describe, expect, it, vi, afterEach } from 'vitest';
-import { addDays, isIsoDate, localNow, today, weekRange, weekdayOf } from './time.js';
+import {
+  addDays,
+  instantFrom,
+  isIsoDate,
+  isIsoDateTime,
+  localDateOf,
+  localNow,
+  today,
+  weekRange,
+  weekdayOf,
+} from './time.js';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -60,5 +70,89 @@ describe('localNow', () => {
     vi.setSystemTime(new Date('2026-08-24T22:05:00Z'));
 
     expect(localNow('Europe/Madrid').time).toBe('00:05');
+  });
+});
+
+describe('isIsoDateTime', () => {
+  it('accepts a local wall clock', () => {
+    expect(isIsoDateTime('2026-08-25T07:15')).toBe(true);
+    expect(isIsoDateTime('2026-08-25T00:00')).toBe(true);
+    expect(isIsoDateTime('2026-08-25T23:59')).toBe(true);
+  });
+
+  it('tolerates seconds, which models emit unprompted', () => {
+    // Measured: the first create_task of a real log turn sent
+    // '2026-08-25T07:00:00' and was rejected, costing a round trip.
+    expect(isIsoDateTime('2026-08-25T07:15:00')).toBe(true);
+    expect(isIsoDateTime('2026-08-25T07:15:42')).toBe(true);
+    expect(isIsoDateTime('2026-08-25T07:15:60')).toBe(false);
+  });
+
+  it('rejects a space separator, a zone, and impossible clock times', () => {
+    expect(isIsoDateTime('2026-08-25 07:15')).toBe(false);
+    expect(isIsoDateTime('2026-08-25T07:15Z')).toBe(false);
+    expect(isIsoDateTime('2026-08-25T24:00')).toBe(false);
+    expect(isIsoDateTime('2026-08-25T07:60')).toBe(false);
+    expect(isIsoDateTime('2026-08-25')).toBe(false);
+  });
+});
+
+describe('instantFrom', () => {
+  it('reads a wall clock in its zone, on both sides of DST', () => {
+    // Paris is UTC+2 in August (CEST) and UTC+1 in January (CET).
+    expect(instantFrom('2026-08-25T07:15', 'Europe/Paris')).toBe('2026-08-25T05:15:00.000Z');
+    expect(instantFrom('2026-01-25T07:15', 'Europe/Paris')).toBe('2026-01-25T06:15:00.000Z');
+  });
+
+  it('is the identity in UTC', () => {
+    expect(instantFrom('2026-08-25T07:15', 'UTC')).toBe('2026-08-25T07:15:00.000Z');
+  });
+
+  it('truncates seconds to the minute rather than rejecting them', () => {
+    expect(instantFrom('2026-08-25T07:15:42', 'Europe/Paris')).toBe('2026-08-25T05:15:00.000Z');
+    expect(instantFrom('2026-08-25T07:15:00', 'Europe/Paris')).toBe(
+      instantFrom('2026-08-25T07:15', 'Europe/Paris')
+    );
+  });
+
+  it('handles a zone behind UTC, and one on a half-hour offset', () => {
+    expect(instantFrom('2026-08-25T07:15', 'America/New_York')).toBe('2026-08-25T11:15:00.000Z');
+    expect(instantFrom('2026-08-25T07:15', 'Asia/Kolkata')).toBe('2026-08-25T01:45:00.000Z');
+  });
+
+  it('round-trips through localDateOf across a day boundary', () => {
+    // 00:30 local in Paris is the previous day in UTC — the case the old
+    // .slice(0, 10) got wrong, in the direction that loses a day.
+    const instant = instantFrom('2026-08-25T00:30', 'Europe/Paris');
+    expect(instant).toBe('2026-08-24T22:30:00.000Z');
+    expect(localDateOf(instant, 'Europe/Paris')).toBe('2026-08-25');
+  });
+
+  it('resolves the hour that DST skips forward into', () => {
+    // 02:30 does not exist in Paris on 2026-03-29; the two-pass conversion
+    // settles rather than drifting, and stays inside that morning.
+    const instant = instantFrom('2026-03-29T02:30', 'Europe/Paris');
+    expect(localDateOf(instant, 'Europe/Paris')).toBe('2026-03-29');
+  });
+});
+
+describe('localDateOf', () => {
+  it('uses the local day, not the UTC one', () => {
+    expect(localDateOf('2026-08-24T22:30:00.000Z', 'Europe/Paris')).toBe('2026-08-25');
+    expect(localDateOf('2026-08-25T03:30:00.000Z', 'America/New_York')).toBe('2026-08-24');
+  });
+
+  it('matches the old UTC slice for a UTC user, so the correction is a no-op there', () => {
+    for (const instant of [
+      '2026-08-24T22:30:00.000Z',
+      '2026-08-25T00:00:00.000Z',
+      '2026-01-01T23:59:59.000Z',
+    ]) {
+      expect(localDateOf(instant, 'UTC')).toBe(instant.slice(0, 10));
+    }
+  });
+
+  it('accepts the +00:00 form Supabase returns', () => {
+    expect(localDateOf('2026-08-24T22:30:00+00:00', 'Europe/Paris')).toBe('2026-08-25');
   });
 });
