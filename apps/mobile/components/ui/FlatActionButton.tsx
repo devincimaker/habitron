@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Text, type StyleProp, type ViewStyle } from 'react-native';
+import { Pressable, StyleSheet, Text } from 'react-native';
 import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
@@ -8,7 +8,6 @@ interface FlatActionButtonProps {
   disabled?: boolean;
   height: number;
   accessibilityLabel?: string;
-  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -22,18 +21,16 @@ export function FlatActionButton({
   disabled = false,
   height,
   accessibilityLabel,
-  style,
 }: FlatActionButtonProps) {
   const [styles] = useThemedStyles(createStyles);
 
   return (
     <Pressable
-      style={[styles.action, { height }, disabled && styles.actionDisabled, style]}
+      style={[styles.action, { height }, disabled && styles.actionDisabled]}
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel ?? title}
-      accessibilityState={{ disabled }}
     >
       <Text style={[styles.label, disabled && styles.labelDisabled]} numberOfLines={1}>
         {title}

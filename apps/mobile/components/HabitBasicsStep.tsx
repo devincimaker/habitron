@@ -132,7 +132,8 @@ const createStyles = (colors: Colors) =>
     fieldNoMargin: {
       marginBottom: 0,
     },
-    // Three lines of reason, not Input's multiline hundred points.
+    // The canvas's field height: about a line and a half of reason before it
+    // grows, rather than Input's multiline 100.
     reasonInput: {
       minHeight: 72,
     },

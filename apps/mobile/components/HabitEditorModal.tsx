@@ -48,9 +48,9 @@ interface HabitEditorModalProps {
 type ComposerStep = 'basics' | 'details';
 
 /**
- * onShow fires as the sheet is presented, before its slide has settled; waiting
- * this long before raising the keyboard keeps the two animations from fighting
- * (the same delay the quick-create sheet uses).
+ * onShow fires once the sheet's presentation completes. The quick-create sheet
+ * still waits this long before raising the keyboard, so the sheet is at rest
+ * when the keyboard's own animation starts; this composer does the same.
  */
 const FOCUS_AFTER_SHOW_MS = 250;
 
