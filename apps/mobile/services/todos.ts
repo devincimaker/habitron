@@ -53,7 +53,7 @@ interface DbTodo {
   actual_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
-  sort_order: number;
+  position: number;
   tag_id: string | null;
   created_at: string;
   updated_at: string;
@@ -122,7 +122,7 @@ function mapDbTodoToTodo(todo: DbTodoWithRelations): Todo {
     actualMinutes: todo.actual_minutes ?? undefined,
     completedAt: todo.completed_at ? new Date(todo.completed_at).getTime() : undefined,
     canceledAt: todo.canceled_at ? new Date(todo.canceled_at).getTime() : undefined,
-    sortOrder: todo.sort_order,
+    position: todo.position,
     listId: todo.list_id,
     goalId: todo.goal_id ?? undefined,
     tag: todo.todo_tags ? mapDbTodoTagToTodoTag(todo.todo_tags) : undefined,
@@ -521,6 +521,24 @@ export async function getTodos(): Promise<Todo[]> {
   return (data as unknown as DbTodoWithRelations[]).map(mapDbTodoToTodo);
 }
 
+/** A new task appends to the user's manual order. */
+async function nextTodoPosition(userId: string): Promise<number> {
+  const { data, error } = await supabase
+    .from('todos')
+    .select('position')
+    .eq('user_id', userId)
+    .order('position', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Error reading the last todo position:', error);
+    throw error;
+  }
+
+  return data ? (data as Pick<DbTodo, 'position'>).position + 1 : 0;
+}
+
 export async function addTodo(todo: TodoDraft): Promise<Todo> {
   const userId = await getCurrentUserId();
   const listId = await resolveListId(userId, todo);
@@ -544,7 +562,7 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
     scheduled_time: serializeScheduledTime(schedule.scheduledTime),
     estimate_minutes: todo.estimateMinutes ?? null,
     tag_id: tagId ?? null,
-    sort_order: Date.now(),
+    position: await nextTodoPosition(userId),
   });
 
   if (todo.checklist?.length) {
@@ -625,6 +643,30 @@ export async function setTodoStatus(
   await updateTodoRow(todoId, updateData);
 
   return getTodoById(todoId);
+}
+
+export interface TodoOrderUpdate {
+  id: string;
+  position: number;
+}
+
+/**
+ * One update per changed row, like reorderHabits: todos.user_id, list_id and
+ * title are NOT NULL with no default, so a partial upsert is not an option. A
+ * drop touches at most one screen's worth of rows.
+ */
+export async function reorderTodos(updates: TodoOrderUpdate[]): Promise<void> {
+  const results = await Promise.all(
+    updates.map((update) =>
+      supabase.from('todos').update({ position: update.position }).eq('id', update.id)
+    )
+  );
+
+  const failure = results.find((result) => result.error);
+  if (failure?.error) {
+    console.error('Error reordering todos:', failure.error);
+    throw failure.error;
+  }
 }
 
 export async function removeTodo(todoId: string): Promise<void> {

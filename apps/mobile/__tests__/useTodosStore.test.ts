@@ -9,6 +9,7 @@ jest.mock('../services/todos', () => ({
   setTodoStatus: jest.fn(),
   setChecklistItemDone: jest.fn(),
   removeTodo: jest.fn(),
+  reorderTodos: jest.fn(),
   createTodoList: jest.fn(),
   createTodoTag: jest.fn(),
 }));
@@ -30,7 +31,7 @@ const baseTodo: Todo = {
   id: 'todo-1',
   title: 'Base todo',
   status: 'open',
-  sortOrder: 0,
+  position: 0,
   listId: baseList.id,
   createdAt: 1,
   updatedAt: 1,
@@ -89,7 +90,7 @@ describe('useTodosStore selectors', () => {
     ]);
   });
 
-  it('sorts same-day todos by scheduled time before priority', () => {
+  it('orders a day by position alone, never by time or priority', () => {
     useTodosStore.setState({
       todos: [
         {
@@ -98,7 +99,8 @@ describe('useTodosStore selectors', () => {
           title: 'Later task',
           scheduledDate: '2026-04-12',
           scheduledTime: '13:00',
-          priority: 1,
+          priority: 4,
+          position: 0,
         },
         {
           ...baseTodo,
@@ -106,7 +108,8 @@ describe('useTodosStore selectors', () => {
           title: 'Earlier task',
           scheduledDate: '2026-04-12',
           scheduledTime: '09:00',
-          priority: 4,
+          priority: 1,
+          position: 2,
         },
         {
           ...baseTodo,
@@ -114,14 +117,52 @@ describe('useTodosStore selectors', () => {
           title: 'Untimed task',
           scheduledDate: '2026-04-12',
           priority: 1,
+          position: 1,
         },
       ],
     });
 
     expect(useTodosStore.getState().getTodosForDate('2026-04-12').map((todo) => todo.id)).toEqual([
-      'earlier',
       'later',
       'untimed',
+      'earlier',
+    ]);
+  });
+
+  it('reorders optimistically and reloads when the write fails', async () => {
+    jest.spyOn(console, 'error').mockImplementation(() => {});
+    const first = { ...baseTodo, id: 'first', position: 0 };
+    const second = { ...baseTodo, id: 'second', position: 1 };
+    useTodosStore.setState({ todos: [first, second] });
+
+    let rejectReorder!: (error: Error) => void;
+    (todosService.reorderTodos as jest.Mock).mockImplementation(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectReorder = reject;
+        })
+    );
+    (todosService.getTodos as jest.Mock).mockResolvedValue([first, second]);
+    (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
+    (todosService.getTodoTags as jest.Mock).mockResolvedValue([]);
+
+    const pending = useTodosStore.getState().reorderTodos([
+      { id: 'second', position: 0 },
+      { id: 'first', position: 1 },
+    ]);
+
+    expect(useTodosStore.getState().todos.map((todo) => [todo.id, todo.position])).toEqual([
+      ['first', 1],
+      ['second', 0],
+    ]);
+
+    rejectReorder(new Error('network failed'));
+    await pending;
+
+    expect(todosService.getTodos).toHaveBeenCalled();
+    expect(useTodosStore.getState().todos.map((todo) => [todo.id, todo.position])).toEqual([
+      ['first', 0],
+      ['second', 1],
     ]);
   });
 
@@ -153,7 +194,7 @@ describe('useTodosStore selectors', () => {
       ...baseTodo,
       id: 'todo-optimistic',
       title: 'Optimistic task',
-      sortOrder: 10,
+      position: 10,
       createdAt: 10,
       updatedAt: 10,
     });
@@ -241,7 +282,7 @@ describe('useTodosStore selectors', () => {
         createdAt: 2,
         updatedAt: 2,
       },
-      sortOrder: 10,
+      position: 10,
       createdAt: 10,
       updatedAt: 10,
     });

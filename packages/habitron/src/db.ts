@@ -42,7 +42,7 @@ interface DbTodo {
   actual_minutes: number | null;
   completed_at: string | null;
   canceled_at: string | null;
-  sort_order: number;
+  position: number;
   created_at: string;
   updated_at: string;
   tag_id: string | null;
@@ -315,7 +315,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   // ---------------------------------------------------------------------------
 
   const TODO_COLUMNS =
-    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, sort_order, created_at, updated_at, tag_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
+    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, position, created_at, updated_at, tag_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
 
 
 
@@ -359,7 +359,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
         .from('todos')
         .select(TODO_COLUMNS)
         .eq('user_id', userId)
-        .order('sort_order', { ascending: true })
+        .order('position', { ascending: true })
     ) as unknown as DbTodo[];
     return rows.map(mapTodo);
   }
@@ -469,6 +469,20 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     }
   }
 
+  /** A new task appends to the user's manual order. */
+  async function nextTaskPosition(): Promise<number> {
+    const last = unwrap(
+      await supabase
+        .from('todos')
+        .select('position')
+        .eq('user_id', userId)
+        .order('position', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    ) as { position: number } | null;
+    return last ? last.position + 1 : 0;
+  }
+
   async function createTask(input: TaskInput): Promise<Task> {
     if (input.actualMinutes !== undefined && !input.completedAt) {
       throw new Error(
@@ -492,7 +506,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
           scheduled_time: input.scheduledTime ?? null,
           estimate_minutes: input.estimateMinutes ?? null,
           tag_id: input.tagId ?? null,
-          sort_order: Date.now(),
+          position: await nextTaskPosition(),
           status: input.completedAt ? 'completed' : 'open',
           completed_at: input.completedAt ?? null,
           actual_minutes: input.actualMinutes ?? null,
