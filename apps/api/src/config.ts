@@ -41,6 +41,12 @@ export const config = {
     skillsDir: resolve(here, '../../../packages/coach-skills'),
     /** Tool-use round trips a single coaching turn may take. */
     maxTurns: 40,
+    /**
+     * Wall clock a single turn may take. A coaching turn outlives its client
+     * (the app reads the reply back after iOS suspends it), so this is what
+     * stops an abandoned one. The app waits a little longer than this.
+     */
+    turnCapMs: 5 * 60_000,
   },
 } as const;
 

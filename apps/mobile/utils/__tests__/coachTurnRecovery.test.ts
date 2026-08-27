@@ -38,11 +38,11 @@ describe('waitForTurn', () => {
     expect(load).toHaveBeenCalledTimes(3);
   });
 
-  it('gives up once the five-minute cap is spent', async () => {
+  it('gives up once the six-minute cap is spent', async () => {
     const load = jest.fn().mockResolvedValue(running);
 
     await expect(waitForTurn(load, { sleep })).resolves.toBeNull();
-    // One poll every 2s for 5 minutes.
-    expect(load).toHaveBeenCalledTimes(150);
+    // One poll every 2s for 6 minutes — a minute past the server's own cap.
+    expect(load).toHaveBeenCalledTimes(180);
   });
 });
