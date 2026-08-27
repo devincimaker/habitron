@@ -209,7 +209,9 @@ export function JournalEntryModal({
           <Animated.View style={[styles.editorWrap, highlightStyle]}>
             <TextInput
               ref={editorRef}
-              style={styles.editor}
+              // While transcribing the input hugs its text, so the skeleton
+              // below it sits exactly where the paragraph will land.
+              style={[styles.editor, isTranscribing && styles.editorHugsText]}
               placeholder={placeholderPrompt}
               placeholderTextColor={colors.textLight}
               value={content}
@@ -218,9 +220,9 @@ export function JournalEntryModal({
               autoFocus={!entry && !autoStartVoice}
               accessibilityLabel="Journal entry"
             />
-          </Animated.View>
 
-          {isTranscribing ? <TranscriptionSkeleton /> : null}
+            {isTranscribing ? <TranscriptionSkeleton /> : null}
+          </Animated.View>
         </View>
 
         <JournalComposerBar
@@ -290,5 +292,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     // line sits on the page's padding and not 5pt below it.
     paddingTop: 0,
     paddingBottom: SPACING.md,
+  },
+  editorHugsText: {
+    flex: 0,
   },
 });
