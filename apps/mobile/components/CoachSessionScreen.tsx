@@ -51,7 +51,7 @@ import {
   type Colors,
 } from '../constants/theme';
 import { describeCoachActivity } from '../utils/coachActivity';
-import { RECONNECTING_MESSAGE, waitForTurn, type FinishedTurn } from '../utils/coachTurnRecovery';
+import { waitForTurn } from '../utils/coachTurnRecovery';
 import { CoachStreamDroppedError } from '../utils/sse';
 import { formatSessionStatus } from '../utils/coachSessions';
 import { useThemedStyles } from '../hooks/useColors';
@@ -207,14 +207,17 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
           // The socket went, the turn did not: iOS drops the stream when the
           // app is suspended, and the server keeps running the turn and
           // records how it ended on the session. Read that back rather than fail.
-          let recovered: FinishedTurn | null = null;
           if (error instanceof CoachStreamDroppedError) {
-            setActivity(RECONNECTING_MESSAGE);
-            recovered = await waitForTurn(() => getSessionTurn(currentSessionId));
+            setActivity('Reconnecting to the coach…');
           }
-          if (recovered) {
-            if (recovered.status === 'done') finalMessage = recovered.reply;
-            else errorMessage = recovered.error;
+          const recovered =
+            error instanceof CoachStreamDroppedError
+              ? await waitForTurn(() => getSessionTurn(currentSessionId))
+              : null;
+          if (recovered?.status === 'done') {
+            finalMessage = recovered.reply;
+          } else if (recovered) {
+            errorMessage = recovered.error;
           } else {
             console.warn('Error sending message:', error);
             Sentry.captureException(error, {

@@ -26,15 +26,13 @@ export function openEventStream(req: Request, res: Response): EventStream {
 
   const heartbeat = setInterval(() => write(': ping\n\n'), HEARTBEAT_MS);
   const abort = new AbortController();
-  let clientGone = false;
   req.on('close', () => {
-    clientGone = true;
     clearInterval(heartbeat);
     abort.abort();
   });
 
   function write(chunk: string) {
-    if (!clientGone) res.write(chunk);
+    if (!abort.signal.aborted) res.write(chunk);
   }
 
   return {

@@ -9,6 +9,9 @@ import { findCoachSession, recordTurn } from '../services/coachSessions.js';
 
 const router: Router = Router();
 
+/** What a 500 tells the app when the turn never got as far as the stream. */
+const CHAT_UNAVAILABLE_MESSAGE = 'Failed to process message. Please try again.';
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -48,7 +51,7 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
     session = await findCoachSession(sessionId, userId);
   } catch (error) {
     console.error('Failed to load coaching session:', error);
-    res.status(500).json({ error: 'Failed to process message. Please try again.' } satisfies ErrorResponse);
+    res.status(500).json({ error: CHAT_UNAVAILABLE_MESSAGE } satisfies ErrorResponse);
     return;
   }
 
@@ -66,7 +69,7 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
     await recordTurn(sessionId, userId, { prompt: trimmedPrompt, status: 'running' });
   } catch (error) {
     console.error('Failed to record the turn:', error);
-    res.status(500).json({ error: 'Failed to process message. Please try again.' } satisfies ErrorResponse);
+    res.status(500).json({ error: CHAT_UNAVAILABLE_MESSAGE } satisfies ErrorResponse);
     return;
   }
 
@@ -84,15 +87,15 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
       stream.send
     );
 
-    const newClaudeSessionId =
-      result.claudeSessionId && result.claudeSessionId !== session.claudeSessionId
-        ? result.claudeSessionId
-        : undefined;
+    // The record says what the stream said: an SDK error result reaches the
+    // client as `error`, so it is a failed turn here too, never a silent reply.
     await recordTurn(
       sessionId,
       userId,
-      { prompt: trimmedPrompt, status: 'done', reply: result.text },
-      newClaudeSessionId
+      result.outcome.type === 'done'
+        ? { prompt: trimmedPrompt, status: 'done', reply: result.outcome.message }
+        : { prompt: trimmedPrompt, status: 'failed', error: result.outcome.message },
+      result.claudeSessionId
     );
   } catch (error) {
     console.error('Chat error:', error);

@@ -3,6 +3,9 @@ import type { CoachStreamEvent } from '@habits-coach/shared';
 
 export const HABITRON_TOOL_PREFIX = 'mcp__habitron__';
 
+/** How a turn ended: the `done` or `error` event that closed it. */
+export type CoachTurnOutcome = Extract<CoachStreamEvent, { type: 'done' | 'error' }>;
+
 /** `mcp__habitron__get_day_context` → `get_day_context`; other tools keep their name. */
 export function toolDisplayName(name: string): string {
   return name.startsWith(HABITRON_TOOL_PREFIX) ? name.slice(HABITRON_TOOL_PREFIX.length) : name;
@@ -18,15 +21,12 @@ export function toolDisplayName(name: string): string {
 export class TurnCollector {
   private readonly segments: string[] = [];
   private streamedText = false;
-  private finished = false;
   claudeSessionId: string | null = null;
+  /** Set by the SDK's result message; null while the turn is still running. */
+  outcome: CoachTurnOutcome | null = null;
 
   get text(): string {
     return this.segments.join('\n\n').trim();
-  }
-
-  get isFinished(): boolean {
-    return this.finished;
   }
 
   handle(message: SDKMessage): CoachStreamEvent[] {
@@ -68,13 +68,12 @@ export class TurnCollector {
       }
 
       case 'result': {
-        this.finished = true;
         this.claudeSessionId = message.session_id;
-        if (message.subtype !== 'success') {
-          return [{ type: 'error', message: describeResultError(message.subtype, message.errors) }];
-        }
-        const text = this.text || message.result.trim();
-        return [{ type: 'done', message: text }];
+        this.outcome =
+          message.subtype === 'success'
+            ? { type: 'done', message: this.text || message.result.trim() }
+            : { type: 'error', message: describeResultError(message.subtype, message.errors) };
+        return [this.outcome];
       }
 
       default:

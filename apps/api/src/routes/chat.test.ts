@@ -83,13 +83,13 @@ describe('handleChatRequest', () => {
       userName: 'Mauro',
     });
     const { res, events } = createStreamingResponse();
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null, lastTurn: null });
     mockedRunCoachTurn.mockImplementation(async (_input, onEvent: (event: CoachStreamEvent) => void) => {
       onEvent({ type: 'session', claudeSessionId: 'claude-abc' });
       onEvent({ type: 'tool', name: 'get_day_context' });
       onEvent({ type: 'text', delta: 'You have 3 tasks today.' });
       onEvent({ type: 'done', message: 'You have 3 tasks today.' });
-      return { text: 'You have 3 tasks today.', claudeSessionId: 'claude-abc' };
+      return { outcome: { type: 'done', message: 'You have 3 tasks today.' }, claudeSessionId: 'claude-abc' };
     });
 
     await handleChatRequest(req as never, res as never);
@@ -120,11 +120,14 @@ describe('handleChatRequest', () => {
     expect(res.end).toHaveBeenCalled();
   });
 
-  it('resumes an existing Claude session without rewriting its id', async () => {
+  it('resumes an existing Claude session', async () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Yes, save it.', timezone: 'UTC' });
     const { res } = createStreamingResponse();
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc' });
-    mockedRunCoachTurn.mockResolvedValue({ text: 'Saved.', claudeSessionId: 'claude-abc' });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc', lastTurn: null });
+    mockedRunCoachTurn.mockResolvedValue({
+      outcome: { type: 'done', message: 'Saved.' },
+      claudeSessionId: 'claude-abc',
+    });
 
     await handleChatRequest(req as never, res as never);
 
@@ -136,15 +139,39 @@ describe('handleChatRequest', () => {
       'session-123',
       'user-123',
       { prompt: 'Yes, save it.', status: 'done', reply: 'Saved.' },
-      undefined
+      'claude-abc'
+    );
+  });
+
+  it('records a turn the SDK ended with an error as failed, with what the stream said', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: 'Plan my day', timezone: 'UTC' });
+    const { res, events } = createStreamingResponse();
+    const tooManySteps = 'That took more steps than one turn allows. Ask again and I will pick up from here.';
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc', lastTurn: null });
+    mockedRunCoachTurn.mockImplementation(async (_input, onEvent: (event: CoachStreamEvent) => void) => {
+      onEvent({ type: 'error', message: tooManySteps });
+      return { outcome: { type: 'error', message: tooManySteps }, claudeSessionId: 'claude-abc' };
+    });
+
+    await handleChatRequest(req as never, res as never);
+
+    expect(events()).toEqual([{ type: 'error', message: tooManySteps }]);
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith(
+      'session-123',
+      'user-123',
+      { prompt: 'Plan my day', status: 'failed', error: tooManySteps },
+      'claude-abc'
     );
   });
 
   it('records the turn as running before the stream opens', async () => {
     const req = createRequest({ sessionId: 'session-123', prompt: '  Plan my day  ', timezone: 'UTC' });
     const { res } = createStreamingResponse();
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc' });
-    mockedRunCoachTurn.mockResolvedValue({ text: 'Here is the plan.', claudeSessionId: 'claude-abc' });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc', lastTurn: null });
+    mockedRunCoachTurn.mockResolvedValue({
+      outcome: { type: 'done', message: 'Here is the plan.' },
+      claudeSessionId: 'claude-abc',
+    });
 
     await handleChatRequest(req as never, res as never);
 
@@ -158,7 +185,7 @@ describe('handleChatRequest', () => {
   it('keeps the turn running and records its reply when the client disconnects mid-turn', async () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Plan my day', timezone: 'UTC' });
     const { res, events } = createStreamingResponse();
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc' });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc', lastTurn: null });
     mockedRunCoachTurn.mockImplementation(
       async (input: { signal?: AbortSignal }, onEvent: (event: CoachStreamEvent) => void) => {
         onEvent({ type: 'text', delta: 'Here ' });
@@ -166,7 +193,7 @@ describe('handleChatRequest', () => {
         expect(input.signal).toBeUndefined();
         onEvent({ type: 'text', delta: 'is the plan.' });
         onEvent({ type: 'done', message: 'Here is the plan.' });
-        return { text: 'Here is the plan.', claudeSessionId: 'claude-abc' };
+        return { outcome: { type: 'done', message: 'Here is the plan.' }, claudeSessionId: 'claude-abc' };
       }
     );
 
@@ -177,7 +204,7 @@ describe('handleChatRequest', () => {
       'session-123',
       'user-123',
       { prompt: 'Plan my day', status: 'done', reply: 'Here is the plan.' },
-      undefined
+      'claude-abc'
     );
   });
 
@@ -185,7 +212,7 @@ describe('handleChatRequest', () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Hi', timezone: 'UTC' });
     const { res } = createStreamingResponse();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null, lastTurn: null });
     mockedRecordTurn.mockRejectedValueOnce(new Error('db down'));
 
     await handleChatRequest(req as never, res as never);
@@ -201,7 +228,7 @@ describe('handleChatRequest', () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Hi', timezone: 'UTC' });
     const { res, events } = createStreamingResponse();
     const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null });
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null, lastTurn: null });
     mockedRunCoachTurn.mockRejectedValue(new Error('boom'));
 
     await handleChatRequest(req as never, res as never);

@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { createClient } from '@supabase/supabase-js';
 import { authMiddleware } from '../middleware/auth.js';
 import { config } from '../config.js';
-import { findTurn } from '../services/coachSessions.js';
+import { findCoachSession } from '../services/coachSessions.js';
 import { generateSessionSummary } from '../services/sessions.js';
 import { extractMemories } from '../services/memories.js';
 import {
@@ -107,7 +107,8 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 // after its stream dropped mid-turn, so it carries the record and nothing else.
 router.get('/:id/turn', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
-    res.json({ turn: await findTurn(req.params.id, req.user!.id) });
+    const session = await findCoachSession(req.params.id, req.user!.id);
+    res.json({ turn: session?.lastTurn ?? null });
   } catch (error) {
     console.error('Get session turn error:', error);
     res.status(500).json({ error: 'Failed to fetch the turn' } satisfies ErrorResponse);

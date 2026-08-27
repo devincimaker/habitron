@@ -3,32 +3,29 @@ import type { CoachTurnRecord } from '@habits-coach/shared';
 /** How often to ask the server whether the turn has finished. */
 const POLL_MS = 2_000;
 /**
- * A minute past the server's own cap on a turn (`config.coach.turnCapMs` in
- * the API), so its verdict — reply or failure — always lands before we give up.
+ * Six minutes of polling: a minute past the server's own cap on a turn
+ * (`config.coach.turnCapMs` in the API), so its verdict — reply or failure —
+ * always lands before we give up.
  */
-const CAP_MS = 6 * 60_000;
-export const RECONNECTING_MESSAGE = 'Reconnecting to the coach…';
+const MAX_POLLS = (6 * 60_000) / POLL_MS;
 
-export type FinishedTurn = Exclude<CoachTurnRecord, { status: 'running' }>;
-
-interface WaitOptions {
-  sleep?: (ms: number) => Promise<void>;
-}
+type FinishedTurn = Exclude<CoachTurnRecord, { status: 'running' }>;
 
 const realSleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
  * Polls the server's record of the session's turn until it ends. The record
  * was written before the stream that just dropped ever opened, so it is this
- * turn's. A failed poll (no network yet, on the way back from the background)
- * is just another wait. Resolves null once the cap is spent.
+ * turn's. The first ask is immediate — the turn has often finished while the
+ * app was suspended — and a failed poll (no network yet, on the way back from
+ * the background) is just another wait. Resolves null once the cap is spent.
  */
 export async function waitForTurn(
   load: () => Promise<CoachTurnRecord | null>,
-  { sleep = realSleep }: WaitOptions = {}
+  sleep: (ms: number) => Promise<void> = realSleep
 ): Promise<FinishedTurn | null> {
-  for (let elapsed = POLL_MS; elapsed <= CAP_MS; elapsed += POLL_MS) {
-    await sleep(POLL_MS);
+  for (let poll = 0; poll < MAX_POLLS; poll++) {
+    if (poll > 0) await sleep(POLL_MS);
     const record = await load().catch(() => null);
     if (record && record.status !== 'running') return record;
   }

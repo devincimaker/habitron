@@ -10,21 +10,22 @@ describe('waitForTurn', () => {
 
   beforeEach(() => sleep.mockClear());
 
-  it('waits a poll interval before asking, then resolves with the reply once the server has it', async () => {
+  it('asks straight away, then every poll interval, and resolves with the reply once the server has it', async () => {
     const load = jest.fn().mockResolvedValueOnce(running).mockResolvedValueOnce(running).mockResolvedValueOnce(done);
 
-    await expect(waitForTurn(load, { sleep })).resolves.toBe(done);
+    await expect(waitForTurn(load, sleep)).resolves.toBe(done);
     expect(load).toHaveBeenCalledTimes(3);
-    expect(sleep).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledTimes(2);
     expect(sleep).toHaveBeenCalledWith(2_000);
-    expect(sleep.mock.invocationCallOrder[0]).toBeLessThan(load.mock.invocationCallOrder[0]);
+    expect(load.mock.invocationCallOrder[0]).toBeLessThan(sleep.mock.invocationCallOrder[0]);
   });
 
   it('resolves with the failure once the server records one', async () => {
     const load = jest.fn().mockResolvedValue(failed);
 
-    await expect(waitForTurn(load, { sleep })).resolves.toBe(failed);
+    await expect(waitForTurn(load, sleep)).resolves.toBe(failed);
     expect(load).toHaveBeenCalledTimes(1);
+    expect(sleep).not.toHaveBeenCalled();
   });
 
   it('keeps polling through a failed poll and an empty record', async () => {
@@ -34,14 +35,14 @@ describe('waitForTurn', () => {
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce(done);
 
-    await expect(waitForTurn(load, { sleep })).resolves.toBe(done);
+    await expect(waitForTurn(load, sleep)).resolves.toBe(done);
     expect(load).toHaveBeenCalledTimes(3);
   });
 
   it('gives up once the six-minute cap is spent', async () => {
     const load = jest.fn().mockResolvedValue(running);
 
-    await expect(waitForTurn(load, { sleep })).resolves.toBeNull();
+    await expect(waitForTurn(load, sleep)).resolves.toBeNull();
     // One poll every 2s for 6 minutes — a minute past the server's own cap.
     expect(load).toHaveBeenCalledTimes(180);
   });

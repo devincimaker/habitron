@@ -19,7 +19,10 @@ function createRequest(body: Record<string, unknown>) {
 describe('handleInstructRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedRunCoachTurn.mockResolvedValue({ text: '', claudeSessionId: 'claude-abc' });
+    mockedRunCoachTurn.mockResolvedValue({
+      outcome: { type: 'done', message: '' },
+      claudeSessionId: 'claude-abc',
+    });
   });
 
   it('rejects an unknown kind', async () => {
@@ -55,7 +58,10 @@ describe('handleInstructRequest', () => {
       onEvent({ type: 'session', claudeSessionId: 'claude-abc' });
       onEvent({ type: 'tool', name: 'list_tasks' });
       onEvent({ type: 'done', message: 'Reschedule one task\n- Move Run to Thursday' });
-      return { text: 'Reschedule one task\n- Move Run to Thursday', claudeSessionId: 'claude-abc' };
+      return {
+        outcome: { type: 'done', message: 'Reschedule one task\n- Move Run to Thursday' },
+        claudeSessionId: 'claude-abc',
+      };
     });
 
     await handleInstructRequest(
