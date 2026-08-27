@@ -212,8 +212,12 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
           }
           const recovered =
             error instanceof CoachStreamDroppedError
-              ? await waitForTurn(() => getSessionTurn(currentSessionId))
+              ? await waitForTurn(prompt, () => getSessionTurn(currentSessionId))
               : null;
+          // Recovery can outlast the session it belongs to: the user may have
+          // ended this one and opened another while it polled. The store owns
+          // one session's messages, so a late reply goes nowhere but its own.
+          if (useSessionStore.getState().sessionId !== currentSessionId) return false;
           if (recovered?.status === 'done') {
             finalMessage = recovered.reply;
           } else if (recovered) {

@@ -224,6 +224,50 @@ describe('handleChatRequest', () => {
     errorSpy.mockRestore();
   });
 
+  it('keeps the reply when recording how the turn ended fails', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: 'Plan my day', timezone: 'UTC' });
+    const { res, events } = createStreamingResponse();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc', lastTurn: null });
+    mockedRunCoachTurn.mockImplementation(async (_input, onEvent: (event: CoachStreamEvent) => void) => {
+      onEvent({ type: 'done', message: 'Here is the plan.' });
+      return { outcome: { type: 'done', message: 'Here is the plan.' }, claudeSessionId: 'claude-abc' };
+    });
+    mockedRecordTurn.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('db down'));
+
+    await handleChatRequest(req as never, res as never);
+
+    // No error event after `done`, and no `failed` record overwriting the reply.
+    expect(events()).toEqual([{ type: 'done', message: 'Here is the plan.' }]);
+    expect(mockedRecordTurn).toHaveBeenCalledTimes(2);
+    expect(res.end).toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
+  it('records the Claude session id the stream announced when the turn throws', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: 'Plan my day', timezone: 'UTC' });
+    const { res } = createStreamingResponse();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null, lastTurn: null });
+    mockedRunCoachTurn.mockImplementation(async (_input, onEvent: (event: CoachStreamEvent) => void) => {
+      onEvent({ type: 'session', claudeSessionId: 'claude-new' });
+      throw new Error('the cap fired');
+    });
+
+    await handleChatRequest(req as never, res as never);
+
+    // The work the turn already did is resumable, so a retry does not repeat it.
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith(
+      'session-123',
+      'user-123',
+      { prompt: 'Plan my day', status: 'failed', error: 'The coach ran into a problem. Please try again.' },
+      'claude-new'
+    );
+
+    errorSpy.mockRestore();
+  });
+
   it('sends an error event and records the failure when the turn throws', async () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Hi', timezone: 'UTC' });
     const { res, events } = createStreamingResponse();
@@ -236,11 +280,16 @@ describe('handleChatRequest', () => {
     expect(events()).toEqual([
       { type: 'error', message: 'The coach ran into a problem. Please try again.' },
     ]);
-    expect(mockedRecordTurn).toHaveBeenLastCalledWith('session-123', 'user-123', {
-      prompt: 'Hi',
-      status: 'failed',
-      error: 'The coach ran into a problem. Please try again.',
-    });
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith(
+      'session-123',
+      'user-123',
+      {
+        prompt: 'Hi',
+        status: 'failed',
+        error: 'The coach ran into a problem. Please try again.',
+      },
+      null
+    );
     expect(res.end).toHaveBeenCalled();
 
     errorSpy.mockRestore();

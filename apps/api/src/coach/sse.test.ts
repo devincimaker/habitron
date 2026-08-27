@@ -6,13 +6,21 @@ describe('openEventStream', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('aborts its signal when the client disconnects', () => {
+  it('aborts its signal when the client disconnects, for a stream that asked for one', () => {
     const req = createStreamingRequest();
-    const stream = openEventStream(req as never, createStreamingResponse().res as never);
+    const stream = openEventStream(req as never, createStreamingResponse().res as never, {
+      abortOnDisconnect: true,
+    });
 
     req.disconnect();
 
-    expect(stream.signal.aborted).toBe(true);
+    expect(stream.signal?.aborted).toBe(true);
+  });
+
+  it('hands back no signal by default, so a turn cannot be stopped by a disconnect', () => {
+    const stream = openEventStream(createStreamingRequest() as never, createStreamingResponse().res as never);
+
+    expect(stream.signal).toBeUndefined();
   });
 
   it('stops writing once the client is gone, heartbeat included', () => {

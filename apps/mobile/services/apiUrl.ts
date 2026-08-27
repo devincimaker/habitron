@@ -74,19 +74,23 @@ export function createApiUrl(path: string): string {
 }
 
 export function getCoachRequestErrorMessage(error: unknown): string {
-  if (error instanceof CoachStreamDroppedError) {
-    return "I lost the coach's reply. Please try again.";
-  }
+  // A dropped stream wraps what actually went wrong, and being offline is the
+  // most common of those — say so rather than blaming the coach.
+  const cause = error instanceof CoachStreamDroppedError ? error.cause : error;
 
   if (
-    error instanceof Error &&
-    /network request failed/i.test(error.message)
+    cause instanceof Error &&
+    /network request failed/i.test(cause.message)
   ) {
     if (IS_DEV && isLocalApiUrl(API_BASE_URL)) {
       return "I couldn't reach the local coach server. Start it with pnpm dev and try again.";
     }
 
     return "I couldn't reach the coach service just now. Please try again.";
+  }
+
+  if (error instanceof CoachStreamDroppedError) {
+    return "I lost the coach's reply. Please try again.";
   }
 
   return 'Sorry, I had trouble processing that. Please try again.';

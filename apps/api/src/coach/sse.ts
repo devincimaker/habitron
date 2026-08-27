@@ -6,16 +6,25 @@ const HEARTBEAT_MS = 15_000;
 export interface EventStream {
   /** A no-op once the client has gone away: a turn may outlive its socket. */
   send: (event: CoachStreamEvent) => void;
-  /** Aborts when the client goes away, for a turn that should stop with it. */
-  signal: AbortSignal;
+  /** The signal to stop the turn with, and only there: opened with `abortOnDisconnect`. */
+  signal?: AbortSignal;
   close: () => void;
+}
+
+export interface EventStreamOptions {
+  /**
+   * Hand back a signal that aborts when the client goes away, for a turn that
+   * should die with its socket. Without it there is no signal to pass on, so a
+   * turn cannot be stopped by a disconnect even by accident.
+   */
+  abortOnDisconnect?: boolean;
 }
 
 /**
  * Opens a server-sent event stream: one `CoachStreamEvent` JSON per `data:`
  * line, with a comment heartbeat so proxies keep the connection alive.
  */
-export function openEventStream(req: Request, res: Response): EventStream {
+export function openEventStream(req: Request, res: Response, options: EventStreamOptions = {}): EventStream {
   res.writeHead(200, {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
@@ -37,7 +46,7 @@ export function openEventStream(req: Request, res: Response): EventStream {
 
   return {
     send: (event) => write(`data: ${JSON.stringify(event)}\n\n`),
-    signal: abort.signal,
+    signal: options.abortOnDisconnect ? abort.signal : undefined,
     close: () => {
       clearInterval(heartbeat);
       res.end();

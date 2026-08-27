@@ -67,7 +67,9 @@ export async function handleInstructRequest(req: Request, res: Response): Promis
     return;
   }
 
-  const stream = openEventStream(req, res);
+  // A hold-to-instruct turn dies with its socket: HAB-110's slide-up cancel is
+  // the client hanging up, and nothing here is recorded to come back to.
+  const stream = openEventStream(req, res, { abortOnDisconnect: true });
 
   try {
     await runCoachTurn(
@@ -84,7 +86,8 @@ export async function handleInstructRequest(req: Request, res: Response): Promis
       stream.send
     );
   } catch (error) {
-    if (!stream.signal.aborted) {
+    // An aborted turn is the user cancelling, not a failure to report.
+    if (!stream.signal?.aborted) {
       console.error('Instruct error:', error);
       stream.send({ type: 'error', message: COACH_TURN_FAILED_MESSAGE });
     }

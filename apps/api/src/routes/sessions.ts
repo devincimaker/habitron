@@ -108,7 +108,11 @@ router.get('/:id', authMiddleware, async (req: Request, res: Response): Promise<
 router.get('/:id/turn', authMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     const session = await findCoachSession(req.params.id, req.user!.id);
-    res.json({ turn: session?.lastTurn ?? null });
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' } satisfies ErrorResponse);
+      return;
+    }
+    res.json({ turn: session.lastTurn });
   } catch (error) {
     console.error('Get session turn error:', error);
     res.status(500).json({ error: 'Failed to fetch the turn' } satisfies ErrorResponse);

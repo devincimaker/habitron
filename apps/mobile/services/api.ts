@@ -61,7 +61,11 @@ async function streamEvents(
 
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
-  const feed = createSseParser(onEvent);
+  let turnEnded = false;
+  const feed = createSseParser((event) => {
+    if (event.type === 'done' || event.type === 'error') turnEnded = true;
+    onEvent(event);
+  });
   // An abort mid-stream has to reach the reader too, or the loop below waits
   // on a chunk that is never coming. The listener dies with the turn's controller.
   // A stream that already errored rejects on cancel; an abort is not a place
@@ -79,6 +83,12 @@ async function streamEvents(
     throw new CoachStreamDroppedError(error);
   }
   feed(decoder.decode());
+
+  // The stream can also end without the turn ending — a rolled container, a
+  // proxy closing an idle response. Silence is not a reply: that is a drop too.
+  if (!turnEnded && !signal?.aborted) {
+    throw new CoachStreamDroppedError(new Error('The coach stream closed before the turn ended'));
+  }
 }
 
 /** One turn of a coaching session. */
