@@ -29,7 +29,6 @@ function habit(
     goalType: 'boolean',
     checkInMode: 'auto',
     constantReminder: false,
-    autoPopupLog: false,
     reminderTimes: [],
     active: true,
     dueOnDate,

@@ -39,7 +39,7 @@ export function HabitDetailsStep({
   const [styles, colors] = useThemedStyles(createStyles);
   const [isPickingReminder, setIsPickingReminder] = useState(false);
   const [editingReminder, setEditingReminder] = useState<string | null>(null);
-  const { sectionId, reminderTimes, constantReminder, autoPopupLog } = details;
+  const { sectionId, reminderTimes, constantReminder } = details;
 
   const handleAddSection = () => {
     Alert.prompt('New Section', 'Name for the new section', async (text) => {
@@ -182,17 +182,6 @@ export function HabitDetailsStep({
         {reminderTimes.length === 0 ? (
           <Caption>Add a reminder time to keep nudging until you log the habit.</Caption>
         ) : null}
-      </View>
-
-      <View style={styles.surfaceCard}>
-        <View style={styles.toggleRow}>
-          <BodyLarge>Auto pop-up of habit log</BodyLarge>
-          <Switch
-            value={autoPopupLog}
-            onValueChange={(value) => onDetailsChange({ autoPopupLog: value })}
-            trackColor={{ true: colors.primary }}
-          />
-        </View>
       </View>
 
       <TimePickerModal

@@ -148,7 +148,6 @@ interface DbHabit {
   check_in_mode: 'auto' | 'manual' | 'complete_all';
   record_increment: number | null;
   constant_reminder: boolean;
-  auto_popup_log: boolean;
   section_id: string | null;
   reason: string | null;
   icon: string | null;
@@ -179,8 +178,6 @@ export interface Habit {
   recordIncrement?: number;
   /** Keep nudging until the habit is logged. */
   constantReminder: boolean;
-  /** Open the log sheet on check-in rather than counting silently. */
-  autoPopupLog: boolean;
   /** Reminder times as HH:MM, from habit_reminders. */
   reminderTimes: string[];
   /** Time-of-day grouping from the app (Morning / Afternoon / Night / Others / custom). */
@@ -693,7 +690,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   // Habit shape follows the live schema (habit form v2): sections replace time_of_day,
   // frequency gains 'interval', and goals can be boolean or a quantity per day.
   const HABIT_COLUMNS =
-    'id, name, frequency, weekly_days, weekly_count, interval_days, start_date, goal_days, goal_type, target_amount, unit, check_in_mode, record_increment, constant_reminder, auto_popup_log, section_id, reason, icon, active, habit_sections(name, sort_order), habit_reminders(time)';
+    'id, name, frequency, weekly_days, weekly_count, interval_days, start_date, goal_days, goal_type, target_amount, unit, check_in_mode, record_increment, constant_reminder, section_id, reason, icon, active, habit_sections(name, sort_order), habit_reminders(time)';
 
 
 
@@ -713,7 +710,6 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       checkInMode: row.check_in_mode,
       recordIncrement: row.record_increment === null ? undefined : Number(row.record_increment),
       constantReminder: row.constant_reminder,
-      autoPopupLog: row.auto_popup_log,
       reminderTimes: (row.habit_reminders ?? []).map((r) => r.time).sort(),
       section: row.habit_sections?.name,
       reason: row.reason ?? undefined,

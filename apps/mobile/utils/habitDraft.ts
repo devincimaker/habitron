@@ -22,7 +22,6 @@ export interface HabitDetailsState {
   sectionId?: string;
   reminderTimes: string[];
   constantReminder: boolean;
-  autoPopupLog: boolean;
 }
 
 /** Everything the composer's basics step edits — what the habit is and why. */
@@ -60,7 +59,6 @@ export function detailsStateFor(
     sectionId: habit?.sectionId ?? defaultSectionId,
     reminderTimes: habit?.reminderTimes ?? [],
     constantReminder: habit?.constantReminder ?? false,
-    autoPopupLog: habit?.autoPopupLog ?? false,
   };
 }
 

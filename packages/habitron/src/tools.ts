@@ -85,7 +85,6 @@ function habitWriteSchema(partial = false) {
     icon: z.string().optional(),
     reminderTimes: z.array(timeSchema).optional().describe('HH:MM reminders; replaces the whole set'),
     constantReminder: z.boolean().optional(),
-    autoPopupLog: z.boolean().optional(),
   };
 }
 
