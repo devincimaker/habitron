@@ -2,6 +2,7 @@ import { createClient } from '@supabase/supabase-js';
 import type {
   CoachingSessionDetail,
   CoachingSessionMessage,
+  CoachTurnRecord,
   MemoryCategory,
   SessionOpener,
 } from '@habits-coach/shared';
@@ -19,6 +20,7 @@ export interface DbSession {
   ended_at: string | null;
   opener: SessionOpener;
   ritual_date: string | null;
+  last_turn: CoachTurnRecord | null;
   is_processed: boolean;
   created_at: string;
   updated_at: string;
@@ -47,6 +49,7 @@ export function toSessionDetail(s: DbSession, memories: DbMemory[]): CoachingSes
     opener: s.opener,
     ritualDate: s.ritual_date,
     messages: s.messages || [],
+    lastTurn: s.last_turn ?? null,
     memories: memories.map((memory) => ({
       id: memory.id,
       content: memory.content,

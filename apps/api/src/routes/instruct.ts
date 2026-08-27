@@ -66,7 +66,7 @@ export async function handleInstructRequest(req: Request, res: Response): Promis
     return;
   }
 
-  const stream = openEventStream(req, res);
+  const stream = openEventStream(req, res, { abortOnClose: true });
 
   try {
     await runCoachTurn(

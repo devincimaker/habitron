@@ -14,6 +14,18 @@ class ApiError extends Error {
   }
 }
 
+/**
+ * The stream opened (the server took the turn) and then dropped before it
+ * ended — iOS tears the socket down when the app is suspended. The turn is
+ * still running server-side, so this is a cue to recover, not an error to show.
+ */
+export class CoachStreamDroppedError extends Error {
+  constructor(cause: unknown) {
+    super('The coach stream dropped before the turn ended', { cause });
+    this.name = 'CoachStreamDroppedError';
+  }
+}
+
 async function getAuthToken(): Promise<string> {
   const {
     data: { session },
@@ -68,10 +80,15 @@ async function streamEvents(
   // to raise that again.
   signal?.addEventListener('abort', () => void reader.cancel().catch(() => {}), { once: true });
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    feed(decoder.decode(value, { stream: true }));
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      feed(decoder.decode(value, { stream: true }));
+    }
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw new CoachStreamDroppedError(error);
   }
   feed(decoder.decode());
 }

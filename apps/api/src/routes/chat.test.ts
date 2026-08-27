@@ -7,16 +7,18 @@ vi.mock('../coach/agent.js', () => ({
 
 vi.mock('../services/coachSessions.js', () => ({
   findCoachSession: vi.fn(),
+  recordTurn: vi.fn(),
   setClaudeSessionId: vi.fn(),
 }));
 
 import { runCoachTurn } from '../coach/agent.js';
-import { findCoachSession, setClaudeSessionId } from '../services/coachSessions.js';
+import { findCoachSession, recordTurn, setClaudeSessionId } from '../services/coachSessions.js';
 import { createMockRequest } from '../test/mocks.js';
 import { handleChatRequest } from './chat.js';
 
 const mockedRunCoachTurn = runCoachTurn as ReturnType<typeof vi.fn>;
 const mockedFindCoachSession = findCoachSession as ReturnType<typeof vi.fn>;
+const mockedRecordTurn = recordTurn as ReturnType<typeof vi.fn>;
 const mockedSetClaudeSessionId = setClaudeSessionId as ReturnType<typeof vi.fn>;
 
 function createStreamingResponse() {
@@ -40,17 +42,20 @@ function createStreamingResponse() {
 }
 
 function createRequest(body: Record<string, unknown>) {
-  return createMockRequest({
+  const listeners: Record<string, () => void> = {};
+  const req = createMockRequest({
     body,
     user: { id: 'user-123', email: 'test@example.com' },
-    on: vi.fn(),
+    on: vi.fn((event: string, listener: () => void) => (listeners[event] = listener)),
   });
+  return Object.assign(req, { disconnect: () => listeners.close() });
 }
 
 describe('handleChatRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    mockedRecordTurn.mockResolvedValue(undefined);
   });
 
   it('returns 400 when sessionId is missing', async () => {
@@ -137,6 +142,70 @@ describe('handleChatRequest', () => {
     expect(res.end).toHaveBeenCalled();
   });
 
+  it('records the turn on the session before it starts and again when it ends', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: '  Plan my day  ', timezone: 'UTC' });
+    const { res } = createStreamingResponse();
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc' });
+    mockedRunCoachTurn.mockImplementation(async () => {
+      expect(mockedRecordTurn).toHaveBeenCalledWith('session-123', 'user-123', {
+        prompt: 'Plan my day',
+        status: 'running',
+      });
+      return { text: 'Here is the plan.', claudeSessionId: 'claude-abc' };
+    });
+
+    await handleChatRequest(req as never, res as never);
+
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith('session-123', 'user-123', {
+      prompt: 'Plan my day',
+      status: 'done',
+      reply: 'Here is the plan.',
+    });
+    expect(res.writeHead).toHaveBeenCalled();
+    expect(mockedRecordTurn.mock.invocationCallOrder[0]).toBeLessThan(res.writeHead.mock.invocationCallOrder[0]);
+  });
+
+  it('keeps the turn running and records its reply when the client disconnects mid-turn', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: 'Plan my day', timezone: 'UTC' });
+    const { res, events } = createStreamingResponse();
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: 'claude-abc' });
+    mockedRunCoachTurn.mockImplementation(
+      async (input: { signal: AbortSignal }, onEvent: (event: CoachStreamEvent) => void) => {
+        onEvent({ type: 'text', delta: 'Here ' });
+        req.disconnect();
+        expect(input.signal.aborted).toBe(false);
+        onEvent({ type: 'text', delta: 'is the plan.' });
+        onEvent({ type: 'done', message: 'Here is the plan.' });
+        return { text: 'Here is the plan.', claudeSessionId: 'claude-abc' };
+      }
+    );
+
+    await handleChatRequest(req as never, res as never);
+
+    expect(events()).toEqual([{ type: 'text', delta: 'Here ' }]);
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith('session-123', 'user-123', {
+      prompt: 'Plan my day',
+      status: 'done',
+      reply: 'Here is the plan.',
+    });
+  });
+
+  it('returns 500 without opening the stream when the turn cannot be recorded', async () => {
+    const req = createRequest({ sessionId: 'session-123', prompt: 'Hi', timezone: 'UTC' });
+    const { res } = createStreamingResponse();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    mockedFindCoachSession.mockResolvedValue({ id: 'session-123', claudeSessionId: null });
+    mockedRecordTurn.mockRejectedValueOnce(new Error('db down'));
+
+    await handleChatRequest(req as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.writeHead).not.toHaveBeenCalled();
+    expect(mockedRunCoachTurn).not.toHaveBeenCalled();
+
+    errorSpy.mockRestore();
+  });
+
   it('resumes an existing Claude session without rewriting its id', async () => {
     const req = createRequest({ sessionId: 'session-123', prompt: 'Yes, save it.', timezone: 'UTC' });
     const { res } = createStreamingResponse();
@@ -164,6 +233,11 @@ describe('handleChatRequest', () => {
     expect(events()).toEqual([
       { type: 'error', message: 'The coach ran into a problem. Please try again.' },
     ]);
+    expect(mockedRecordTurn).toHaveBeenLastCalledWith('session-123', 'user-123', {
+      prompt: 'Hi',
+      status: 'failed',
+      error: 'The coach ran into a problem. Please try again.',
+    });
     expect(res.end).toHaveBeenCalled();
 
     errorSpy.mockRestore();

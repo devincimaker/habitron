@@ -439,9 +439,22 @@ export interface CoachingSessionSummary {
   ritualDate: string | null;
 }
 
+/**
+ * The last coach turn the server ran for a session, and how it ended. A turn
+ * outlives the socket that started it (iOS drops the stream when the app is
+ * suspended), so the app reads the reply back from here on foreground.
+ * Overwritten by the next turn, never cleared.
+ */
+export type CoachTurnRecord =
+  | { prompt: string; status: 'running' }
+  | { prompt: string; status: 'done'; reply: string }
+  | { prompt: string; status: 'failed'; error: string };
+
 export interface CoachingSessionDetail extends CoachingSessionSummary {
   messages: CoachingSessionMessage[];
   memories: Memory[];
+  /** Null before the session's first turn. */
+  lastTurn: CoachTurnRecord | null;
 }
 
 export interface CreateSessionRequest {
