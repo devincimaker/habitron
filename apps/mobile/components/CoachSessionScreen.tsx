@@ -30,7 +30,8 @@ import { useProfileStore } from '../stores/useProfileStore';
 import { ChatMessage } from './ChatMessage';
 import { MemoryReviewCard } from './MemoryReviewCard';
 import { DayRatingCard } from './DayRatingCard';
-import { VoiceInputButton } from './VoiceInputButton';
+import { MicButton } from './MicButton';
+import { VoiceControl } from './VoiceControl';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useDayRatings } from '../hooks/useDayRatings';
@@ -379,9 +380,12 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   }, [isLoading, markRatingsSent, ratingsMessage, sendUserMessage]);
 
   const {
-    isRecordingMode,
+    isVoiceActive,
     voiceInputProps,
     handleStopRecording,
+    handleSendRecording,
+    handleCancelRecording,
+    handleRetryRecording,
   } = useVoiceInput({
     onSend: async (text) => {
       await sendUserMessage(text);
@@ -391,10 +395,12 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
 
   const handleStopAndEdit = useCallback(async () => {
     const text = await handleStopRecording();
-    if (text) {
+    if (text?.trim()) {
       setInputText(text);
     }
   }, [handleStopRecording]);
+
+  const { onMicPress, ...voiceControlProps } = voiceInputProps;
 
   const renderMessage = useCallback(
     ({ item }: { item: ChatMessageType }) => <ChatMessage message={item} />,
@@ -564,7 +570,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         }
       />
 
-      {dayRatings.visible && !isRecordingMode && (
+      {dayRatings.visible && !isVoiceActive && (
         <DayRatingCard
           ratings={dayRatings.ratings}
           disabled={isLoading}
@@ -579,10 +585,13 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
           { paddingBottom: insets.bottom || SPACING.sm },
         ]}
       >
-        {isRecordingMode ? (
-          <VoiceInputButton
-            {...voiceInputProps}
-            onStopPress={handleStopAndEdit}
+        {isVoiceActive ? (
+          <VoiceControl
+            {...voiceControlProps}
+            onDiscard={() => void handleCancelRecording()}
+            onStop={() => void handleStopAndEdit()}
+            onSend={() => void handleSendRecording()}
+            onRetry={() => void handleRetryRecording()}
           />
         ) : (
           <>
@@ -613,10 +622,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
                 <Text style={styles.sendIcon}>↑</Text>
               </TouchableOpacity>
             ) : (
-              <VoiceInputButton
-                mode="idle"
-                onMicPress={voiceInputProps.onMicPress}
-              />
+              <MicButton onPress={onMicPress} disabled={isLoading} />
             )}
           </>
         )}

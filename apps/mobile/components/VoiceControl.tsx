@@ -5,18 +5,11 @@ import { Caption, Label } from './ui';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { formatElapsed } from '../utils/instruct';
-import { pushLevelHistory, toVoiceControlMode, type VoiceMode } from '../utils/voice';
-
-/** The recorder's readings; `useVoiceInput`'s `voiceInputProps` is a superset. */
-export interface VoiceSessionState {
-  mode: VoiceMode;
-  error: string | null;
-  /** The recorder's current 0–1 meter level; the pill keeps its own history. */
-  meterLevel: number;
-  recordingDuration: number;
-  maxDurationMs: number;
-  isNearingLimit: boolean;
-}
+import {
+  pushLevelHistory,
+  toVoiceControlMode,
+  type VoiceSessionState,
+} from '../utils/voice';
 
 interface VoiceControlProps extends VoiceSessionState {
   onDiscard: () => void;

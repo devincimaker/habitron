@@ -4,6 +4,17 @@ export type VoiceMode = 'idle' | 'recording' | 'transcribing';
 /** What the voice pill shows; `idle` means the pill is not shown at all. */
 export type VoiceControlMode = VoiceMode | 'error';
 
+/** The recorder's readings, as `useVoiceInput` reports them and the pill draws them. */
+export interface VoiceSessionState {
+  mode: VoiceMode;
+  error: string | null;
+  /** The recorder's current 0–1 meter level; the pill keeps its own history. */
+  meterLevel: number;
+  recordingDuration: number;
+  maxDurationMs: number;
+  isNearingLimit: boolean;
+}
+
 /**
  * A failure owns the pill whatever the recorder's mode says — ↻ and ✕ are
  * its only ways out, so a stop that failed before it had audio still shows
