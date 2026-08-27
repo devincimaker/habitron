@@ -40,6 +40,7 @@ const base = {
   parked: [],
   refused: [],
   filed: [],
+  reverted: [],
   decisions: [],
   log: [],
 };
@@ -59,12 +60,14 @@ test('renders every section from one of each entry kind', () => {
       { issue: 'HAB-92', class: 'A', why: 'token no longer exists', routedTo: 'Canceled' },
     ],
     filed: [{ issue: 'HAB-131', title: 'review-day prints scale only when review exists', why: 'blocks the voice pre-fill', during: 'HAB-129' }],
+    reverted: [{ issue: 'HAB-95', class: 'B', pr: 77, sha: 'abc1234', why: 'gate: apps/mobile streak.test.ts failed on master' }],
     decisions: [{ issue: 'HAB-88', note: 'premise correction — the line had moved to Composer.tsx:41' }],
     log: ['[HAB-88 · B · tick 1] merged #71 · composer clears on echo · jest + one shot'],
   });
 
-  assert.match(md, /^# Autopilot run · started 2026-08-26 21:40 · running · last tick 2026-08-27 03:10 · 2 landed, 1 parked, 2 refused, 1 filed$/m);
-  assert.match(md, /^## Needs your decision \(2\)$/m);
+  assert.match(md, /^# Autopilot run · started 2026-08-26 21:40 · running · last tick 2026-08-27 03:10 · 2 landed, 1 parked, 2 refused, 1 filed, 1 reverted$/m);
+  assert.match(md, /^## Needs your decision \(3\)$/m);
+  assert.match(md, /### \[HAB-95\][^\n]* · B · PR \[#77\][^\n]* · reverted, back in Todo\n- Why: master went red on its merge — gate: apps\/mobile streak\.test\.ts failed on master\n- Revert: abc1234\n- Decide: fix forward/);
   assert.match(md, /### \[HAB-111\]\(https:\/\/linear\.app\/fioris\/issue\/HAB-111\) · D · PR \[#75\]\(https:\/\/github\.com\/devincimaker\/habitron\/pull\/75\) · parked, In Review\n- Built: habit ordering\n- Blocked on: drag never activates\n- Decide: fix the gesture or split it\n- Resume: \/merge 75 from wt\/hab-111/);
   assert.match(md, /### \[HAB-90\][^\n]* · B · refused, back in Todo\n- Why: needs a design call on the tab bar\n- Decide: re-spec/);
   assert.match(md, /^## Landed — check in the app \(2\)$/m);
@@ -134,6 +137,7 @@ test('add records entries, keeps the refusal counter, and re-renders', () => {
   failsWith(() => cli('s1', 'add', 'refused', '{"issue":"HAB-1","class":"B","why":"w","routedTo":"Done"}'), 'routedTo must be Todo or Canceled');
   failsWith(() => cli('s1', 'add', 'landed', 'not json'), 'takes a JSON object');
   failsWith(() => cli('s1', 'add', 'bogus', '{}'), 'unknown kind');
+  failsWith(() => cli('s1', 'add', 'reverted', '{"issue":"HAB-1","class":"B","pr":1}'), 'reverted needs sha, why');
 
   cli('s1', 'add', 'refused', '{"issue":"HAB-1","class":"B","why":"w","routedTo":"Todo"}');
   cli('s1', 'add', 'refused', '{"issue":"HAB-2","class":"B","why":"w","routedTo":"Canceled"}');
@@ -141,17 +145,21 @@ test('add records entries, keeps the refusal counter, and re-renders', () => {
 
   cli('s1', 'add', 'landed', '{"issue":"HAB-3","class":"C","pr":9,"title":"lifted","proof":"3 cases"}');
   assert.equal(read(dir).consecutiveRefusals, 0);
+  cli('s1', 'add', 'refused', '{"issue":"HAB-6","class":"B","why":"w","routedTo":"Todo"}');
+  cli('s1', 'add', 'reverted', '{"issue":"HAB-3","class":"C","pr":9,"sha":"abc1234","why":"master red"}');
+  assert.equal(read(dir).consecutiveRefusals, 1, 'a revert leaves the refusal streak alone');
   cli('s1', 'add', 'filed', '{"issue":"HAB-4","title":"t","why":"w","during":"HAB-3"}');
   cli('s1', 'add', 'decision', '{"issue":"HAB-3","note":"n"}');
   cli('s1', 'add', 'log', '[HAB-3 · C · tick 1] merged #9 · lifted · 3 cases');
 
   const run = read(dir);
   assert.equal(run.landed.length, 1);
-  assert.equal(run.refused.length, 2);
+  assert.equal(run.refused.length, 3);
   assert.equal(run.filed.length, 1);
+  assert.equal(run.reverted.length, 1);
   assert.equal(run.decisions.length, 1);
   assert.deepEqual(run.log, ['[HAB-3 · C · tick 1] merged #9 · lifted · 3 cases']);
-  assert.match(report(dir), /1 landed, 0 parked, 2 refused, 1 filed/);
+  assert.match(report(dir), /1 landed, 0 parked, 3 refused, 1 filed, 1 reverted/);
   assert.match(report(dir), /nothing on screen \| 3 cases/);
 });
 

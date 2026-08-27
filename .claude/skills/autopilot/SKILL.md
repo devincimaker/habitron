@@ -1,7 +1,7 @@
 ---
 name: autopilot
-description: Drain Linear's Ready state without supervision — one looped agent takes the smallest unblocked issue from spec to merged master or a parked PR, tick after tick, while the user keeps speccing issues into Ready. Use when the user runs /autopilot, /autopilot sweep to file candidates, /autopilot ready 88 83 to spec-check and promote issues, or /loop /autopilot to run continuously.
-argument-hint: "[sweep | ready <numbers> [--next] | next <number> | status | stop]"
+description: Drain Linear's Ready state without supervision — one looped agent takes the smallest unblocked issue from spec to merged master or a parked PR, tick after tick, while the user keeps speccing issues into Ready and the loop feeds itself the A–C findings it verifies on the way. Use when the user runs /autopilot, /autopilot ready 88 83 to spec-check and promote issues, or /loop /autopilot to run continuously.
+argument-hint: "[ready <numbers> [--next] | next <number> | status | stop]"
 ---
 
 # /autopilot — one Ready issue, landed, then stop
@@ -11,7 +11,8 @@ approved for unattended execution; moving an issue into Ready *is* the approval.
 The user's half of the loop is keeping that state filled. This skill is the
 other half: pick the smallest unblocked Ready issue, build it, prove it, review
 it, merge it, record it, stop. `/loop /autopilot` keeps one agent draining the
-state for as long as the user keeps feeding it.
+state for as long as the user keeps feeding it — and, when the user's queue runs
+dry, for as long as the loop's own verified findings do (*Filing*, below).
 
 **Every invocation ends at a merged commit, a parked PR, a recorded refusal, or
 a quiet idle tick when nothing is Ready.** Never at a half-built worktree, and
@@ -50,7 +51,7 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
 
 - **Ready is the mandate.** Work only on issues in `Ready`. Never invent a
   target, never widen one. If a tick finds something real and out of scope, file
-  it in `Backlog`, `add filed`, and carry on.
+  it under the *Filing* rules and carry on — never fold it into this PR.
 - **Destructive migrations park; additive ones ride free.** A revert does not
   bring data back. `DROP COLUMN` on a populated column, a type narrowing, a
   delete-and-recreate, a backfill that overwrites: build it, open the PR, and
@@ -81,8 +82,11 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
 
 - **Linear is the queue, whole and only.** No project, no queue file: the state
   machine is the run.
-  - `Backlog` / `Todo` — the user's spec pipeline. Not yours to take.
-  - `Ready` — approved. Yours.
+  - `Backlog` / `Todo` — the user's spec pipeline. Not yours to take, with one
+    exception: an `auto-filed` issue the loop parked in `Backlog` because Ready
+    already held three (*Filing*).
+  - `Ready` — approved. Yours. Two populations: the user's, and the loop's own
+    `auto-filed` A–C findings. The user's always pick first.
   - `In Progress` — this tick, exactly one issue at a time.
   - `In Review` — parked: PR open, waiting on the user.
   - `Done` — merged. `Canceled` — dead.
@@ -110,6 +114,7 @@ node scripts/autopilot-run.mjs add landed   '{"issue","class","pr","title","proo
 node scripts/autopilot-run.mjs add parked   '{"issue","class","pr","title","blockedOn","decide","resume"}'
 node scripts/autopilot-run.mjs add refused  '{"issue","class","why","routedTo"}'   # Todo | Canceled
 node scripts/autopilot-run.mjs add filed    '{"issue","title","why","during"}'
+node scripts/autopilot-run.mjs add reverted '{"issue","class","pr","sha","why"}'
 node scripts/autopilot-run.mjs add decision '{"issue","note"}'
 node scripts/autopilot-run.mjs add log      '[HAB-88 · B · tick 3] merged #71 · …'
 node scripts/autopilot-run.mjs add idle     'nothing Ready · 2 blocked behind HAB-111'
@@ -125,7 +130,7 @@ or crashed is closed by the next run's first tick, and its report says when it
 last moved. Idle never closes a run. `add` refuses on a closed run and refuses
 an entry with a field missing, so the report never has a hole where a decision
 should be. The counter behind the three-refusals stop lives here too: `refused`
-increments it, `landed` and `parked` reset it. If `run.json` carries a `cap`,
+increments it, `landed` and `parked` reset it, `reverted` leaves it alone. If `run.json` carries a `cap`,
 honour it (a bounded overnight run); by default there is none, because the user
 meters the run by what they promote.
 
@@ -135,8 +140,9 @@ open; A and C carry none, and the report prints `nothing on screen`. A park's
 `blockedOn`, `decide` and `resume` are one line each: what stopped it, the
 choice being asked, and the command that lands it (`/merge NN` from
 `<worktree>`). A `decision` is any call the tick made that the user did not —
-a premise corrected, a review finding filed instead of fixed, a checklist row
-ticked as stale, an issue closed because its premise was gone.
+a premise corrected, a review finding filed instead of fixed, a finding dropped
+at the filing bar, a checklist row ticked as stale, an issue closed because its
+premise was gone.
 
 ## The four classes of work
 
@@ -160,8 +166,13 @@ scale lives in `apps/mobile/constants/theme.ts`.
 Never round in class A. `borderRadius: 12` is not `BORDER_RADIUS.lg` (16), it is
 a class B candidate or nothing.
 
-**A value with no token, used five times or more, is a design decision, not a
-chore.** File it as an issue describing the options and move on. Do not pick one.
+**A value with no token, used five times or more, gets a token.** Add it to the
+scale in `theme.ts` under the scale's own naming, holding exactly that value,
+and swap every site — the proof is still the diff, pixel-identical. The app
+already made that design decision; the token writes it down. What stays out of
+class A is the other move, snapping the value to a neighbouring token to keep
+the scale tidy: that changes pixels on every site by taste, and it is a
+proposal (*Filing*).
 
 ### Class B — fix
 
@@ -187,9 +198,11 @@ What a tick may never do is *claim* a screen it did not confirm it was on. Phase
 One function, one purpose. Logic a jest or vitest test can only reach by
 standing up the world moves into `packages/shared`, `apps/mobile/utils/`, or
 `packages/habitron`, and gets thorough unit tests — happy path, edges, failure
-modes. No behaviour change. If the extraction reveals a bug, **do not fix it
-here**: land the extraction with a test pinning current behaviour, and file the
-bug.
+modes. No behaviour change, with one exception: a bug the extraction reveals
+**inside the function being extracted** is fixed here, with a failing→passing
+test beside the pinning ones, both named in the PR body and `add decision`ed.
+Filing it would cost a second worktree cycle to edit the same lines twice. A bug
+in the caller or in another file is a different concern — file it (*Filing*).
 
 ### Class D — slice
 
@@ -249,6 +262,54 @@ skills, with the prompt and the relevant part of the turn quoted in the PR. A
 skill file is prose the coach acts on; a diff alone does not prove it still
 behaves.
 
+## Filing — what a tick files, and where it goes
+
+A tick sees things the issue did not ask for: a bug next door, a review finding
+in code this PR did not touch, an extraction the build made obvious. Scope
+discipline says none of it goes in this PR. This section says what happens to
+it instead, and it has a bar, because a queue that fills itself with "could be
+nicer" is a queue the user stops reading.
+
+**The bar** — a finding is filed only if it survives all four, the same test
+`hunt` puts a candidate through:
+
+- **A bug needs a failure scenario.** Concrete input or state → wrong behaviour
+  a user or the data can hit, traced through the actual path. "Looks
+  suspicious" is not a finding.
+- **A cleanup needs a payoff in this repo's terms.** Logic becomes
+  unit-testable, duplicated maths gets one owner, a rule in AGENTS.md starts
+  being obeyed, a file comes under `max-lines`. "Could be more elegant" is
+  taste.
+- **It must be new.** Search Linear by file and feature, not by title, `Backlog`
+  and `Todo` included. A duplicate with better wording is a duplicate.
+- **It carries the three sections** of a class D issue — what to change with
+  the paths, how it is proved, what it must not touch — written now, from what
+  the tick just saw. If the tick cannot write them, it does not understand the
+  finding well enough to hand it off.
+
+Then, by class:
+
+- **A, B or C, and it clears the bar → `Ready`, labelled `auto-filed`.** The
+  tick just verified it in code, the spec is complete, and the guards that make
+  a merge safe — one issue one PR, the gate, the review pass, the squash revert —
+  are the same for an issue the loop wrote as for one the user wrote. **At most
+  three `auto-filed` issues sit in Ready at once**; past that, the finding goes
+  to `Backlog` with the same label and Phase 1 promotes it when a slot frees.
+  Ready stays the user's list first: an `auto-filed` issue is picked only when
+  nothing of the user's is takeable.
+- **D, or anything that needs a decision the tick may not make** — a value
+  worth snapping to a neighbouring token, a design the issue left open, a fix
+  with two honest shapes — **→ `Backlog`, unlabelled, as a proposal.** Write the three sections
+  where you can and name the missing one where you cannot. Promotion is the
+  user's move; the loop never takes it.
+- **Fails the bar → not filed.** `add decision` with one line — what was seen
+  and which test it failed — so it reaches the run report and nowhere else.
+
+Every filing is `add filed`, its `why` stating the failure scenario or payoff
+and where it went. The user adopts an `auto-filed` issue by removing the label
+(`/autopilot ready` on one does that: naming it is the approval), and drops one
+by moving it to `Todo` or `Canceled` — the two states the loop never reads.
+
 ## Phase 1 — Pick up the run
 
 1. `node scripts/autopilot-run.mjs tick`. It says whether it opened a run,
@@ -259,17 +320,44 @@ behaves.
    back the report (Phase 8) and call `ScheduleWakeup` with `stop: true`.
 3. `git -C <main checkout> pull` on `master`. Every tick starts from a master
    that already contains the previous tick's merge, which is why this loop never
-   rebases and never conflicts with itself.
+   rebases and never conflicts with itself. **Then check that master is green**:
+   `gh run list --branch master --limit 1 --json headSha,status,conclusion`. A
+   run still in progress is waited on (`gh run watch`) — it is the previous
+   tick's merge being checked, and minutes now beat a build on an unverified
+   tree. A red head is one of two things:
+   - **The previous tick's own squash** — the head's subject ends in `(#NN)`
+     and `NN` is the last `landed` PR in this run's ledger. **Revert it**:
+     `git -C <main checkout> revert --no-edit <sha>` and push; move the issue
+     back to `Todo` with a comment quoting the failing job and the revert sha;
+     `add reverted`; `add log`; take the next issue. The squash revert was the
+     recovery plan all along — running it is the tick's job, not the
+     morning's. **One exception: a squash that touched `supabase/migrations/`**
+     never auto-reverts. Its migration already deployed and is immutable, so
+     reverting the code would leave code and schema disagreeing; that is a
+     fix-forward for a person. `close 'halted: master red on a schema tick —
+     <sha>'` and hand back the report.
+   - **Anything else** — a commit the loop did not make, or a red that predates
+     its merge — is not the loop's to revert. `close 'halted: master red at
+     <sha>, not this run's merge'` and hand back the report. Burning three
+     worktrees to reach the refusal streak would say the same thing later and
+     cost more.
 4. List team **Habitron**'s `Ready` issues and drop the blocked ones (any
-   `blocked by` relation not `Done`). **None left?** That is an idle tick, not a
+   `blocked by` relation not `Done`). **Refill first**: when Ready holds fewer
+   than three `auto-filed` issues and `Backlog` holds some, move the oldest up
+   until it holds three — they cleared the bar when they were filed, so this is
+   a move, not a review. **None left?** That is an idle tick, not a
    stop: `add idle 'nothing Ready · N blocked behind <issue>'` (which logs the
    line and marks the run idle from this tick), narrate it, `ScheduleWakeup`
    with `noop: true` and 1200–1800s, and end the invocation.
 5. Take the first unblocked issue in this order: **anything carrying the `next`
-   label**, then class ascending A→D, then priority, then oldest. `next` is the
+   label**, then **every issue without the `auto-filed` label before any with
+   it**, then class ascending A→D, then priority, then oldest. `next` is the
    user's pin — it exists so "do this one first" is a label and not a plea, and
    it outranks class because the user has already weighed the size. Two `next`
-   issues fall back to the rest of the order. Remove the label when the issue
+   issues fall back to the rest of the order. The `auto-filed` tier is the
+   loop's own work, ranked last so it never displaces the user's: it is what
+   the loop does when the user's queue is empty, never instead of it. Remove
+   the `next` label when the issue
    closes or parks (Phase 8), so it never lingers as a stale pin; a checklist
    issue keeps it between rows, since the user pinned the issue, not a row.
    Move the pick to **In Progress** (state id
@@ -408,8 +496,9 @@ Refuse and move on, never soldier through, when:
   cooperate after `simulator-driving` has had a go;
 - the honest fix is a design decision the issue did not make;
 - the gate fails for a reason outside this issue (`master` was already red);
-- the diff is drifting past the issue — two concerns, or a third file you did not
-  expect.
+- the diff is doing a second thing — a change the issue's one concern does not
+  need. Concern is the signal, never the file count: a B fix that honestly
+  needs three files is one concern, and a two-file diff can be two.
 
 To refuse: comment the reason on the issue, then route it — **back to `Todo`**
 when a better spec could save it, or **Canceled** when the idea itself is dead.
@@ -458,9 +547,9 @@ review confirms:
 
 - confirmed and inside the issue's scope: fix it now, re-run the gate, push, and
   let the merge wait on the new head's CI run;
-- confirmed, but in code this PR did not touch: **file it in `Backlog`,
-  `add filed`, and merge**. A finding next door does not make this diff wrong,
-  and parking a correct PR over it stalls the queue for nothing;
+- confirmed, but in code this PR did not touch: **file it (*Filing*) and
+  merge**. A finding next door does not make this diff wrong, and parking a
+  correct PR over it stalls the queue for nothing;
 - confirmed, inside this diff, and not fixable within the issue's scope:
   **park** — never widen the diff to chase it;
 - unconfirmed: drop it.
@@ -515,30 +604,9 @@ or cancels it.
    finished tick with a non-empty queue is none of them, and rounding it to the
    last one buys 20–30 minutes of dead time before the next build starts.
    If Phase 1's stop conditions are met, call it with `stop: true` and hand back
-   the report: its path, and its *Needs your decision* section inline. The
-   report is the run summary; do not write a second one.
-
-## `/autopilot sweep` — feed the spec pipeline
-
-Not part of a tick. Run whenever the user wants candidates.
-
-1. Sweep for candidates of any class, class D included. A sweep files into
-   `Backlog`, which is a proposal and not an approval, and `/autopilot ready`
-   already rejects a D issue missing what-to-change, how-it-is-proved or
-   what-not-to-touch. Write those three sections where the sweep can; file it
-   with the missing one named where it cannot, so the user fills the gap
-   instead of the queue losing the idea. The cheap measurements:
-   `grep -rnE "borderRadius: [0-9]|padding[A-Za-z]*: [0-9]|margin[A-Za-z]*: [0-9]"`
-   under `apps/mobile`, cross-referenced against `apps/mobile/constants/theme.ts`;
-   components with branching logic and no `utils/`; suites that cover one happy
-   path around real branching; skills in `packages/coach-skills` naming tools
-   that no longer exist.
-2. **Dedup against Linear.** A sweep that re-files the backlog wastes the run.
-3. Rank by payoff, cut to 12–15, and **file the survivors in `Backlog`** with the
-   class in the title prefix, the exact files and lines, and a `Work` section
-   naming the change — written so a tick needs nothing from this conversation.
-   Then stop. **A sweep never touches `Ready`**: promotion is the user's move,
-   because promotion is the approval.
+   the report: its path, and its *Needs your decision* section inline — parks,
+   refusals back in Todo, and reverts, which land there too. The report is the
+   run summary; do not write a second one.
 
 ## `/autopilot ready <numbers>` — spec-check and promote
 
@@ -562,9 +630,10 @@ team prefix, full ids are accepted too.
    it starts.
 5. Declare the chains: where the promoted issues depend on each other or on open
    work, set the Linear `blocked by` relations now, never mid-run.
-6. Move the survivors to **Ready** and report each with its class, its one-line
-   change, and the expected clock, plus the rejects and why. End with the
-   command: `/loop /autopilot`.
+6. Move the survivors to **Ready** — dropping the `auto-filed` label from any
+   that carried it, since naming it is the approval — and report each with its
+   class, its one-line change, and the expected clock, plus the rejects and why.
+   End with the command: `/loop /autopilot`.
 
 `/autopilot ready 115 --next` (or `next 115` on its own, for an issue already in
 Ready) applies the `next` label so the next tick takes that issue before
@@ -573,8 +642,9 @@ smaller class to jump the queue.
 
 ## `/autopilot status` / `stop`
 
-`status`: print the `Ready` list in pick order, with blocked flags and the
-`next` pin marked, the issue in `In Progress` if any, and the output of
+`status`: print the `Ready` list in pick order, with blocked flags, the `next`
+pin marked and the `auto-filed` tier below the user's with its count (`2/3
+auto-filed`), the issue in `In Progress` if any, and the output of
 `node scripts/autopilot-run.mjs status` — the report's header line and path. No
 work. `stop`: `node scripts/autopilot-run.mjs close stopped`, then
 `ScheduleWakeup` with `stop: true` and hand back the report as Phase 8 does.
