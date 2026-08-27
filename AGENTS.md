@@ -304,9 +304,12 @@ ported from planazo, loosened for the fact that this app has exactly one user.
   it and starting work happen only on your say-so.
 - **`autopilot`** — drains Linear's **Ready** state, one issue per tick: build,
   gate, review, merge from inside the worktree, record, stop. `Ready` is the
-  approval, so promoting an issue is the decision; `/autopilot sweep` files
-  candidates into Backlog and `/autopilot ready <numbers>` promotes them.
-  `/loop /autopilot` keeps it draining.
+  approval, so promoting an issue is the decision: `/autopilot ready <numbers>`
+  spec-checks and promotes yours. A tick also files what it verifies on the
+  way — A–C findings with a failure scenario or a payoff and a full spec go
+  straight to Ready as `auto-filed`, picked only after everything of yours;
+  D and design decisions go to Backlog as proposals. `/loop /autopilot` keeps
+  it draining.
 
 Work is classed **A swap · B fix · C extract · D slice**, and the class picks
 the proof (§9). A change to `packages/coach-skills` or the `packages/habitron`
