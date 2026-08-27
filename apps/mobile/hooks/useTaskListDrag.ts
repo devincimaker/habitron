@@ -121,16 +121,18 @@ export function useTaskListDrag({ items, onReorder }: TaskListDragOptions) {
   }, []);
 
   const end = useCallback(
-    (_todo: Todo, event: TaskRowDragMoveEvent, suppressed = false) => {
-      const drag = framesRef.current;
+    (todo: Todo, event: TaskRowDragMoveEvent, suppressed = false) => {
       const to = resolveDrop(event.absoluteY, suppressed);
+      // Looked up again rather than taken from drag start: a reload landing
+      // mid-drag may have moved the row, and the redeal must move *this* row.
+      const from = itemsRef.current.findIndex((item) => item.id === todo.id);
 
       framesRef.current = null;
       setDropIndex(null);
       setDragState(null);
 
-      if (drag && to !== null && to !== drag.from) {
-        onReorder(redealTodoPositions(itemsRef.current, drag.from, to));
+      if (to !== null && from !== -1 && to !== from) {
+        onReorder(redealTodoPositions(itemsRef.current, from, to));
       }
     },
     [onReorder]
