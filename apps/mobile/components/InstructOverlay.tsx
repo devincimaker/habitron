@@ -20,7 +20,7 @@ import {
   type InstructState,
 } from '../utils/instruct';
 import { Button } from './ui';
-import { Waveform } from './VoiceInputButton';
+import { Waveform } from './Waveform';
 
 interface InstructOverlayProps {
   state: InstructState;

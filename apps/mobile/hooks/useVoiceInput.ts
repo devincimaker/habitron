@@ -3,22 +3,15 @@ import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
 import { useAudioRecorder } from './useAudioRecorder';
 import { transcribeAudio } from '../services/api';
+import type { VoiceMode, VoiceSessionState } from '../utils/voice';
 
-type VoiceInputMode = 'idle' | 'recording' | 'transcribing';
 type PendingAction = 'stop' | 'send' | null;
 
-interface VoiceInputButtonProps {
-  mode: VoiceInputMode;
-  meterLevel: number;
-  recordingDuration: number;
-  maxDurationMs: number;
-  isNearingLimit: boolean;
-  error: string | null;
+/** The recorder's readings plus the mic tap: what `VoiceControl` and `MicButton` need. */
+type VoiceInputProps = VoiceSessionState & {
   onMicPress: () => void;
-  onStopPress: () => void;
-  onSendPress: () => void;
   onRetry: () => void;
-}
+};
 
 interface UseVoiceInputOptions {
   /** Called when "send" is pressed after successful transcription */
@@ -54,8 +47,8 @@ interface UseVoiceInputReturn {
   /** Clear error and exit recording mode */
   handleRetryRecording: () => void;
 
-  /** Props object ready to spread to VoiceInputButton */
-  voiceInputProps: VoiceInputButtonProps;
+  /** The recorder's readings, ready to spread into `VoiceControl` */
+  voiceInputProps: VoiceInputProps;
 }
 
 function formatTranscriptionError(error: unknown): string {
@@ -215,16 +208,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     await cancelRecording();
   }, [cancelRecording]);
 
-  // Compute mode for VoiceInputButton
-  function computeMode(): VoiceInputMode {
+  function computeMode(): VoiceMode {
     if (!isRecordingMode) return 'idle';
     if (isTranscribing) return 'transcribing';
     return 'recording';
   }
   const mode = computeMode();
 
-  // Props object ready to spread to VoiceInputButton
-  const voiceInputProps: VoiceInputButtonProps = {
+  const voiceInputProps: VoiceInputProps = {
     mode,
     meterLevel,
     recordingDuration,
@@ -232,8 +223,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     isNearingLimit,
     error,
     onMicPress: handleMicPress,
-    onStopPress: handleStopRecording,
-    onSendPress: handleSendRecording,
     onRetry: handleRetryRecording,
   };
 

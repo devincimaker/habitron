@@ -1,12 +1,12 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { FlatActionButton } from './ui';
 import type { JournalMood } from '@habits-coach/shared';
-import { VoiceControl, type VoiceSessionState } from './VoiceControl';
-import { VoiceInputButton } from './VoiceInputButton';
+import { MicButton } from './MicButton';
+import { VoiceControl } from './VoiceControl';
 import { JOURNAL_MOODS, JOURNAL_MOOD_STYLES } from '../constants/journal';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { useColorTheme, useThemedStyles } from '../hooks/useColors';
-import { toVoiceControlMode } from '../utils/voice';
+import { toVoiceControlMode, type VoiceSessionState } from '../utils/voice';
 
 const CHIP_SIZE = 40;
 const CHIP_GAP = 4;
@@ -83,7 +83,7 @@ export function JournalComposerBar({
               })}
             </View>
 
-            <VoiceInputButton mode="idle" onMicPress={onMicPress} />
+            <MicButton onPress={onMicPress} />
 
             <FlatActionButton
               title={isSaving ? 'Saving...' : 'Save'}
