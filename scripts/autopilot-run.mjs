@@ -7,8 +7,8 @@
 // retroactively and opens a new one. Idle never closes a run.
 //
 //   tick                    open or continue this session's run; stamps lastTickAt
-//   add <kind> <payload>    landed | parked | refused | filed | decision take JSON;
-//                           log | idle take a string
+//   add <kind> <payload>    landed | parked | refused | filed | reverted | decision
+//                           take JSON; log | idle take a string
 //   close <reason>          "stopped" or "halted: <why>"; renders one last time
 //   status                  the report's header line and path
 //   render                  re-render report.md for the newest run
@@ -23,9 +23,17 @@ const REQUIRED = {
   parked: ['issue', 'class', 'pr', 'title', 'blockedOn', 'decide', 'resume'],
   refused: ['issue', 'class', 'why', 'routedTo'],
   filed: ['issue', 'title', 'why', 'during'],
+  reverted: ['issue', 'class', 'pr', 'sha', 'why'],
   decision: ['issue', 'note'],
 };
-const LIST = { landed: 'landed', parked: 'parked', refused: 'refused', filed: 'filed', decision: 'decisions' };
+const LIST = {
+  landed: 'landed',
+  parked: 'parked',
+  refused: 'refused',
+  filed: 'filed',
+  reverted: 'reverted',
+  decision: 'decisions',
+};
 const CLASSES = ['A', 'B', 'C', 'D'];
 const ROUTES = ['Todo', 'Canceled'];
 
@@ -90,6 +98,7 @@ function openRun(root, sid) {
     parked: [],
     refused: [],
     filed: [],
+    reverted: [],
     decisions: [],
     log: [],
   };

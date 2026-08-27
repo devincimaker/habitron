@@ -114,6 +114,7 @@ node scripts/autopilot-run.mjs add landed   '{"issue","class","pr","title","proo
 node scripts/autopilot-run.mjs add parked   '{"issue","class","pr","title","blockedOn","decide","resume"}'
 node scripts/autopilot-run.mjs add refused  '{"issue","class","why","routedTo"}'   # Todo | Canceled
 node scripts/autopilot-run.mjs add filed    '{"issue","title","why","during"}'
+node scripts/autopilot-run.mjs add reverted '{"issue","class","pr","sha","why"}'
 node scripts/autopilot-run.mjs add decision '{"issue","note"}'
 node scripts/autopilot-run.mjs add log      '[HAB-88 · B · tick 3] merged #71 · …'
 node scripts/autopilot-run.mjs add idle     'nothing Ready · 2 blocked behind HAB-111'
@@ -129,7 +130,7 @@ or crashed is closed by the next run's first tick, and its report says when it
 last moved. Idle never closes a run. `add` refuses on a closed run and refuses
 an entry with a field missing, so the report never has a hole where a decision
 should be. The counter behind the three-refusals stop lives here too: `refused`
-increments it, `landed` and `parked` reset it. If `run.json` carries a `cap`,
+increments it, `landed` and `parked` reset it, `reverted` leaves it alone. If `run.json` carries a `cap`,
 honour it (a bounded overnight run); by default there is none, because the user
 meters the run by what they promote.
 
@@ -165,9 +166,13 @@ scale lives in `apps/mobile/constants/theme.ts`.
 Never round in class A. `borderRadius: 12` is not `BORDER_RADIUS.lg` (16), it is
 a class B candidate or nothing.
 
-**A value with no token, used five times or more, is a design decision, not a
-chore.** File it as a proposal (*Filing*) describing the options and move on.
-Do not pick one.
+**A value with no token, used five times or more, gets a token.** Add it to the
+scale in `theme.ts` under the scale's own naming, holding exactly that value,
+and swap every site — the proof is still the diff, pixel-identical. The app
+already made that design decision; the token writes it down. What stays out of
+class A is the other move, snapping the value to a neighbouring token to keep
+the scale tidy: that changes pixels on every site by taste, and it is a
+proposal (*Filing*).
 
 ### Class B — fix
 
@@ -193,9 +198,11 @@ What a tick may never do is *claim* a screen it did not confirm it was on. Phase
 One function, one purpose. Logic a jest or vitest test can only reach by
 standing up the world moves into `packages/shared`, `apps/mobile/utils/`, or
 `packages/habitron`, and gets thorough unit tests — happy path, edges, failure
-modes. No behaviour change. If the extraction reveals a bug, **do not fix it
-here**: land the extraction with a test pinning current behaviour, and file the
-bug (*Filing*).
+modes. No behaviour change, with one exception: a bug the extraction reveals
+**inside the function being extracted** is fixed here, with a failing→passing
+test beside the pinning ones, both named in the PR body and `add decision`ed.
+Filing it would cost a second worktree cycle to edit the same lines twice. A bug
+in the caller or in another file is a different concern — file it (*Filing*).
 
 ### Class D — slice
 
@@ -290,9 +297,9 @@ Then, by class:
   to `Backlog` with the same label and Phase 1 promotes it when a slot frees.
   Ready stays the user's list first: an `auto-filed` issue is picked only when
   nothing of the user's is takeable.
-- **D, or anything that needs a decision the tick may not make** — a token
-  with no value that fits, a design the issue left open, a fix with two honest
-  shapes — **→ `Backlog`, unlabelled, as a proposal.** Write the three sections
+- **D, or anything that needs a decision the tick may not make** — a value
+  worth snapping to a neighbouring token, a design the issue left open, a fix
+  with two honest shapes — **→ `Backlog`, unlabelled, as a proposal.** Write the three sections
   where you can and name the missing one where you cannot. Promotion is the
   user's move; the loop never takes it.
 - **Fails the bar → not filed.** `add decision` with one line — what was seen
@@ -313,7 +320,27 @@ by moving it to `Todo` or `Canceled` — the two states the loop never reads.
    back the report (Phase 8) and call `ScheduleWakeup` with `stop: true`.
 3. `git -C <main checkout> pull` on `master`. Every tick starts from a master
    that already contains the previous tick's merge, which is why this loop never
-   rebases and never conflicts with itself.
+   rebases and never conflicts with itself. **Then check that master is green**:
+   `gh run list --branch master --limit 1 --json headSha,status,conclusion`. A
+   run still in progress is waited on (`gh run watch`) — it is the previous
+   tick's merge being checked, and minutes now beat a build on an unverified
+   tree. A red head is one of two things:
+   - **The previous tick's own squash** — the head's subject ends in `(#NN)`
+     and `NN` is the last `landed` PR in this run's ledger. **Revert it**:
+     `git -C <main checkout> revert --no-edit <sha>` and push; move the issue
+     back to `Todo` with a comment quoting the failing job and the revert sha;
+     `add reverted`; `add log`; take the next issue. The squash revert was the
+     recovery plan all along — running it is the tick's job, not the
+     morning's. **One exception: a squash that touched `supabase/migrations/`**
+     never auto-reverts. Its migration already deployed and is immutable, so
+     reverting the code would leave code and schema disagreeing; that is a
+     fix-forward for a person. `close 'halted: master red on a schema tick —
+     <sha>'` and hand back the report.
+   - **Anything else** — a commit the loop did not make, or a red that predates
+     its merge — is not the loop's to revert. `close 'halted: master red at
+     <sha>, not this run's merge'` and hand back the report. Burning three
+     worktrees to reach the refusal streak would say the same thing later and
+     cost more.
 4. List team **Habitron**'s `Ready` issues and drop the blocked ones (any
    `blocked by` relation not `Done`). **Refill first**: when Ready holds fewer
    than three `auto-filed` issues and `Backlog` holds some, move the oldest up
@@ -469,8 +496,9 @@ Refuse and move on, never soldier through, when:
   cooperate after `simulator-driving` has had a go;
 - the honest fix is a design decision the issue did not make;
 - the gate fails for a reason outside this issue (`master` was already red);
-- the diff is drifting past the issue — two concerns, or a third file you did not
-  expect.
+- the diff is doing a second thing — a change the issue's one concern does not
+  need. Concern is the signal, never the file count: a B fix that honestly
+  needs three files is one concern, and a two-file diff can be two.
 
 To refuse: comment the reason on the issue, then route it — **back to `Todo`**
 when a better spec could save it, or **Canceled** when the idea itself is dead.
@@ -576,8 +604,9 @@ or cancels it.
    finished tick with a non-empty queue is none of them, and rounding it to the
    last one buys 20–30 minutes of dead time before the next build starts.
    If Phase 1's stop conditions are met, call it with `stop: true` and hand back
-   the report: its path, and its *Needs your decision* section inline. The
-   report is the run summary; do not write a second one.
+   the report: its path, and its *Needs your decision* section inline — parks,
+   refusals back in Todo, and reverts, which land there too. The report is the
+   run summary; do not write a second one.
 
 ## `/autopilot ready <numbers>` — spec-check and promote
 

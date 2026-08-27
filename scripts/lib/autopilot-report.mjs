@@ -25,7 +25,8 @@ function state(run) {
 }
 
 function counts(run) {
-  return `${run.landed.length} landed, ${run.parked.length} parked, ${run.refused.length} refused, ${run.filed.length} filed`;
+  const base = `${run.landed.length} landed, ${run.parked.length} parked, ${run.refused.length} refused, ${run.filed.length} filed`;
+  return run.reverted.length ? `${base}, ${run.reverted.length} reverted` : base;
 }
 
 function section(title, count, body, empty) {
@@ -55,7 +56,21 @@ function needsDecision(run) {
       '',
     );
   }
-  return section('Needs your decision', run.parked.length + todo.length, body, 'Nothing waiting on you.');
+  for (const r of run.reverted) {
+    body.push(
+      `### ${issue(r.issue)} · ${r.class} · PR ${pr(r.pr)} · reverted, back in Todo`,
+      `- Why: master went red on its merge — ${r.why}`,
+      `- Revert: ${r.sha}`,
+      '- Decide: fix forward and promote it again, or cancel it',
+      '',
+    );
+  }
+  return section(
+    'Needs your decision',
+    run.parked.length + todo.length + run.reverted.length,
+    body,
+    'Nothing waiting on you.',
+  );
 }
 
 function landed(run) {
