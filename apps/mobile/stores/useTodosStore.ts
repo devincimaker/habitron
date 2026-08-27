@@ -9,6 +9,7 @@ import { getTodoTagColor } from '../utils/todoTagColors';
 import { resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodosState {
+  /** Always in `position` order: load and reorder sort, everything else keeps its place or appends. */
   todos: Todo[];
   lists: TodoList[];
   tags: TodoTag[];
@@ -178,7 +179,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       ]);
 
       set({
-        todos,
+        todos: sortTodosByPosition(todos),
         lists: metadata.lists,
         tags: metadata.tags,
         isLoading: false,
@@ -306,7 +307,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     if (!updates.length) return;
     // Optimistic: the list has already shown the drop, so the order it shows
     // has to survive the round trip rather than wait for it.
-    set((state) => ({ todos: applyTodoOrder(state.todos, updates) }));
+    set((state) => ({ todos: sortTodosByPosition(applyTodoOrder(state.todos, updates)) }));
 
     try {
       await todosService.reorderTodos(updates);
@@ -333,7 +334,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   getTodosForDate: (date) => {
-    return sortTodosByPosition(get().todos.filter((todo) => todo.scheduledDate === date));
+    return get().todos.filter((todo) => todo.scheduledDate === date);
   },
 
   getOverdueTodos: (date) => {

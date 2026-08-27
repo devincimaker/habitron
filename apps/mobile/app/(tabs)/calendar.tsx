@@ -15,6 +15,7 @@ import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
+import { TaskDragList } from '../../components/TaskDragList';
 import { TaskDragOverlay } from '../../components/TaskDragOverlay';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
@@ -102,25 +103,16 @@ export default function CalendarScreen() {
         : [],
     [getOverdueTodos, selectedDate, todos, today]
   );
-  const openScheduledTodos = useMemo(
-    () => scheduledTodos.filter((todo) => todo.status === 'open'),
-    [scheduledTodos]
+  const openScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'open');
+  const completedScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'completed');
+  const { rootRef, onRootLayout, dragState, start, move, end, list } = useTaskListDrag({
+    items: openScheduledTodos,
+    onReorder: reorderTodos,
+  });
+  const dragHint = useMemo(
+    () => (dragHoverDate ? `Drop on ${formatRelativeDateLabel(dragHoverDate)}` : null),
+    [dragHoverDate]
   );
-  const completedScheduledTodos = useMemo(
-    () => scheduledTodos.filter((todo) => todo.status === 'completed'),
-    [scheduledTodos]
-  );
-  const {
-    rootRef,
-    onRootLayout,
-    listRef,
-    setRowLayout,
-    dragState,
-    start: startDrag,
-    move: moveDrag,
-    end: endDrag,
-    rowShift,
-  } = useTaskListDrag({ items: openScheduledTodos, onReorder: reorderTodos });
   const taskDatesWithDots = useMemo(() => {
     const dates = new Set<string>();
 
@@ -205,9 +197,9 @@ export default function CalendarScreen() {
       const nextHoverDate = getCalendarDropDate(event.absoluteX, event.absoluteY);
       dragHoverDateRef.current = nextHoverDate;
       setDragHoverDate(nextHoverDate);
-      startDrag(todo, event);
+      start(todo, event);
     },
-    [getCalendarDropDate, startDrag]
+    [getCalendarDropDate, start]
   );
 
   const handleTaskDragMove = useCallback(
@@ -222,9 +214,9 @@ export default function CalendarScreen() {
       }
 
       // Exactly one target: over the strip the day highlight wins and the list opens no gap.
-      moveDrag(todo, event, nextHoverDate !== null);
+      move(todo, event, nextHoverDate !== null);
     },
-    [getCalendarDropDate, moveDrag]
+    [getCalendarDropDate, move]
   );
 
   const handleTaskDragEnd = useCallback(
@@ -234,7 +226,7 @@ export default function CalendarScreen() {
 
       dragHoverDateRef.current = null;
       setDragHoverDate(null);
-      endDrag(todo, event, dropDate !== null);
+      end(todo, event, dropDate !== null);
 
       if (!dropDate || dropDate === todo.scheduledDate) {
         return;
@@ -242,7 +234,7 @@ export default function CalendarScreen() {
 
       await rescheduleTodo(todo, dropDate);
     },
-    [endDrag, getCalendarDropDate, rescheduleTodo]
+    [end, getCalendarDropDate, rescheduleTodo]
   );
 
   const renderTaskRow = useCallback(
@@ -322,17 +314,13 @@ export default function CalendarScreen() {
 
           <TaskSectionCard title={selectedDateLabel}>
             {openScheduledTodos.length > 0 ? (
-              <View ref={listRef}>
-                {openScheduledTodos.map((todo, index) => (
-                  <View
-                    key={todo.id}
-                    onLayout={(event) => setRowLayout(todo.id, event)}
-                    style={{ transform: [{ translateY: rowShift(index) }] }}
-                  >
-                    {renderTaskRow(todo, index === openScheduledTodos.length - 1)}
-                  </View>
-                ))}
-              </View>
+              <TaskDragList
+                items={openScheduledTodos}
+                drag={list}
+                renderRow={(todo, index) =>
+                  renderTaskRow(todo, index === openScheduledTodos.length - 1)
+                }
+              />
             ) : (
               <Caption style={styles.emptySection}>
                 Nothing scheduled — tap + to add one.
@@ -398,10 +386,7 @@ export default function CalendarScreen() {
           />
         ) : null}
 
-        <TaskDragOverlay
-          dragState={dragState}
-          hint={dragHoverDate ? `Drop on ${formatRelativeDateLabel(dragHoverDate)}` : null}
-        />
+        <TaskDragOverlay dragState={dragState} hint={dragHint} />
       </View>
     </>
   );

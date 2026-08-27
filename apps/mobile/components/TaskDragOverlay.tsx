@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -14,10 +15,20 @@ interface TaskDragOverlayProps {
 /** The clone that follows the finger while a TaskRow is being dragged. */
 export function TaskDragOverlay({ dragState, hint }: TaskDragOverlayProps) {
   const [styles] = useThemedStyles(createStyles);
+  // The clone moves every pointer frame; its labels change only with the task.
+  const todo = dragState?.todo;
+  const labels = useMemo(
+    () =>
+      todo
+        ? {
+            time: formatTodoScheduledTime(todo.scheduledTime),
+            due: todo.dueDate ? `Due ${formatRelativeDateLabel(todo.dueDate)}` : null,
+          }
+        : null,
+    [todo]
+  );
 
-  if (!dragState) return null;
-
-  const scheduledTimeLabel = formatTodoScheduledTime(dragState.todo.scheduledTime);
+  if (!dragState || !labels) return null;
 
   return (
     <View pointerEvents="none" style={styles.dragLayer}>
@@ -33,12 +44,8 @@ export function TaskDragOverlay({ dragState, hint }: TaskDragOverlayProps) {
       >
         <Text style={styles.dragTitle}>{dragState.todo.title}</Text>
         <View style={styles.dragMeta}>
-          {scheduledTimeLabel ? <Text style={styles.dragMetaText}>{scheduledTimeLabel}</Text> : null}
-          {dragState.todo.dueDate ? (
-            <Text style={styles.dragMetaText}>
-              Due {formatRelativeDateLabel(dragState.todo.dueDate)}
-            </Text>
-          ) : null}
+          {labels.time ? <Text style={styles.dragMetaText}>{labels.time}</Text> : null}
+          {labels.due ? <Text style={styles.dragMetaText}>{labels.due}</Text> : null}
           {hint ? <Text style={styles.dragTargetText}>{hint}</Text> : null}
         </View>
       </View>

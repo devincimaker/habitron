@@ -11,6 +11,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
+import { TaskDragList } from '../../components/TaskDragList';
 import { TaskDragOverlay } from '../../components/TaskDragOverlay';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
@@ -26,7 +27,6 @@ import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
-import { sortTodosByPosition } from '../../utils/todoOrder';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 
 function compareCompletedTodos(a: Todo, b: Todo) {
@@ -58,25 +58,15 @@ export default function TasksScreen() {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
-  const openTodos = useMemo(
-    () => sortTodosByPosition(todos.filter((todo) => todo.status === 'open')),
-    [todos]
-  );
+  const openTodos = useMemo(() => todos.filter((todo) => todo.status === 'open'), [todos]);
   const completedTodos = useMemo(
     () => todos.filter((todo) => todo.status === 'completed').sort(compareCompletedTodos),
     [todos]
   );
-  const {
-    rootRef,
-    onRootLayout,
-    listRef,
-    setRowLayout,
-    dragState,
-    start: startDrag,
-    move: moveDrag,
-    end: endDrag,
-    rowShift,
-  } = useTaskListDrag({ items: openTodos, onReorder: reorderTodos });
+  const { rootRef, onRootLayout, dragState, start, move, end, list } = useTaskListDrag({
+    items: openTodos,
+    onReorder: reorderTodos,
+  });
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadTodos(), loadGoals()]);
@@ -165,29 +155,25 @@ export default function TasksScreen() {
         >
           {openTodos.length > 0 ? (
             <TaskSectionCard>
-              <View ref={listRef}>
-                {openTodos.map((todo, index) => (
-                  <View
-                    key={todo.id}
-                    onLayout={(event) => setRowLayout(todo.id, event)}
-                    style={{ transform: [{ translateY: rowShift(index) }] }}
-                  >
-                    <TaskRow
-                      todo={todo}
-                      onToggleStatus={handleToggleTodoStatus}
-                      onRemove={removeTodo}
-                      onEdit={openTaskEditor}
-                      onReschedule={setReschedulingTodo}
-                      onDragStart={startDrag}
-                      onDragMove={moveDrag}
-                      onDragEnd={endDrag}
-                      isDragging={dragState?.todo.id === todo.id}
-                      variant="compact"
-                      isLast={index === openTodos.length - 1}
-                    />
-                  </View>
-                ))}
-              </View>
+              <TaskDragList
+                items={openTodos}
+                drag={list}
+                renderRow={(todo, index) => (
+                  <TaskRow
+                    todo={todo}
+                    onToggleStatus={handleToggleTodoStatus}
+                    onRemove={removeTodo}
+                    onEdit={openTaskEditor}
+                    onReschedule={setReschedulingTodo}
+                    onDragStart={start}
+                    onDragMove={move}
+                    onDragEnd={end}
+                    isDragging={dragState?.todo.id === todo.id}
+                    variant="compact"
+                    isLast={index === openTodos.length - 1}
+                  />
+                )}
+              />
             </TaskSectionCard>
           ) : (
             <Card variant="surface" style={styles.emptyCard}>

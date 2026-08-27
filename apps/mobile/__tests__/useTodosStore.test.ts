@@ -90,9 +90,10 @@ describe('useTodosStore selectors', () => {
     ]);
   });
 
-  it('orders a day by position alone, never by time or priority', () => {
-    useTodosStore.setState({
-      todos: [
+  it('loads in position order, never by time or priority', async () => {
+    (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
+    (todosService.getTodoTags as jest.Mock).mockResolvedValue([]);
+    (todosService.getTodos as jest.Mock).mockResolvedValue([
         {
           ...baseTodo,
           id: 'later',
@@ -119,8 +120,9 @@ describe('useTodosStore selectors', () => {
           priority: 1,
           position: 1,
         },
-      ],
-    });
+    ]);
+
+    await useTodosStore.getState().loadTodos();
 
     expect(useTodosStore.getState().getTodosForDate('2026-04-12').map((todo) => todo.id)).toEqual([
       'later',
@@ -152,8 +154,8 @@ describe('useTodosStore selectors', () => {
     ]);
 
     expect(useTodosStore.getState().todos.map((todo) => [todo.id, todo.position])).toEqual([
-      ['first', 1],
       ['second', 0],
+      ['first', 1],
     ]);
 
     rejectReorder(new Error('network failed'));

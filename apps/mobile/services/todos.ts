@@ -508,10 +508,7 @@ export async function getTodos(): Promise<Todo[]> {
   const { data, error } = await supabase
     .from('todos')
     .select(TODO_SELECT)
-    .order('status', { ascending: true })
-    .order('scheduled_date', { ascending: true })
-    .order('due_date', { ascending: true })
-    .order('created_at', { ascending: true });
+    .order('position', { ascending: true });
 
   if (error) {
     console.error('Error fetching todos:', error);
@@ -522,7 +519,7 @@ export async function getTodos(): Promise<Todo[]> {
 }
 
 /** A new task appends to the user's manual order. */
-async function nextTodoPosition(userId: string): Promise<number> {
+async function fetchNextTodoPosition(userId: string): Promise<number> {
   const { data, error } = await supabase
     .from('todos')
     .select('position')
@@ -541,8 +538,11 @@ async function nextTodoPosition(userId: string): Promise<number> {
 
 export async function addTodo(todo: TodoDraft): Promise<Todo> {
   const userId = await getCurrentUserId();
-  const listId = await resolveListId(userId, todo);
-  const tagId = await resolveTagId(userId, todo);
+  const [listId, tagId, position] = await Promise.all([
+    resolveListId(userId, todo),
+    resolveTagId(userId, todo),
+    fetchNextTodoPosition(userId),
+  ]);
   const schedule = resolveNewTodoSchedule(todo.scheduledDate, todo.scheduledTime);
 
   if (schedule === null) {
@@ -562,7 +562,7 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
     scheduled_time: serializeScheduledTime(schedule.scheduledTime),
     estimate_minutes: todo.estimateMinutes ?? null,
     tag_id: tagId ?? null,
-    position: await nextTodoPosition(userId),
+    position,
   });
 
   if (todo.checklist?.length) {

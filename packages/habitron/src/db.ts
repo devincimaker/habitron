@@ -491,7 +491,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       );
     }
     if (input.tagId) await assertTagExists(input.tagId);
-    const listId = await inboxListId();
+    const [listId, position] = await Promise.all([inboxListId(), nextTaskPosition()]);
     const row = unwrap(
       await supabase
         .from('todos')
@@ -506,7 +506,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
           scheduled_time: input.scheduledTime ?? null,
           estimate_minutes: input.estimateMinutes ?? null,
           tag_id: input.tagId ?? null,
-          position: await nextTaskPosition(),
+          position,
           status: input.completedAt ? 'completed' : 'open',
           completed_at: input.completedAt ?? null,
           actual_minutes: input.actualMinutes ?? null,

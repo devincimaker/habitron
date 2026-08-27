@@ -1,7 +1,6 @@
 import type { Todo } from '@habits-coach/shared';
 import {
   applyTodoOrder,
-  moveItem,
   nextTodoPosition,
   redealTodoPositions,
   sortTodosByPosition,
@@ -41,21 +40,20 @@ describe('sortTodosByPosition', () => {
   });
 });
 
-describe('moveItem', () => {
-  it('moves an item down and up', () => {
-    expect(moveItem(['a', 'b', 'c', 'd'], 0, 2)).toEqual(['b', 'c', 'a', 'd']);
-    expect(moveItem(['a', 'b', 'c', 'd'], 3, 1)).toEqual(['a', 'd', 'b', 'c']);
-  });
-});
-
 describe('redealTodoPositions', () => {
-  it('deals the same slots back out in the new order', () => {
-    const visible = [todo('a', 0), todo('b', 1), todo('c', 2)];
+  it('deals the same slots back out in the new order, up and down', () => {
+    const visible = [todo('a', 0), todo('b', 1), todo('c', 2), todo('d', 3)];
 
     expect(redealTodoPositions(visible, 2, 0)).toEqual([
       { id: 'c', position: 0 },
       { id: 'a', position: 1 },
       { id: 'b', position: 2 },
+    ]);
+    expect(redealTodoPositions(visible, 0, 3)).toEqual([
+      { id: 'b', position: 0 },
+      { id: 'c', position: 1 },
+      { id: 'd', position: 2 },
+      { id: 'a', position: 3 },
     ]);
   });
 

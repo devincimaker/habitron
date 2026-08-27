@@ -107,17 +107,11 @@ describe('todos service', () => {
       if (table === 'todos') {
         return {
           select: select.mockReturnValue({
-            order: () => ({
-              order: () => ({
-                order: () => ({
-                  order: () =>
-                    Promise.resolve({
-                      data: mockTodoRows,
-                      error: null,
-                    }),
-                }),
+            order: () =>
+              Promise.resolve({
+                data: mockTodoRows,
+                error: null,
               }),
-            }),
           }),
         };
       }

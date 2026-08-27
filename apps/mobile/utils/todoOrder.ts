@@ -10,7 +10,7 @@ export function sortTodosByPosition<T extends Pick<Todo, 'position' | 'createdAt
   return [...todos].sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
 }
 
-export function moveItem<T>(items: T[], from: number, to: number): T[] {
+function moveItem<T>(items: T[], from: number, to: number): T[] {
   const next = [...items];
   const [item] = next.splice(from, 1);
   next.splice(to, 0, item);
