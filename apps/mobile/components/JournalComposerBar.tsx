@@ -1,14 +1,10 @@
 import type { ComponentProps } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatActionButton } from './ui';
 import type { JournalMood } from '@habits-coach/shared';
 import { VoiceInputButton } from './VoiceInputButton';
 import { JOURNAL_MOODS, JOURNAL_MOOD_STYLES } from '../constants/journal';
-import {
-  BORDER_RADIUS,
-  SPACING,
-  TYPOGRAPHY,
-  type Colors,
-} from '../constants/theme';
+import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { useColorTheme, useThemedStyles } from '../hooks/useColors';
 
 const CHIP_SIZE = 40;
@@ -28,8 +24,8 @@ interface JournalComposerBarProps {
   isSaving: boolean;
   onSave: () => void;
   voice: ComponentProps<typeof VoiceInputButton>;
-  /** Safe-area inset when the keyboard is down, 0 when the bar rides it. */
-  paddingBottom: number;
+  /** Home inset when the keyboard is down, 0 when the bar rides the keyboard. */
+  bottomInset: number;
 }
 
 export function JournalComposerBar({
@@ -39,7 +35,7 @@ export function JournalComposerBar({
   isSaving,
   onSave,
   voice,
-  paddingBottom,
+  bottomInset,
 }: JournalComposerBarProps) {
   const [styles] = useThemedStyles(createStyles);
   const isDark = useColorTheme() === 'dark';
@@ -81,7 +77,7 @@ export function JournalComposerBar({
   });
 
   return (
-    <View style={[styles.bar, { paddingBottom }]}>
+    <View style={[styles.bar, { paddingBottom: bottomInset }]}>
       {voiceState === 'error' ? (
         <View style={styles.voiceRow}>
           <VoiceInputButton {...voice} />
@@ -95,20 +91,13 @@ export function JournalComposerBar({
 
         {voiceState === 'error' ? null : <VoiceInputButton {...voice} />}
 
-        <Pressable
-          style={[styles.saveButton, !canSave && styles.saveButtonDisabled]}
+        <FlatActionButton
+          title={isSaving ? 'Saving...' : 'Save'}
           onPress={onSave}
           disabled={!canSave}
-          accessibilityRole="button"
+          height={CHIP_SIZE}
           accessibilityLabel="Save entry"
-        >
-          <Text
-            style={[styles.saveLabel, !canSave && styles.saveLabelDisabled]}
-            numberOfLines={1}
-          >
-            {isSaving ? 'Saving...' : 'Save'}
-          </Text>
-        </Pressable>
+        />
       </View>
     </View>
   );
@@ -152,26 +141,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   chipEmoji: {
     fontSize: 20,
     lineHeight: 24,
-  },
-  saveButton: {
-    height: CHIP_SIZE,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.md,
-    borderRadius: BORDER_RADIUS.md,
-    borderWidth: 1,
-    borderColor: 'transparent',
-    backgroundColor: colors.primaryDark,
-  },
-  saveButtonDisabled: {
-    backgroundColor: colors.surface,
-    borderColor: colors.border,
-  },
-  saveLabel: {
-    ...TYPOGRAPHY.headingMedium,
-    color: colors.white,
-  },
-  saveLabelDisabled: {
-    color: colors.textLight,
   },
 });

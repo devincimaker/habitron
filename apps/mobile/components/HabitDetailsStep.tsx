@@ -2,20 +2,20 @@ import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { HabitSection } from '@habits-coach/shared';
-import { BodyLarge, Caption, HeadingMedium, Input, Label } from './ui';
+import { BodyLarge, Caption, HeadingMedium, Label } from './ui';
 import { HabitChip } from './HabitChip';
 import { HabitScheduleSection } from './HabitScheduleSection';
 import { TimePickerModal } from './TimePickerModal';
 import { createHabitCardStyles } from './habitComposerStyles';
 import { SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
-import type { HabitDetailsState } from '../utils/habitDraft';
-import { getHabitIconAccentColor, getHabitIconLabel, type HabitIconName } from '../utils/habitIcons';
+import type { HabitBasicsState, HabitDetailsState } from '../utils/habitDraft';
+import { getHabitIconAccentColor, getHabitIconLabel } from '../utils/habitIcons';
 import { formatReminderTime } from '../utils/habitTime';
 
 interface HabitDetailsStepProps {
   /** Step 1 read back at the top of a new habit's details; absent when editing. */
-  summary?: { name: string; icon: HabitIconName };
+  summary?: HabitBasicsState;
   details: HabitDetailsState;
   onDetailsChange: (patch: Partial<HabitDetailsState>) => void;
   scheduleError: string | null;
@@ -25,7 +25,7 @@ interface HabitDetailsStepProps {
   onRemoveSection: (sectionId: string) => Promise<void>;
 }
 
-/** Step 2 of the composer: schedule, section, reminders and the rest. */
+/** Step 2 of the composer — when and how much: schedule, section, reminders. No text input, so it never meets the keyboard. */
 export function HabitDetailsStep({
   summary,
   details,
@@ -39,7 +39,7 @@ export function HabitDetailsStep({
   const [styles, colors] = useThemedStyles(createStyles);
   const [isPickingReminder, setIsPickingReminder] = useState(false);
   const [editingReminder, setEditingReminder] = useState<string | null>(null);
-  const { sectionId, reminderTimes, constantReminder, autoPopupLog, reason } = details;
+  const { sectionId, reminderTimes, constantReminder, autoPopupLog } = details;
 
   const handleAddSection = () => {
     Alert.prompt('New Section', 'Name for the new section', async (text) => {
@@ -109,7 +109,7 @@ export function HabitDetailsStep({
             <HeadingMedium style={styles.summaryTitle}>
               {summary.name.trim() || 'New habit'}
             </HeadingMedium>
-            <Caption>{getHabitIconLabel(summary.icon)}</Caption>
+            <Caption>{summary.reason.trim() || getHabitIconLabel(summary.icon)}</Caption>
           </View>
         </View>
       ) : null}
@@ -193,17 +193,6 @@ export function HabitDetailsStep({
             trackColor={{ true: colors.primary }}
           />
         </View>
-      </View>
-
-      <View style={styles.surfaceCard}>
-        <Input
-          label="Why it matters"
-          placeholder="What this supports in your life"
-          value={reason}
-          onChangeText={(value) => onDetailsChange({ reason: value })}
-          multiline
-          containerStyle={styles.fieldNoMargin}
-        />
       </View>
 
       <TimePickerModal

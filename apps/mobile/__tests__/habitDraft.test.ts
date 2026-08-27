@@ -103,7 +103,6 @@ describe('detailsStateFor', () => {
       reminderTimes: [],
       constantReminder: false,
       autoPopupLog: false,
-      reason: '',
     });
     expect(state.weeklyDays.length).toBeGreaterThan(0);
   });
@@ -112,6 +111,7 @@ describe('detailsStateFor', () => {
     const draft = buildHabitDraft({
       ...detailsStateFor(HABIT, 'section-others'),
       name: HABIT.name,
+      reason: HABIT.reason ?? '',
       icon: 'water',
     });
 

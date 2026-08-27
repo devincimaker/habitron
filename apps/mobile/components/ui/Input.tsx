@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type Ref } from 'react';
 import { View, Text, TextInput, StyleSheet, StyleProp, TextInputProps, TextStyle, ViewStyle } from 'react-native';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, INPUT_HEIGHTS, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
@@ -6,6 +6,8 @@ import { useThemedStyles } from '../../hooks/useColors';
 type InputSize = 'sm' | 'md' | 'lg';
 
 interface InputProps extends Omit<TextInputProps, 'style'> {
+  /** Reaches the underlying TextInput, so a parent can move focus into it. */
+  ref?: Ref<TextInput>;
   label?: string;
   error?: string;
   size?: InputSize;
@@ -14,6 +16,7 @@ interface InputProps extends Omit<TextInputProps, 'style'> {
 }
 
 export function Input({
+  ref,
   label,
   error,
   size = 'md',
@@ -34,6 +37,7 @@ export function Input({
     <View style={[styles.container, containerStyle]}>
       {label && <Text style={styles.label}>{label}</Text>}
       <TextInput
+        ref={ref}
         style={[
           styles.input,
           heightStyle,

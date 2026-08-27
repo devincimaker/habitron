@@ -23,13 +23,16 @@ export interface HabitDetailsState {
   reminderTimes: string[];
   constantReminder: boolean;
   autoPopupLog: boolean;
-  reason: string;
 }
 
-export interface HabitDraftState extends HabitDetailsState {
+/** Everything the composer's basics step edits — what the habit is and why. */
+export interface HabitBasicsState {
   name: string;
+  reason: string;
   icon: HabitIconName;
 }
+
+export type HabitDraftState = HabitBasicsState & HabitDetailsState;
 
 const DEFAULT_GOAL: HabitGoal = { goalType: 'boolean', checkInMode: 'auto' };
 
@@ -58,7 +61,6 @@ export function detailsStateFor(
     reminderTimes: habit?.reminderTimes ?? [],
     constantReminder: habit?.constantReminder ?? false,
     autoPopupLog: habit?.autoPopupLog ?? false,
-    reason: habit?.reason ?? '',
   };
 }
 
