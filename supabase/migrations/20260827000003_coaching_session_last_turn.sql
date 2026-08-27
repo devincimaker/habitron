@@ -1,6 +1,7 @@
 -- HAB-113: a coach turn outlives the socket that started it. iOS tears the
--- stream down when the app is suspended, so the server records each turn here
--- and the app reads the reply back when it returns to the foreground.
+-- stream down when the app is suspended, so the API records each turn here
+-- and the session screen polls it (GET /api/sessions/:id/turn) to read the
+-- reply back when its stream drops.
 --
 -- Shape: { prompt, status: 'running' }
 --      | { prompt, status: 'done', reply }

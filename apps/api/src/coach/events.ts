@@ -98,10 +98,13 @@ function describeAssistantError(error: string): string {
   }
 }
 
+/** What the app shows for a turn that failed with nothing more specific to say. */
+export const COACH_TURN_FAILED_MESSAGE = 'The coach ran into a problem. Please try again.';
+
 function describeResultError(subtype: string, errors: string[]): string {
   if (subtype === 'error_max_turns') {
     return 'That took more steps than one turn allows. Ask again and I will pick up from here.';
   }
   const detail = errors.filter(Boolean).join('; ');
-  return detail ? `The coach ran into a problem: ${detail}` : 'The coach ran into a problem. Please try again.';
+  return detail ? `The coach ran into a problem: ${detail}` : COACH_TURN_FAILED_MESSAGE;
 }

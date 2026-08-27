@@ -50,7 +50,6 @@ function buildDetail(overrides: Partial<CoachingSessionDetail> = {}): CoachingSe
       { role: 'assistant', content: 'Sure', timestamp: 1_700_000_200_000 },
     ],
     memories: [],
-    lastTurn: null,
     ...overrides,
   };
 }

@@ -1,7 +1,7 @@
 import { createSdkMcpServer, query, tool, type Options } from '@anthropic-ai/claude-agent-sdk';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHabitron, localNow, type AnyHabitronTool } from '@habits-coach/habitron';
-import type { CoachStreamEvent } from '@habits-coach/shared';
+import { COACH_TURN_CAP_MS, type CoachStreamEvent } from '@habits-coach/shared';
 import { config } from '../config.js';
 import { HABITRON_TOOL_PREFIX, TurnCollector } from './events.js';
 import { buildSystemPrompt } from './prompt.js';
@@ -82,8 +82,11 @@ export async function runCoachTurn(
     ? habitron.tools.filter((t) => t.annotations?.readOnlyHint)
     : habitron.tools;
 
+  // A turn may outlive its client (a coaching turn keeps going when the app is
+  // suspended), so the wall clock is what stops an abandoned one.
   const abortController = new AbortController();
   input.signal?.addEventListener('abort', () => abortController.abort(), { once: true });
+  const cap = setTimeout(() => abortController.abort(), COACH_TURN_CAP_MS);
 
   const options: Options = {
     cwd: config.coach.skillsDir,
@@ -120,6 +123,8 @@ export async function runCoachTurn(
     // A single-shot query() throws after yielding an error result; that result
     // already produced an `error` event. Anything else is a real failure.
     if (!collector.isFinished) throw error;
+  } finally {
+    clearTimeout(cap);
   }
 
   return { text: collector.text, claudeSessionId: collector.claudeSessionId };

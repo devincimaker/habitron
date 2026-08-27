@@ -2,7 +2,7 @@ import { fetch as streamingFetch } from 'expo/fetch';
 import { supabase } from './supabase';
 import type { CoachInstructRequest, CoachStreamEvent, CoachTurnRequest } from '@habits-coach/shared';
 import { createApiUrl } from './apiUrl';
-import { createSseParser } from '../utils/sse';
+import { CoachStreamDroppedError, createSseParser } from '../utils/sse';
 
 class ApiError extends Error {
   constructor(
@@ -11,18 +11,6 @@ class ApiError extends Error {
   ) {
     super(message);
     this.name = 'ApiError';
-  }
-}
-
-/**
- * The stream opened (the server took the turn) and then dropped before it
- * ended — iOS tears the socket down when the app is suspended. The turn is
- * still running server-side, so this is a cue to recover, not an error to show.
- */
-export class CoachStreamDroppedError extends Error {
-  constructor(cause: unknown) {
-    super('The coach stream dropped before the turn ended', { cause });
-    this.name = 'CoachStreamDroppedError';
   }
 }
 

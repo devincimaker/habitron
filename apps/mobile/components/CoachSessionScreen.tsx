@@ -35,8 +35,8 @@ import { VoiceControl } from './VoiceControl';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useDayRatings } from '../hooks/useDayRatings';
-import { CoachStreamDroppedError, streamCoachTurn } from '../services/api';
-import { getSession } from '../services/sessions';
+import { streamCoachTurn } from '../services/api';
+import { getSessionTurn } from '../services/sessions';
 import {
   getCoachRequestErrorMessage,
   getCoachSessionStartErrorMessage,
@@ -51,7 +51,8 @@ import {
   type Colors,
 } from '../constants/theme';
 import { describeCoachActivity } from '../utils/coachActivity';
-import { RECONNECTING_MESSAGE, TURN_LOST_MESSAGE, waitForTurn } from '../utils/coachTurnRecovery';
+import { RECONNECTING_MESSAGE, waitForTurn, type FinishedTurn } from '../utils/coachTurnRecovery';
+import { CoachStreamDroppedError } from '../utils/sse';
 import { formatSessionStatus } from '../utils/coachSessions';
 import { useThemedStyles } from '../hooks/useColors';
 
@@ -149,11 +150,6 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     }
   }, [loadEntries, loadGoals, loadHabits, loadMemories, loadPlan, loadTodos, today]);
 
-  const recoverTurn = useCallback(async (currentSessionId: string, prompt: string) => {
-    setActivity(RECONNECTING_MESSAGE);
-    return waitForTurn(() => getSession(currentSessionId).then((session) => session.lastTurn), prompt);
-  }, []);
-
   const runTurn = useCallback(
     async (prompt: string, options: { echoUser: boolean }): Promise<boolean> => {
       if (isSendingRef.current) {
@@ -210,15 +206,15 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         } catch (error) {
           // The socket went, the turn did not: iOS drops the stream when the
           // app is suspended, and the server keeps running the turn and
-          // records the reply on the session. Read it back rather than fail.
-          const recovered =
-            error instanceof CoachStreamDroppedError
-              ? await recoverTurn(currentSessionId, prompt)
-              : null;
-          if (recovered?.status === 'done') {
-            finalMessage = recovered.reply;
-          } else if (recovered?.status === 'failed') {
-            errorMessage = recovered.error;
+          // records how it ended on the session. Read that back rather than fail.
+          let recovered: FinishedTurn | null = null;
+          if (error instanceof CoachStreamDroppedError) {
+            setActivity(RECONNECTING_MESSAGE);
+            recovered = await waitForTurn(() => getSessionTurn(currentSessionId));
+          }
+          if (recovered) {
+            if (recovered.status === 'done') finalMessage = recovered.reply;
+            else errorMessage = recovered.error;
           } else {
             console.warn('Error sending message:', error);
             Sentry.captureException(error, {
@@ -229,8 +225,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
               },
               extra: { prompt },
             });
-            errorMessage =
-              error instanceof CoachStreamDroppedError ? TURN_LOST_MESSAGE : getCoachRequestErrorMessage(error);
+            errorMessage = getCoachRequestErrorMessage(error);
           }
         }
 
@@ -262,7 +257,6 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
       appendToMessage,
       ensureBackendSession,
       finalizeMessage,
-      recoverTurn,
       refreshData,
       setLoading,
       userName,

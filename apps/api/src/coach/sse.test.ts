@@ -1,64 +1,37 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createStreamingRequest, createStreamingResponse } from '../test/mocks.js';
 import { openEventStream } from './sse.js';
-
-function createRequest() {
-  const listeners: Record<string, () => void> = {};
-  return {
-    req: { on: vi.fn((event: string, listener: () => void) => (listeners[event] = listener)) },
-    close: () => listeners.close(),
-  };
-}
-
-function createResponse() {
-  return {
-    writeHead: vi.fn(),
-    flushHeaders: vi.fn(),
-    write: vi.fn(() => true),
-    end: vi.fn(),
-    writableEnded: false,
-  };
-}
 
 describe('openEventStream', () => {
   beforeEach(() => vi.useFakeTimers());
   afterEach(() => vi.useRealTimers());
 
-  it('aborts the turn on client disconnect when asked to', () => {
-    const { req, close } = createRequest();
-    const stream = openEventStream(req as never, createResponse() as never, { abortOnClose: true });
+  it('aborts its signal when the client disconnects', () => {
+    const req = createStreamingRequest();
+    const stream = openEventStream(req as never, createStreamingResponse().res as never);
 
-    close();
+    req.disconnect();
 
     expect(stream.signal.aborted).toBe(true);
   });
 
-  it('lets the turn outlive the client when asked not to', () => {
-    const { req, close } = createRequest();
-    const stream = openEventStream(req as never, createResponse() as never, { abortOnClose: false });
-
-    close();
-
-    expect(stream.signal.aborted).toBe(false);
-  });
-
   it('stops writing once the client is gone, heartbeat included', () => {
-    const { req, close } = createRequest();
-    const res = createResponse();
-    const stream = openEventStream(req as never, res as never, { abortOnClose: false });
+    const req = createStreamingRequest();
+    const { res, events } = createStreamingResponse();
+    const stream = openEventStream(req as never, res as never);
 
     stream.send({ type: 'text', delta: 'before' });
-    close();
+    req.disconnect();
     stream.send({ type: 'text', delta: 'after' });
     vi.advanceTimersByTime(60_000);
 
     expect(res.write).toHaveBeenCalledTimes(1);
-    expect(res.write).toHaveBeenCalledWith('data: {"type":"text","delta":"before"}\n\n');
+    expect(events()).toEqual([{ type: 'text', delta: 'before' }]);
   });
 
   it('sends a heartbeat while the client is connected', () => {
-    const { req } = createRequest();
-    const res = createResponse();
-    openEventStream(req as never, res as never, { abortOnClose: false });
+    const { res } = createStreamingResponse();
+    openEventStream(createStreamingRequest() as never, res as never);
 
     vi.advanceTimersByTime(15_000);
 

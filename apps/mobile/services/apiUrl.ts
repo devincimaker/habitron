@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
 import { NativeModules } from 'react-native';
+import { CoachStreamDroppedError } from '../utils/sse';
 
 const LOCAL_API_FALLBACK = 'http://localhost:3001';
 const LOCAL_API_HOSTS = new Set(['localhost', '127.0.0.1']);
@@ -73,6 +74,10 @@ export function createApiUrl(path: string): string {
 }
 
 export function getCoachRequestErrorMessage(error: unknown): string {
+  if (error instanceof CoachStreamDroppedError) {
+    return "I lost the coach's reply. Please try again.";
+  }
+
   if (
     error instanceof Error &&
     /network request failed/i.test(error.message)

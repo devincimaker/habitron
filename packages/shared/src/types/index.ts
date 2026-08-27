@@ -450,11 +450,12 @@ export type CoachTurnRecord =
   | { prompt: string; status: 'done'; reply: string }
   | { prompt: string; status: 'failed'; error: string };
 
+/** How long one coach turn may run, whether or not its client is still there. */
+export const COACH_TURN_CAP_MS = 5 * 60_000;
+
 export interface CoachingSessionDetail extends CoachingSessionSummary {
   messages: CoachingSessionMessage[];
   memories: Memory[];
-  /** Null before the session's first turn. */
-  lastTurn: CoachTurnRecord | null;
 }
 
 export interface CreateSessionRequest {
