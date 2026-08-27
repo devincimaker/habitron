@@ -63,7 +63,6 @@ export function withHabitDraftDefaults(input: HabitDraftInput): HabitDraft {
     sectionId: input.sectionId,
     reminderTimes: input.reminderTimes ?? [],
     constantReminder: input.constantReminder ?? false,
-    autoPopupLog: input.autoPopupLog ?? false,
   };
 }
 
@@ -86,6 +85,5 @@ export function habitToDraft(habit: Habit): HabitDraft {
     sectionId: habit.sectionId,
     reminderTimes: habit.reminderTimes,
     constantReminder: habit.constantReminder,
-    autoPopupLog: habit.autoPopupLog,
   };
 }

@@ -105,7 +105,6 @@ export interface Habit extends HabitSchedule, HabitGoal {
   /** Reminder times as HH:MM (24h). */
   reminderTimes: string[];
   constantReminder: boolean;
-  autoPopupLog: boolean;
   active: boolean;
   /** Dense 0..n index within the habit's routine. Ordering lives here, not in createdAt. */
   position: number;
@@ -120,7 +119,6 @@ export interface HabitDraft extends HabitSchedule, HabitGoal {
   sectionId?: string;
   reminderTimes: string[];
   constantReminder: boolean;
-  autoPopupLog: boolean;
 }
 
 /**

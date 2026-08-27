@@ -21,7 +21,6 @@ const BASE: HabitDraftState = {
   sectionId: 'section-1',
   reminderTimes: ['08:00'],
   constantReminder: true,
-  autoPopupLog: false,
 };
 
 const HABIT: Habit = {
@@ -41,7 +40,6 @@ const HABIT: Habit = {
   sectionId: 'section-2',
   reminderTimes: ['09:00', '14:00'],
   constantReminder: true,
-  autoPopupLog: true,
   active: true,
   position: 0,
   createdAt: 1754006400000,
@@ -84,7 +82,6 @@ describe('buildHabitDraft', () => {
       sectionId: 'section-1',
       reminderTimes: ['08:00'],
       constantReminder: true,
-      autoPopupLog: false,
     });
   });
 });
@@ -102,7 +99,6 @@ describe('detailsStateFor', () => {
       sectionId: 'section-others',
       reminderTimes: [],
       constantReminder: false,
-      autoPopupLog: false,
     });
     expect(state.weeklyDays.length).toBeGreaterThan(0);
   });
@@ -133,7 +129,6 @@ describe('detailsStateFor', () => {
       sectionId: 'section-2',
       reminderTimes: ['09:00', '14:00'],
       constantReminder: true,
-      autoPopupLog: true,
     });
   });
 });

@@ -17,7 +17,6 @@ function habit(id: string, sectionId: string | undefined, position: number, crea
     checkInMode: 'auto',
     reminderTimes: [],
     constantReminder: false,
-    autoPopupLog: false,
     active: true,
     sectionId,
     position,

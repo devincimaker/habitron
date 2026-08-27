@@ -33,7 +33,6 @@ interface DbHabit {
   section_id: string | null;
   position: number;
   constant_reminder: boolean;
-  auto_popup_log: boolean;
   reason: string | null;
   icon: string | null;
   active: boolean;
@@ -91,7 +90,6 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
       .map((reminder) => toReminderTime(reminder.time))
       .sort(),
     constantReminder: dbHabit.constant_reminder,
-    autoPopupLog: dbHabit.auto_popup_log,
     reason: dbHabit.reason ?? undefined,
     icon: dbHabit.icon ?? undefined,
     active: dbHabit.active,
@@ -122,7 +120,6 @@ function toDbHabitFields(draft: HabitDraft) {
       isQuantity && draft.checkInMode === 'auto' ? draft.recordIncrement ?? 1 : null,
     section_id: draft.sectionId ?? null,
     constant_reminder: draft.constantReminder,
-    auto_popup_log: draft.autoPopupLog,
     reason: draft.reason ?? null,
     icon: draft.icon ?? null,
   };

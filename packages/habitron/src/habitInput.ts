@@ -24,7 +24,6 @@ export interface HabitFields {
   reason?: string;
   icon?: string;
   constantReminder?: boolean;
-  autoPopupLog?: boolean;
 }
 
 /** The effective mode of the habit being patched, so a partial update can be checked. */
@@ -211,7 +210,6 @@ function createRow(
     reason: input.reason ?? null,
     icon: input.icon ?? null,
     constant_reminder: input.constantReminder ?? false,
-    auto_popup_log: input.autoPopupLog ?? false,
   };
 }
 
@@ -257,7 +255,6 @@ function patchRow(
   if (input.reason !== undefined) row.reason = input.reason;
   if (input.icon !== undefined) row.icon = input.icon;
   if (input.constantReminder !== undefined) row.constant_reminder = input.constantReminder;
-  if (input.autoPopupLog !== undefined) row.auto_popup_log = input.autoPopupLog;
 
   return row;
 }

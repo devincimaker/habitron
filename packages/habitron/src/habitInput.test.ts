@@ -33,7 +33,6 @@ describe('create', () => {
       reason: null,
       icon: null,
       constant_reminder: false,
-      auto_popup_log: false,
       section_id: null,
     });
   });
@@ -83,14 +82,12 @@ describe('create', () => {
         reason: 'Sleep better',
         icon: 'book',
         constantReminder: true,
-        autoPopupLog: true,
       })
     ).toMatchObject({
       goal_days: 30,
       reason: 'Sleep better',
       icon: 'book',
       constant_reminder: true,
-      auto_popup_log: true,
     });
   });
 

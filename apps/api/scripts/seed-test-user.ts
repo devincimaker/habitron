@@ -140,7 +140,6 @@ const { data: habitRows, error: habitError } = await supabase
       record_increment: habit.recordIncrement ?? null,
       section_id: sectionId.get(habit.section) ?? null,
       constant_reminder: false,
-      auto_popup_log: false,
       active: true,
     }))
   )

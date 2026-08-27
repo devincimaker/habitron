@@ -20,7 +20,6 @@ const baseHabit: Habit = {
   checkInMode: 'auto',
   reminderTimes: [],
   constantReminder: false,
-  autoPopupLog: false,
   active: true,
   createdAt: new Date('2026-04-01T08:00:00Z').getTime(),
 };

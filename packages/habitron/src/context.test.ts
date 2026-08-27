@@ -8,7 +8,6 @@ function habit(overrides: Partial<HabitForDay> & { id: string; name: string }): 
     goalType: 'boolean',
     checkInMode: 'auto',
     constantReminder: false,
-    autoPopupLog: false,
     reminderTimes: [],
     active: true,
     dueOnDate: true,

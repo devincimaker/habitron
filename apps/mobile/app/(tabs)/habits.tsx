@@ -170,9 +170,7 @@ export default function HabitsScreen() {
 
   const handleCheckIn = useCallback(
     (habit: HabitWithStatus) => {
-      const needsSheet =
-        habit.autoPopupLog ||
-        (habit.goalType === 'quantity' && habit.checkInMode === 'manual');
+      const needsSheet = habit.goalType === 'quantity' && habit.checkInMode === 'manual';
       if (needsSheet) {
         setLoggingHabitId(habit.id);
         return;

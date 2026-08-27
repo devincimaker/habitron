@@ -28,7 +28,6 @@ const baseHabit: Omit<Habit, 'id' | 'name'> = {
   checkInMode: 'auto',
   reminderTimes: [],
   constantReminder: false,
-  autoPopupLog: false,
   active: true,
   createdAt,
 };
