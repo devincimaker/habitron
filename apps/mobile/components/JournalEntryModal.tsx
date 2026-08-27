@@ -7,6 +7,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import Animated from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
 import type {
   JournalEntry,
@@ -15,8 +16,10 @@ import type {
 } from '@habits-coach/shared';
 import { Caption, HeadingLarge } from './ui';
 import { JournalComposerBar } from './JournalComposerBar';
+import { TranscriptionSkeleton } from './TranscriptionSkeleton';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useSheetKeyboard } from '../hooks/useSheetKeyboard';
+import { useHighlightFlash } from '../hooks/useHighlightFlash';
 import { JOURNAL_PROMPTS } from '../constants/journal';
 import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -58,6 +61,9 @@ export function JournalEntryModal({
   const [placeholderPrompt, setPlaceholderPrompt] = useState(JOURNAL_PROMPTS[0]);
   const allowTranscriptionRef = useRef(true);
   const hasAutoStartedVoiceRef = useRef(false);
+  const editorRef = useRef<TextInput>(null);
+  const landTranscriptRef = useRef(false);
+  const { flash, style: highlightStyle } = useHighlightFlash();
 
   useEffect(() => {
     if (!visible) return;
@@ -74,18 +80,36 @@ export function JournalEntryModal({
   const appendTranscription = useCallback((text: string) => {
     if (!allowTranscriptionRef.current) return;
 
+    landTranscriptRef.current = true;
     setContent((current) => {
       const trimmed = current.trim();
       return trimmed ? `${trimmed}\n\n${text}` : text;
     });
   }, []);
 
-  const { voiceInputProps, handleCancelRecording } = useVoiceInput({
-    onStopSuccess: appendTranscription,
-    onSend: async (text) => {
-      appendTranscription(text);
-    },
-  });
+  // Runs on the render that carries the appended paragraph: flash the page
+  // and put the caret after it, which is what scrolls it into view.
+  useEffect(() => {
+    if (!landTranscriptRef.current) return;
+    landTranscriptRef.current = false;
+
+    flash();
+    editorRef.current?.focus();
+    editorRef.current?.setSelection(content.length, content.length);
+  }, [content, flash]);
+
+  const {
+    voiceInputProps,
+    isTranscribing,
+    handleStopRecording,
+    handleCancelRecording,
+    handleRetryRecording,
+  } = useVoiceInput({ onStopSuccess: appendTranscription });
+
+  const handleStop = useCallback(async () => {
+    const text = await handleStopRecording();
+    if (text?.trim()) appendTranscription(text);
+  }, [handleStopRecording, appendTranscription]);
 
   useEffect(() => {
     if (!visible || !autoStartVoice || hasAutoStartedVoiceRef.current) {
@@ -182,16 +206,23 @@ export function JournalEntryModal({
             </Caption>
           ) : null}
 
-          <TextInput
-            style={styles.editor}
-            placeholder={placeholderPrompt}
-            placeholderTextColor={colors.textLight}
-            value={content}
-            onChangeText={setContent}
-            multiline
-            autoFocus={!entry && !autoStartVoice}
-            accessibilityLabel="Journal entry"
-          />
+          <Animated.View style={[styles.editorWrap, highlightStyle]}>
+            <TextInput
+              ref={editorRef}
+              // While transcribing the input hugs its text, so the skeleton
+              // below it sits exactly where the paragraph will land.
+              style={[styles.editor, isTranscribing && styles.editorHugsText]}
+              placeholder={placeholderPrompt}
+              placeholderTextColor={colors.textLight}
+              value={content}
+              onChangeText={setContent}
+              multiline
+              autoFocus={!entry && !autoStartVoice}
+              accessibilityLabel="Journal entry"
+            />
+
+            {isTranscribing ? <TranscriptionSkeleton /> : null}
+          </Animated.View>
         </View>
 
         <JournalComposerBar
@@ -200,7 +231,12 @@ export function JournalEntryModal({
           canSave={Boolean(content.trim()) && !isSaving}
           isSaving={isSaving}
           onSave={() => void handleSave()}
-          voice={voiceInputProps}
+          voice={{
+            ...voiceInputProps,
+            onDiscard: () => void handleCancelRecording(),
+            onStop: () => void handleStop(),
+            onRetry: () => void handleRetryRecording(),
+          }}
           bottomInset={bottomInset}
         />
       </View>
@@ -244,6 +280,10 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   promptCaption: {
     marginBottom: SPACING.sm,
   },
+  editorWrap: {
+    flex: 1,
+    borderRadius: BORDER_RADIUS.md,
+  },
   editor: {
     flex: 1,
     ...TYPOGRAPHY.editorBody,
@@ -252,5 +292,8 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     // line sits on the page's padding and not 5pt below it.
     paddingTop: 0,
     paddingBottom: SPACING.md,
+  },
+  editorHugsText: {
+    flex: 0,
   },
 });

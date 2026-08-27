@@ -1,17 +1,13 @@
 import { useEffect } from 'react';
 import { ActionSheetIOS, Alert, Platform, Pressable, StyleSheet, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import Animated, {
-  FadeInDown,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from 'react-native-reanimated';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import type { JournalEntry } from '@habits-coach/shared';
 import { BodyLarge, BodyMedium, Caption } from './ui';
 import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
 import { JOURNAL_MOOD_BY_VALUE, JOURNAL_MOOD_STYLES } from '../constants/journal';
 import { useThemedStyles } from '../hooks/useColors';
+import { useHighlightFlash } from '../hooks/useHighlightFlash';
 
 interface JournalEntryCardProps {
   entry: JournalEntry;
@@ -74,21 +70,11 @@ export function JournalEntryCard({
   const supportingText = remainingParagraphs.join(' ');
   const wasEdited = entry.updatedAt - entry.createdAt > 60_000;
 
-  const highlightProgress = useSharedValue(isHighlighted ? 1 : 0);
+  const { flash, style: animatedCardStyle } = useHighlightFlash();
 
   useEffect(() => {
-    if (isHighlighted) {
-      highlightProgress.value = 1;
-      highlightProgress.value = withTiming(0, { duration: 1500 });
-    }
-  }, [isHighlighted, highlightProgress]);
-
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    backgroundColor:
-      highlightProgress.value > 0
-        ? `rgba(255, 209, 128, ${highlightProgress.value * 0.3})`
-        : colors.background,
-  }));
+    if (isHighlighted) flash();
+  }, [isHighlighted, flash]);
 
   const handleOpenActions = () => {
     if (Platform.OS === 'ios') {

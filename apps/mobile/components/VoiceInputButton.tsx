@@ -10,6 +10,7 @@ import {
 import { Feather } from '@expo/vector-icons';
 import { SPACING, BORDER_RADIUS, FONT_SIZES, type Colors } from '../constants/theme';
 import { useThemedStyles, useColors } from '../hooks/useColors';
+import { formatElapsed } from '../utils/instruct';
 
 interface VoiceInputButtonProps {
   // Idle state (just the mic button)
@@ -25,13 +26,6 @@ interface VoiceInputButtonProps {
   // Error state
   error?: string | null;
   onRetry?: () => void;
-}
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
 // Waveform visualization component
@@ -145,8 +139,8 @@ export function VoiceInputButton({
 
   // Recording state - full recording interface
   const durationDisplay = maxDurationMs
-    ? `${formatDuration(recordingDuration)} / ${formatDuration(maxDurationMs)}`
-    : formatDuration(recordingDuration);
+    ? `${formatElapsed(recordingDuration)} / ${formatElapsed(maxDurationMs)}`
+    : formatElapsed(recordingDuration);
 
   return (
     <View style={styles.recordingContainer}>
