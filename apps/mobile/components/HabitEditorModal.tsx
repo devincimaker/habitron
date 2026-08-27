@@ -1,5 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Alert,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  type TextInput,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
@@ -8,11 +17,12 @@ import {
   type HabitDraft,
   type HabitSection,
 } from '@habits-coach/shared';
-import { Button } from './ui';
 import { HabitBasicsStep } from './HabitBasicsStep';
+import { HabitComposerFooter } from './HabitComposerFooter';
 import { HabitDetailsStep } from './HabitDetailsStep';
 import { SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { useSheetKeyboard } from '../hooks/useSheetKeyboard';
 import {
   buildHabitDraft,
   detailsStateFor,
@@ -37,6 +47,13 @@ interface HabitEditorModalProps {
 
 type ComposerStep = 'basics' | 'details';
 
+/**
+ * onShow fires as the sheet is presented, before its slide has settled; waiting
+ * this long before raising the keyboard keeps the two animations from fighting
+ * (the same delay the quick-create sheet uses).
+ */
+const FOCUS_AFTER_SHOW_MS = 250;
+
 export function HabitEditorModal({
   visible,
   habit,
@@ -49,10 +66,13 @@ export function HabitEditorModal({
   onRemoveSection,
 }: HabitEditorModalProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const { keyboardHeight, bottomInset } = useSheetKeyboard();
+  const nameRef = useRef<TextInput>(null);
   const isEditing = Boolean(habit);
 
   const [step, setStep] = useState<ComposerStep>('basics');
   const [name, setName] = useState('');
+  const [reason, setReason] = useState('');
   const [details, setDetails] = useState<HabitDetailsState>(() => detailsStateFor(null));
   /** The icon the user picked by hand; until then the name suggests one. */
   const [customIcon, setCustomIcon] = useState<HabitIconName | null>(null);
@@ -85,10 +105,17 @@ export function HabitEditorModal({
 
     setStep(habit ? 'details' : 'basics');
     setName(habit?.name ?? initialName ?? '');
+    setReason(habit?.reason ?? '');
     setDetails(detailsStateFor(habit, defaultSectionId));
     setCustomIcon(habit?.icon ? resolveHabitIcon(habit.name, habit.icon) : null);
     setScheduleError(null);
   }, [visible, habit, initialName, defaultSectionId]);
+
+  const handleShow = () => {
+    if (isEditing) return;
+
+    setTimeout(() => nameRef.current?.focus(), FOCUS_AFTER_SHOW_MS);
+  };
 
   const handleSelectIcon = (icon: HabitIconName) => {
     if (customIcon === icon) {
@@ -104,14 +131,6 @@ export function HabitEditorModal({
     if ('frequency' in patch || 'weeklyDays' in patch) {
       setScheduleError(null);
     }
-  };
-
-  const handleAdvance = () => {
-    if (!name.trim()) {
-      return;
-    }
-
-    setStep('details');
   };
 
   const handleClosePress = () => {
@@ -134,7 +153,7 @@ export function HabitEditorModal({
 
     setIsSaving(true);
     try {
-      await onSave(buildHabitDraft({ name, icon: selectedIcon, ...details }));
+      await onSave(buildHabitDraft({ name, reason, icon: selectedIcon, ...details }));
       onClose();
     } finally {
       setIsSaving(false);
@@ -148,15 +167,23 @@ export function HabitEditorModal({
       : 'Habit Details';
 
   const showsBackButton = !isEditing && step === 'details';
+  const showsBasics = step === 'basics' || isEditing;
+  const showsDetails = step === 'details' || isEditing;
+
+  const action =
+    step === 'basics'
+      ? { title: 'Next', onPress: () => setStep('details') }
+      : { title: isEditing ? 'Save Habit' : 'Create Habit', onPress: handleSave };
 
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
+      onShow={handleShow}
       onRequestClose={handleClosePress}
     >
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: keyboardHeight }]}>
         <View style={styles.header}>
           <Pressable
             style={styles.headerButton}
@@ -178,18 +205,22 @@ export function HabitEditorModal({
           contentContainerStyle={styles.content}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
         >
-          {step === 'basics' || isEditing ? (
+          {showsBasics ? (
             <HabitBasicsStep
               name={name}
               onNameChange={setName}
+              nameRef={nameRef}
+              reason={reason}
+              onReasonChange={setReason}
               selectedIcon={selectedIcon}
               onSelectIcon={handleSelectIcon}
             />
           ) : null}
-          {step === 'details' || isEditing ? (
+          {showsDetails ? (
             <HabitDetailsStep
-              summary={isEditing ? undefined : { name, icon: selectedIcon }}
+              summary={isEditing ? undefined : { name, reason, icon: selectedIcon }}
               details={details}
               onDetailsChange={handleDetailsChange}
               scheduleError={scheduleError}
@@ -201,27 +232,12 @@ export function HabitEditorModal({
           ) : null}
         </ScrollView>
 
-        <View style={styles.footer}>
-          {!isEditing && step === 'details' ? (
-            <Button title="Back" variant="ghost" onPress={() => setStep('basics')} size="md" />
-          ) : (
-            <Button title="Cancel" variant="ghost" onPress={onClose} size="md" />
-          )}
-
-          <Button
-            title={
-              !isEditing && step === 'basics'
-                ? 'Next'
-                : isEditing
-                  ? 'Save Habit'
-                  : 'Create Habit'
-            }
-            onPress={!isEditing && step === 'basics' ? handleAdvance : handleSave}
-            loading={isSaving}
-            disabled={!name.trim()}
-            size="md"
-          />
-        </View>
+        <HabitComposerFooter
+          title={isSaving ? 'Saving...' : action.title}
+          disabled={!name.trim() || isSaving}
+          onPress={action.onPress}
+          bottomInset={bottomInset}
+        />
       </View>
     </Modal>
   );
@@ -260,14 +276,5 @@ const createStyles = (colors: Colors) =>
     content: {
       paddingHorizontal: SPACING.md,
       paddingBottom: SPACING.xxl,
-    },
-    footer: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: SPACING.sm,
-      padding: SPACING.lg,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-      backgroundColor: colors.background,
     },
   });

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { useRef, type Ref } from 'react';
+import { Pressable, StyleSheet, View, type TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Caption, HeadingMedium, Input } from './ui';
 import { createHabitCardStyles } from './habitComposerStyles';
@@ -14,18 +15,26 @@ import {
 interface HabitBasicsStepProps {
   name: string;
   onNameChange: (name: string) => void;
+  /** The shell focuses the name once the sheet has landed. */
+  nameRef: Ref<TextInput>;
+  reason: string;
+  onReasonChange: (reason: string) => void;
   selectedIcon: HabitIconName;
   onSelectIcon: (icon: HabitIconName) => void;
 }
 
-/** Step 1 of the composer: the name and the icon. */
+/** Step 1 of the composer — what and why: the name, why it matters, the icon. All the typing lives here. */
 export function HabitBasicsStep({
   name,
   onNameChange,
+  nameRef,
+  reason,
+  onReasonChange,
   selectedIcon,
   onSelectIcon,
 }: HabitBasicsStepProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const reasonRef = useRef<TextInput>(null);
   const selectedOption = getHabitIconOption(selectedIcon);
 
   return (
@@ -33,10 +42,26 @@ export function HabitBasicsStep({
       <View style={styles.surfaceCard}>
         <Caption style={styles.cardEyebrow}>Habit name</Caption>
         <Input
+          ref={nameRef}
           placeholder="Daily check-in"
           value={name}
           onChangeText={onNameChange}
-          autoFocus
+          returnKeyType="next"
+          submitBehavior="submit"
+          onSubmitEditing={() => reasonRef.current?.focus()}
+          containerStyle={styles.fieldNoMargin}
+        />
+      </View>
+
+      <View style={styles.surfaceCard}>
+        <Input
+          ref={reasonRef}
+          label="Why it matters"
+          placeholder="What this supports in your life"
+          value={reason}
+          onChangeText={onReasonChange}
+          multiline
+          inputStyle={styles.reasonInput}
           containerStyle={styles.fieldNoMargin}
         />
       </View>
@@ -103,6 +128,13 @@ const createStyles = (colors: Colors) =>
     cardEyebrow: {
       marginBottom: SPACING.sm,
       color: colors.textSecondary,
+    },
+    fieldNoMargin: {
+      marginBottom: 0,
+    },
+    // Three lines of reason, not Input's multiline hundred points.
+    reasonInput: {
+      minHeight: 72,
     },
     cardTitle: {
       marginBottom: 2,

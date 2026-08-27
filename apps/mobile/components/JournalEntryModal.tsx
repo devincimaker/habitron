@@ -8,7 +8,6 @@ import {
   View,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type {
   JournalEntry,
   JournalEntryDraft,
@@ -17,7 +16,7 @@ import type {
 import { Caption, HeadingLarge } from './ui';
 import { JournalComposerBar } from './JournalComposerBar';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { useKeyboardHeight } from '../hooks/useKeyboardHeight';
+import { useSheetKeyboard } from '../hooks/useSheetKeyboard';
 import { JOURNAL_PROMPTS } from '../constants/journal';
 import { BORDER_RADIUS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -52,8 +51,7 @@ export function JournalEntryModal({
   onSave,
 }: JournalEntryModalProps) {
   const [styles, colors] = useThemedStyles(createStyles);
-  const insets = useSafeAreaInsets();
-  const keyboardHeight = useKeyboardHeight();
+  const { keyboardHeight, bottomInset } = useSheetKeyboard();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
   const [isSaving, setIsSaving] = useState(false);
@@ -203,7 +201,7 @@ export function JournalEntryModal({
           isSaving={isSaving}
           onSave={() => void handleSave()}
           voice={voiceInputProps}
-          paddingBottom={keyboardHeight > 0 ? 0 : insets.bottom}
+          bottomInset={bottomInset}
         />
       </View>
     </Modal>
