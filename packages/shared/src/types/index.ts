@@ -204,7 +204,8 @@ export interface Todo {
   actualMinutes?: number;
   completedAt?: number;
   canceledAt?: number;
-  sortOrder: number;
+  /** The user's one manual order, dense per user; every drop rewrites it. */
+  position: number;
   listId: string;
   goalId?: string;
   /** The single category this task belongs to. */

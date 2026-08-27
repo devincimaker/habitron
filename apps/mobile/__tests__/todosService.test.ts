@@ -41,7 +41,7 @@ describe('todos service', () => {
         estimate_minutes: null,
         completed_at: null,
         canceled_at: null,
-        sort_order: 1,
+        position: 1,
         tag_id: 'tag-1',
         created_at: '2026-04-15T10:00:00.000Z',
         updated_at: '2026-04-15T10:00:00.000Z',
@@ -92,7 +92,7 @@ describe('todos service', () => {
           estimate_minutes: null,
           completed_at: null,
           canceled_at: null,
-          sort_order: 2,
+          position: 2,
           tag_id: null,
           created_at: '2026-04-15T10:00:00.000Z',
           updated_at: '2026-04-15T10:00:00.000Z',
@@ -107,17 +107,11 @@ describe('todos service', () => {
       if (table === 'todos') {
         return {
           select: select.mockReturnValue({
-            order: () => ({
-              order: () => ({
-                order: () => ({
-                  order: () =>
-                    Promise.resolve({
-                      data: mockTodoRows,
-                      error: null,
-                    }),
-                }),
+            order: () =>
+              Promise.resolve({
+                data: mockTodoRows,
+                error: null,
               }),
-            }),
           }),
         };
       }

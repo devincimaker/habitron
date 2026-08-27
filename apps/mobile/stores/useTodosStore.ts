@@ -3,11 +3,13 @@ import { create } from 'zustand';
 import type { Todo, TodoDraft, TodoList, TodoStatus, TodoTag } from '@habits-coach/shared';
 import { normalizeChecklistDraft } from '@habits-coach/shared';
 import * as todosService from '../services/todos';
-import type { TodoStatusOptions } from '../services/todos';
+import type { TodoOrderUpdate, TodoStatusOptions } from '../services/todos';
+import { applyTodoOrder, nextTodoPosition, sortTodosByPosition } from '../utils/todoOrder';
 import { getTodoTagColor } from '../utils/todoTagColors';
-import { compareTodoScheduledTimes, resolveNewTodoSchedule } from '../utils/todoTime';
+import { resolveNewTodoSchedule } from '../utils/todoTime';
 
 interface TodosState {
+  /** Always in `position` order: load and reorder sort, everything else keeps its place or appends. */
   todos: Todo[];
   lists: TodoList[];
   tags: TodoTag[];
@@ -24,6 +26,7 @@ interface TodosState {
   ) => Promise<Todo>;
   setChecklistItemDone: (todoId: string, itemId: string, done: boolean) => Promise<void>;
   removeTodo: (todoId: string) => Promise<void>;
+  reorderTodos: (updates: TodoOrderUpdate[]) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
   getTodosForDate: (date: string) => Todo[];
@@ -93,7 +96,7 @@ function resolveOptimisticTag(tags: TodoTag[], draft: TodoDraft): TodoTag | unde
   };
 }
 
-function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: TodoDraft): Todo {
+function buildOptimisticTodo(state: Pick<TodosState, 'todos' | 'lists' | 'tags'>, draft: TodoDraft): Todo {
   const now = Date.now();
   const schedule = resolveNewTodoSchedule(draft.scheduledDate, draft.scheduledTime);
 
@@ -111,7 +114,7 @@ function buildOptimisticTodo(state: Pick<TodosState, 'lists' | 'tags'>, draft: T
     scheduledDate: schedule.scheduledDate,
     scheduledTime: schedule.scheduledTime,
     estimateMinutes: draft.estimateMinutes,
-    sortOrder: now,
+    position: nextTodoPosition(state.todos),
     listId: resolveOptimisticListId(state.lists, draft),
     goalId: draft.goalId,
     tag: resolveOptimisticTag(state.tags, draft),
@@ -176,7 +179,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       ]);
 
       set({
-        todos,
+        todos: sortTodosByPosition(todos),
         lists: metadata.lists,
         tags: metadata.tags,
         isLoading: false,
@@ -300,6 +303,20 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     }));
   },
 
+  reorderTodos: async (updates) => {
+    if (!updates.length) return;
+    // Optimistic: the list has already shown the drop, so the order it shows
+    // has to survive the round trip rather than wait for it.
+    set((state) => ({ todos: sortTodosByPosition(applyTodoOrder(state.todos, updates)) }));
+
+    try {
+      await todosService.reorderTodos(updates);
+    } catch (error) {
+      console.error('Failed to reorder todos:', error);
+      await get().loadTodos();
+    }
+  },
+
   createTodoList: async (name, color) => {
     const createdList = await todosService.createTodoList(name, color);
     set((state) => ({
@@ -317,14 +334,7 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   getTodosForDate: (date) => {
-    return get()
-      .todos
-      .filter((todo) => todo.scheduledDate === date)
-      .sort((a, b) => {
-        const priorityA = a.priority ?? 5;
-        const priorityB = b.priority ?? 5;
-        return compareTodoScheduledTimes(a.scheduledTime, b.scheduledTime) || priorityA - priorityB || a.sortOrder - b.sortOrder;
-      });
+    return get().todos.filter((todo) => todo.scheduledDate === date);
   },
 
   getOverdueTodos: (date) => {

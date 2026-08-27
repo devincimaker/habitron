@@ -11,6 +11,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
+import { TaskDragList } from '../../components/TaskDragList';
+import { TaskDragOverlay } from '../../components/TaskDragOverlay';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
@@ -20,37 +22,12 @@ import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyMedium, Card } from '../../components/ui';
 import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
+import { useTaskListDrag } from '../../hooks/useTaskListDrag';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
-import { compareTodoScheduledTimes } from '../../utils/todoTime';
-
-function getTaskSortDate(todo: Todo) {
-  return todo.scheduledDate ?? todo.dueDate;
-}
-
-function compareUndatedOpenTodos(a: Todo, b: Todo) {
-  const priorityA = a.priority ?? 5;
-  const priorityB = b.priority ?? 5;
-
-  return compareTodoScheduledTimes(a.scheduledTime, b.scheduledTime) || priorityA - priorityB || a.sortOrder - b.sortOrder;
-}
-
-function compareOpenTodos(a: Todo, b: Todo) {
-  const sortDateA = getTaskSortDate(a);
-  const sortDateB = getTaskSortDate(b);
-
-  if (sortDateA && sortDateB) {
-    return sortDateA.localeCompare(sortDateB) || compareUndatedOpenTodos(a, b);
-  }
-
-  if (sortDateA) return -1;
-  if (sortDateB) return 1;
-
-  return compareUndatedOpenTodos(a, b);
-}
 
 function compareCompletedTodos(a: Todo, b: Todo) {
   const completedAtA = a.completedAt ?? a.updatedAt;
@@ -72,6 +49,7 @@ export default function TasksScreen() {
     addTodoOptimistic,
     updateTodo,
     setTodoStatusOptimistic,
+    reorderTodos,
   } = useTodosStore();
   const { goals, loadGoals } = useGoalsStore();
 
@@ -80,17 +58,15 @@ export default function TasksScreen() {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
-  const openTodos = useMemo(
-    () =>
-      todos
-        .filter((todo) => todo.status === 'open')
-        .sort(compareOpenTodos),
-    [todos]
-  );
+  const openTodos = useMemo(() => todos.filter((todo) => todo.status === 'open'), [todos]);
   const completedTodos = useMemo(
     () => todos.filter((todo) => todo.status === 'completed').sort(compareCompletedTodos),
     [todos]
   );
+  const { rootRef, onRootLayout, dragState, start, move, end, list } = useTaskListDrag({
+    items: openTodos,
+    onReorder: reorderTodos,
+  });
 
   const refreshAll = useCallback(async () => {
     await Promise.all([loadTodos(), loadGoals()]);
@@ -159,9 +135,10 @@ export default function TasksScreen() {
         }}
       />
 
-      <View style={styles.container}>
+      <View ref={rootRef} onLayout={onRootLayout} style={styles.container}>
         <ScrollView
           style={styles.scroll}
+          scrollEnabled={!dragState}
           contentContainerStyle={[
             styles.content,
             {
@@ -178,18 +155,25 @@ export default function TasksScreen() {
         >
           {openTodos.length > 0 ? (
             <TaskSectionCard>
-              {openTodos.map((todo, index) => (
-                <TaskRow
-                  key={todo.id}
-                  todo={todo}
-                  onToggleStatus={handleToggleTodoStatus}
-                  onRemove={removeTodo}
-                  onEdit={openTaskEditor}
-                  onReschedule={setReschedulingTodo}
-                  variant="compact"
-                  isLast={index === openTodos.length - 1}
-                />
-              ))}
+              <TaskDragList
+                items={openTodos}
+                drag={list}
+                renderRow={(todo, index) => (
+                  <TaskRow
+                    todo={todo}
+                    onToggleStatus={handleToggleTodoStatus}
+                    onRemove={removeTodo}
+                    onEdit={openTaskEditor}
+                    onReschedule={setReschedulingTodo}
+                    onDragStart={start}
+                    onDragMove={move}
+                    onDragEnd={end}
+                    isDragging={dragState?.todo.id === todo.id}
+                    variant="compact"
+                    isLast={index === openTodos.length - 1}
+                  />
+                )}
+              />
             </TaskSectionCard>
           ) : (
             <Card variant="surface" style={styles.emptyCard}>
@@ -265,6 +249,8 @@ export default function TasksScreen() {
             onDismiss={dismissRemovedTodo}
           />
         ) : null}
+
+        <TaskDragOverlay dragState={dragState} />
       </View>
     </>
   );

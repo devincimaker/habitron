@@ -468,8 +468,10 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   compactTaskRow: {
     paddingVertical: 10,
   },
+  // The lifted row leaves an empty slot: the clone is what the finger holds,
+  // and neighbours slide through this slot to open the gap at the drop index.
   draggingRow: {
-    opacity: 0.2,
+    opacity: 0,
   },
   taskMain: {
     flexDirection: 'row',

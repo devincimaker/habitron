@@ -3,12 +3,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs } from 'expo-router';
 import {
   Alert,
-  LayoutChangeEvent,
   Pressable,
   RefreshControl,
   ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +15,8 @@ import * as Haptics from 'expo-haptics';
 import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
+import { TaskDragList } from '../../components/TaskDragList';
+import { TaskDragOverlay } from '../../components/TaskDragOverlay';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import {
@@ -29,15 +29,9 @@ import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { TaskSectionCard } from '../../components/TaskSectionCard';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { Caption } from '../../components/ui';
-import {
-  BORDER_RADIUS,
-  SHADOWS,
-  SPACING,
-  TAB_BAR,
-  TYPOGRAPHY,
-  type Colors,
-} from '../../constants/theme';
+import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
+import { useTaskListDrag } from '../../hooks/useTaskListDrag';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useTodoReschedule } from '../../hooks/useTodoReschedule';
@@ -47,26 +41,13 @@ import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { formatRelativeDateLabel, getMonthDisplayString } from '../../utils/dateUtils';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
-import { formatTodoScheduledTime } from '../../utils/todoTime';
-
-interface DragState {
-  todo: Todo;
-  width: number;
-  height: number;
-  offsetX: number;
-  offsetY: number;
-  left: number;
-  top: number;
-}
 
 export default function CalendarScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
   const today = getTodayDate();
-  const containerRef = useRef<View>(null);
   const taskCalendarRef = useRef<TaskCalendarRef>(null);
   const dragHoverDateRef = useRef<string | null>(null);
-  const rootFrameRef = useRef({ x: 0, y: 0 });
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const { selectedDate, setSelectedDate } = useHabitsStore();
   const {
@@ -78,6 +59,7 @@ export default function CalendarScreen() {
     addTodoOptimistic,
     updateTodo,
     setTodoStatusOptimistic,
+    reorderTodos,
     getTodosForDate,
     getOverdueTodos,
   } = useTodosStore();
@@ -90,7 +72,6 @@ export default function CalendarScreen() {
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
-  const [dragState, setDragState] = useState<DragState | null>(null);
   const [dragHoverDate, setDragHoverDate] = useState<string | null>(null);
   // Dragging a task re-renders this screen every pointer frame, so keep the
   // date formatting off that path. `today` is a dependency even though the util
@@ -124,7 +105,14 @@ export default function CalendarScreen() {
   );
   const openScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'open');
   const completedScheduledTodos = scheduledTodos.filter((todo) => todo.status === 'completed');
-  const dragScheduledTimeLabel = dragState ? formatTodoScheduledTime(dragState.todo.scheduledTime) : null;
+  const { rootRef, onRootLayout, dragState, start, move, end, list } = useTaskListDrag({
+    items: openScheduledTodos,
+    onReorder: reorderTodos,
+  });
+  const dragHint = useMemo(
+    () => (dragHoverDate ? `Drop on ${formatRelativeDateLabel(dragHoverDate)}` : null),
+    [dragHoverDate]
+  );
   const taskDatesWithDots = useMemo(() => {
     const dates = new Set<string>();
 
@@ -200,57 +188,22 @@ export default function CalendarScreen() {
     setShowTodoEditor(true);
   }, []);
 
-  const measureRootFrame = useCallback(() => {
-    if (!containerRef.current) return;
-
-    containerRef.current.measureInWindow((x, y) => {
-      rootFrameRef.current = { x, y };
-    });
-  }, []);
-
-  const handleContainerLayout = useCallback(
-    (_event: LayoutChangeEvent) => {
-      measureRootFrame();
-    },
-    [measureRootFrame]
-  );
-
   const getCalendarDropDate = useCallback((absoluteX: number, absoluteY: number) => {
     return taskCalendarRef.current?.getDateAtScreenPosition(absoluteX, absoluteY) ?? null;
   }, []);
 
   const handleTaskDragStart = useCallback(
     (todo: Todo, event: TaskRowDragStartEvent) => {
-      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-
       const nextHoverDate = getCalendarDropDate(event.absoluteX, event.absoluteY);
       dragHoverDateRef.current = nextHoverDate;
       setDragHoverDate(nextHoverDate);
-      setDragState({
-        todo,
-        width: event.width,
-        height: event.height,
-        offsetX: event.absoluteX - event.x,
-        offsetY: event.absoluteY - event.y,
-        left: event.x - rootFrameRef.current.x,
-        top: event.y - rootFrameRef.current.y,
-      });
+      start(todo, event);
     },
-    [getCalendarDropDate]
+    [getCalendarDropDate, start]
   );
 
   const handleTaskDragMove = useCallback(
-    (_todo: Todo, event: TaskRowDragMoveEvent) => {
-      setDragState((current) =>
-        current
-          ? {
-              ...current,
-              left: event.absoluteX - current.offsetX - rootFrameRef.current.x,
-              top: event.absoluteY - current.offsetY - rootFrameRef.current.y,
-            }
-          : current
-      );
-
+    (todo: Todo, event: TaskRowDragMoveEvent) => {
       const nextHoverDate = getCalendarDropDate(event.absoluteX, event.absoluteY);
       if (dragHoverDateRef.current !== nextHoverDate) {
         dragHoverDateRef.current = nextHoverDate;
@@ -259,8 +212,11 @@ export default function CalendarScreen() {
           void Haptics.selectionAsync();
         }
       }
+
+      // Exactly one target: over the strip the day highlight wins and the list opens no gap.
+      move(todo, event, nextHoverDate !== null);
     },
-    [getCalendarDropDate]
+    [getCalendarDropDate, move]
   );
 
   const handleTaskDragEnd = useCallback(
@@ -269,8 +225,8 @@ export default function CalendarScreen() {
         getCalendarDropDate(event.absoluteX, event.absoluteY) ?? dragHoverDateRef.current;
 
       dragHoverDateRef.current = null;
-      setDragState(null);
       setDragHoverDate(null);
+      end(todo, event, dropDate !== null);
 
       if (!dropDate || dropDate === todo.scheduledDate) {
         return;
@@ -278,27 +234,26 @@ export default function CalendarScreen() {
 
       await rescheduleTodo(todo, dropDate);
     },
-    [getCalendarDropDate, rescheduleTodo]
+    [end, getCalendarDropDate, rescheduleTodo]
   );
 
-  const renderTaskRows = useCallback(
-    (items: Todo[], keyPrefix?: string) =>
-      items.map((todo, index) => (
-        <TaskRow
-          key={keyPrefix ? `${keyPrefix}-${todo.id}` : todo.id}
-          todo={todo}
-          variant="compact"
-          isLast={index === items.length - 1}
-          onToggleStatus={handleToggleTodoStatus}
-          onRemove={removeTodo}
-          onEdit={openTaskEditor}
-          onReschedule={setReschedulingTodo}
-          onDragStart={handleTaskDragStart}
-          onDragMove={handleTaskDragMove}
-          onDragEnd={handleTaskDragEnd}
-          isDragging={dragState?.todo.id === todo.id}
-        />
-      )),
+  const renderTaskRow = useCallback(
+    (todo: Todo, isLast: boolean, keyPrefix?: string) => (
+      <TaskRow
+        key={keyPrefix ? `${keyPrefix}-${todo.id}` : todo.id}
+        todo={todo}
+        variant="compact"
+        isLast={isLast}
+        onToggleStatus={handleToggleTodoStatus}
+        onRemove={removeTodo}
+        onEdit={openTaskEditor}
+        onReschedule={setReschedulingTodo}
+        onDragStart={handleTaskDragStart}
+        onDragMove={handleTaskDragMove}
+        onDragEnd={handleTaskDragEnd}
+        isDragging={dragState?.todo.id === todo.id}
+      />
+    ),
     [
       dragState?.todo.id,
       handleTaskDragEnd,
@@ -310,6 +265,12 @@ export default function CalendarScreen() {
     ]
   );
 
+  const renderTaskRows = useCallback(
+    (items: Todo[], keyPrefix: string) =>
+      items.map((todo, index) => renderTaskRow(todo, index === items.length - 1, keyPrefix)),
+    [renderTaskRow]
+  );
+
   return (
     <>
       <Tabs.Screen
@@ -319,7 +280,7 @@ export default function CalendarScreen() {
         }}
       />
 
-      <View ref={containerRef} onLayout={handleContainerLayout} style={styles.container}>
+      <View ref={rootRef} onLayout={onRootLayout} style={styles.container}>
         <TaskCalendar
           ref={taskCalendarRef}
           selectedDate={selectedDate}
@@ -353,7 +314,13 @@ export default function CalendarScreen() {
 
           <TaskSectionCard title={selectedDateLabel}>
             {openScheduledTodos.length > 0 ? (
-              renderTaskRows(openScheduledTodos)
+              <TaskDragList
+                items={openScheduledTodos}
+                drag={list}
+                renderRow={(todo, index) =>
+                  renderTaskRow(todo, index === openScheduledTodos.length - 1)
+                }
+              />
             ) : (
               <Caption style={styles.emptySection}>
                 Nothing scheduled — tap + to add one.
@@ -419,39 +386,7 @@ export default function CalendarScreen() {
           />
         ) : null}
 
-        {dragState ? (
-          <View pointerEvents="none" style={styles.dragLayer}>
-            <View
-              style={[
-                styles.dragCard,
-                {
-                  left: dragState.left,
-                  top: dragState.top,
-                  width: Math.max(Math.min(dragState.width, 360), 220),
-                },
-              ]}
-            >
-              <Text style={styles.dragTitle}>{dragState.todo.title}</Text>
-              <View style={styles.dragMeta}>
-                {dragScheduledTimeLabel ? (
-                  <Text style={styles.dragMetaText}>{dragScheduledTimeLabel}</Text>
-                ) : null}
-                {dragState.todo.dueDate ? (
-                  <Text style={styles.dragMetaText}>
-                    Due {formatRelativeDateLabel(dragState.todo.dueDate)}
-                  </Text>
-                ) : null}
-                {dragHoverDate ? (
-                  <Text style={styles.dragTargetText}>
-                    Drop on {formatRelativeDateLabel(dragHoverDate)}
-                  </Text>
-                ) : (
-                  <Text style={styles.dragMetaText}>Drag onto a visible day</Text>
-                )}
-              </View>
-            </View>
-          </View>
-        ) : null}
+        <TaskDragOverlay dragState={dragState} hint={dragHint} />
       </View>
     </>
   );
@@ -481,39 +416,5 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     ...SHADOWS.medium,
-  },
-  dragLayer: {
-    ...StyleSheet.absoluteFillObject,
-    zIndex: 20,
-  },
-  dragCard: {
-    position: 'absolute',
-    borderRadius: BORDER_RADIUS.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.background,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    opacity: 0.96,
-  },
-  dragTitle: {
-    ...TYPOGRAPHY.bodyLarge,
-    color: colors.text,
-    fontWeight: '600',
-  },
-  dragMeta: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: 4,
-  },
-  dragMetaText: {
-    ...TYPOGRAPHY.caption,
-    color: colors.textSecondary,
-  },
-  dragTargetText: {
-    ...TYPOGRAPHY.caption,
-    color: colors.primary,
-    fontWeight: '600',
   },
 });
