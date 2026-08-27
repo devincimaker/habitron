@@ -34,7 +34,6 @@ import { MicButton } from './MicButton';
 import { VoiceControl } from './VoiceControl';
 import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
-import { toVoiceControlMode } from '../utils/voice';
 import { useDayRatings } from '../hooks/useDayRatings';
 import { streamCoachTurn } from '../services/api';
 import {
@@ -381,7 +380,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   }, [isLoading, markRatingsSent, ratingsMessage, sendUserMessage]);
 
   const {
-    isRecordingMode,
+    isVoiceActive,
     voiceInputProps,
     handleStopRecording,
     handleSendRecording,
@@ -396,7 +395,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
 
   const handleStopAndEdit = useCallback(async () => {
     const text = await handleStopRecording();
-    if (text) {
+    if (text?.trim()) {
       setInputText(text);
     }
   }, [handleStopRecording]);
@@ -571,7 +570,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         }
       />
 
-      {dayRatings.visible && !isRecordingMode && (
+      {dayRatings.visible && !isVoiceActive && (
         <DayRatingCard
           ratings={dayRatings.ratings}
           disabled={isLoading}
@@ -586,7 +585,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
           { paddingBottom: insets.bottom || SPACING.sm },
         ]}
       >
-        {toVoiceControlMode(voiceInputProps.mode, voiceInputProps.error) !== 'idle' ? (
+        {isVoiceActive ? (
           <VoiceControl
             {...voiceControlProps}
             onDiscard={() => void handleCancelRecording()}
@@ -623,7 +622,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
                 <Text style={styles.sendIcon}>↑</Text>
               </TouchableOpacity>
             ) : (
-              <MicButton onPress={onMicPress} />
+              <MicButton onPress={onMicPress} disabled={isLoading} />
             )}
           </>
         )}

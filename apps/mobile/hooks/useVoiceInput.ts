@@ -3,14 +3,13 @@ import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
 import { useAudioRecorder } from './useAudioRecorder';
 import { transcribeAudio } from '../services/api';
-import type { VoiceMode, VoiceSessionState } from '../utils/voice';
+import { toVoiceControlMode, type VoiceMode, type VoiceSessionState } from '../utils/voice';
 
 type PendingAction = 'stop' | 'send' | null;
 
 /** The recorder's readings plus the mic tap: what `VoiceControl` and `MicButton` need. */
 type VoiceInputProps = VoiceSessionState & {
   onMicPress: () => void;
-  onRetry: () => void;
 };
 
 interface UseVoiceInputOptions {
@@ -23,6 +22,8 @@ interface UseVoiceInputOptions {
 interface UseVoiceInputReturn {
   /** Whether recording mode is active (recording or transcribing) */
   isRecordingMode: boolean;
+  /** Whether the voice pill owns the composer: recording, transcribing, or showing a failure */
+  isVoiceActive: boolean;
   /** Whether transcription is in progress */
   isTranscribing: boolean;
   /** Recording duration in milliseconds */
@@ -189,12 +190,14 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
         setIsTranscribing(false);
       }
     } else {
-      // No saved audio, just reset
+      // No saved audio: the failure was the recorder's, so reset it too —
+      // its error is what keeps the pill on screen.
       setTranscriptionError(null);
       setPendingAction(null);
       setIsRecordingMode(false);
+      await cancelRecording();
     }
-  }, [lastAudioUri, pendingAction, onSend, onStopSuccess]);
+  }, [lastAudioUri, pendingAction, onSend, onStopSuccess, cancelRecording]);
 
   // Combined error from recording or transcription
   const error = transcriptionError || recordingError;
@@ -223,11 +226,11 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     isNearingLimit,
     error,
     onMicPress: handleMicPress,
-    onRetry: handleRetryRecording,
   };
 
   return {
     isRecordingMode,
+    isVoiceActive: toVoiceControlMode(mode, error) !== 'idle',
     isTranscribing,
     recordingDuration,
     meterLevel,
