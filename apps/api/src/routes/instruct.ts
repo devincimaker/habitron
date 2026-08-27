@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import type { CoachInstructRequest, ErrorResponse } from '@habits-coach/shared';
 import { INSTRUCT_SKILLS, runCoachTurn } from '../coach/agent.js';
+import { COACH_TURN_FAILED_MESSAGE } from '../coach/events.js';
 import { openEventStream } from '../coach/sse.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { chatRateLimiter } from '../middleware/rateLimit.js';
@@ -66,7 +67,9 @@ export async function handleInstructRequest(req: Request, res: Response): Promis
     return;
   }
 
-  const stream = openEventStream(req, res);
+  // A hold-to-instruct turn dies with its socket: HAB-110's slide-up cancel is
+  // the client hanging up, and nothing here is recorded to come back to.
+  const stream = openEventStream(req, res, { abortOnDisconnect: true });
 
   try {
     await runCoachTurn(
@@ -83,9 +86,10 @@ export async function handleInstructRequest(req: Request, res: Response): Promis
       stream.send
     );
   } catch (error) {
-    if (!stream.signal.aborted) {
+    // An aborted turn is the user cancelling, not a failure to report.
+    if (!stream.signal?.aborted) {
       console.error('Instruct error:', error);
-      stream.send({ type: 'error', message: 'The coach ran into a problem. Please try again.' });
+      stream.send({ type: 'error', message: COACH_TURN_FAILED_MESSAGE });
     }
   } finally {
     stream.close();

@@ -36,6 +36,7 @@ import { Button, DisplayMedium, BodyMedium } from './ui';
 import { useVoiceInput } from '../hooks/useVoiceInput';
 import { useDayRatings } from '../hooks/useDayRatings';
 import { streamCoachTurn } from '../services/api';
+import { getSessionTurn } from '../services/sessions';
 import {
   getCoachRequestErrorMessage,
   getCoachSessionStartErrorMessage,
@@ -50,6 +51,8 @@ import {
   type Colors,
 } from '../constants/theme';
 import { describeCoachActivity } from '../utils/coachActivity';
+import { waitForTurn } from '../utils/coachTurnRecovery';
+import { CoachStreamDroppedError } from '../utils/sse';
 import { formatSessionStatus } from '../utils/coachSessions';
 import { useThemedStyles } from '../hooks/useColors';
 
@@ -201,16 +204,36 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
             }
           );
         } catch (error) {
-          console.warn('Error sending message:', error);
-          Sentry.captureException(error, {
-            tags: {
-              feature: 'coach-session',
-              stage: 'chat_generation',
-              sessionId: currentSessionId,
-            },
-            extra: { prompt },
-          });
-          errorMessage = getCoachRequestErrorMessage(error);
+          // The socket went, the turn did not: iOS drops the stream when the
+          // app is suspended, and the server keeps running the turn and
+          // records how it ended on the session. Read that back rather than fail.
+          if (error instanceof CoachStreamDroppedError) {
+            setActivity('Reconnecting to the coach…');
+          }
+          const recovered =
+            error instanceof CoachStreamDroppedError
+              ? await waitForTurn(prompt, () => getSessionTurn(currentSessionId))
+              : null;
+          // Recovery can outlast the session it belongs to: the user may have
+          // ended this one and opened another while it polled. The store owns
+          // one session's messages, so a late reply goes nowhere but its own.
+          if (useSessionStore.getState().sessionId !== currentSessionId) return false;
+          if (recovered?.status === 'done') {
+            finalMessage = recovered.reply;
+          } else if (recovered) {
+            errorMessage = recovered.error;
+          } else {
+            console.warn('Error sending message:', error);
+            Sentry.captureException(error, {
+              tags: {
+                feature: 'coach-session',
+                stage: 'chat_generation',
+                sessionId: currentSessionId,
+              },
+              extra: { prompt },
+            });
+            errorMessage = getCoachRequestErrorMessage(error);
+          }
         }
 
         let content = finalMessage ?? streamed;

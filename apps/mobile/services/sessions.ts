@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import type {
   CoachingSessionSummary,
   CoachingSessionDetail,
+  CoachTurnRecord,
   RitualId,
   UpdateSessionRequest,
 } from '@habits-coach/shared';
@@ -44,6 +45,22 @@ export async function getSession(id: string): Promise<CoachingSessionDetail> {
 
   const data = await response.json();
   return data.session;
+}
+
+/** Where the session's last coach turn stands; null before its first turn. */
+export async function getSessionTurn(id: string): Promise<CoachTurnRecord | null> {
+  const token = await getAuthToken();
+
+  const response = await fetch(createApiUrl(`/api/sessions/${id}/turn`), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  if (!response.ok) {
+    await handleFetchError(response, 'Failed to fetch the turn');
+  }
+
+  const data = await response.json();
+  return data.turn;
 }
 
 /**

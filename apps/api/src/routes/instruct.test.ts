@@ -7,43 +7,22 @@ vi.mock('../coach/agent.js', () => ({
 }));
 
 import { runCoachTurn } from '../coach/agent.js';
-import { createMockRequest } from '../test/mocks.js';
+import { createStreamingRequest, createStreamingResponse } from '../test/mocks.js';
 import { APPLY_PROMPT, handleInstructRequest } from './instruct.js';
 
 const mockedRunCoachTurn = runCoachTurn as ReturnType<typeof vi.fn>;
 
-function createStreamingResponse() {
-  const chunks: string[] = [];
-  const res = {
-    status: vi.fn().mockReturnThis(),
-    json: vi.fn().mockReturnThis(),
-    writeHead: vi.fn(),
-    flushHeaders: vi.fn(),
-    write: vi.fn((chunk: string) => {
-      chunks.push(chunk);
-      return true;
-    }),
-    end: vi.fn(),
-  };
-  const events = () =>
-    chunks
-      .filter((chunk) => chunk.startsWith('data: '))
-      .map((chunk) => JSON.parse(chunk.slice('data: '.length)) as CoachStreamEvent);
-  return { res, events };
-}
-
 function createRequest(body: Record<string, unknown>) {
-  return createMockRequest({
-    body: { timezone: 'UTC', ...body },
-    user: { id: 'user-123', email: 'test@example.com' },
-    on: vi.fn(),
-  });
+  return createStreamingRequest({ body: { timezone: 'UTC', ...body } });
 }
 
 describe('handleInstructRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockedRunCoachTurn.mockResolvedValue({ text: '', claudeSessionId: 'claude-abc' });
+    mockedRunCoachTurn.mockResolvedValue({
+      outcome: { type: 'done', message: '' },
+      claudeSessionId: 'claude-abc',
+    });
   });
 
   it('rejects an unknown kind', async () => {
@@ -79,7 +58,10 @@ describe('handleInstructRequest', () => {
       onEvent({ type: 'session', claudeSessionId: 'claude-abc' });
       onEvent({ type: 'tool', name: 'list_tasks' });
       onEvent({ type: 'done', message: 'Reschedule one task\n- Move Run to Thursday' });
-      return { text: 'Reschedule one task\n- Move Run to Thursday', claudeSessionId: 'claude-abc' };
+      return {
+        outcome: { type: 'done', message: 'Reschedule one task\n- Move Run to Thursday' },
+        claudeSessionId: 'claude-abc',
+      };
     });
 
     await handleInstructRequest(

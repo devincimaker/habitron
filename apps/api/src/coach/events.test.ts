@@ -71,7 +71,7 @@ describe('TurnCollector', () => {
     const done = collector.handle(result({ subtype: 'success', result: 'You have 3 tasks today. Want to plan?' }));
 
     expect(done).toEqual([{ type: 'done', message: 'Let me look at your day.\n\nYou have 3 tasks today. Want to plan?' }]);
-    expect(collector.isFinished).toBe(true);
+    expect(collector.outcome).toEqual(done[0]);
   });
 
   it('ignores messages produced inside subagents', () => {
@@ -88,7 +88,8 @@ describe('TurnCollector', () => {
 
     expect(events).toHaveLength(1);
     expect(events[0].type).toBe('error');
-    expect(collector.isFinished).toBe(true);
+    // The record of the turn reads the same event, so a failed turn is never recovered as a reply.
+    expect(collector.outcome).toEqual(events[0]);
   });
 
   it('surfaces assistant-level API errors', () => {
