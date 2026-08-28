@@ -1,5 +1,5 @@
 /* eslint-disable max-lines -- HAB-89: split pending */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   StyleSheet,
@@ -7,7 +7,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from 'expo-router';
+import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
@@ -25,11 +25,17 @@ import type {
   HabitStatus,
   HabitWithStatus,
 } from '@habits-coach/shared';
+import { getTodayDate } from '@habits-coach/shared';
 import { DesiredHabitsSection } from '../../components/DesiredHabitsSection';
 import { HabitEditorModal } from '../../components/HabitEditorModal';
 import { HabitLogSheet } from '../../components/HabitLogSheet';
 import { HabitManagerModal } from '../../components/HabitManagerModal';
-import { HabitSectionList } from '../../components/HabitSectionList';
+import {
+  HabitSectionList,
+  type HabitSectionListHandle,
+} from '../../components/HabitSectionList';
+import { RoutineSheet } from '../../components/RoutineSheet';
+
 import { HeaderIconButton } from '../../components/HeaderIconButton';
 import { MiniCalendar } from '../../components/MiniCalendar';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
@@ -37,6 +43,7 @@ import { BodyMedium, Card } from '../../components/ui';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
 import { useDesiredHabitsStore } from '../../stores/useDesiredHabitsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
+import { getRoutineProgress } from '../../utils/routineProgress';
 import {
   HEADER,
   SHADOWS,
@@ -53,6 +60,9 @@ import {
 } from '../../utils/dateUtils';
 import { getCheckInIncrement } from '../../utils/habitSchedule';
 import { useThemedStyles } from '../../hooks/useColors';
+
+/** How long the routine takeover's habit stays outlined after landing. */
+const UP_NOW_MS = 3000;
 
 const SWIPE_THRESHOLD = 25;
 
@@ -75,6 +85,7 @@ export default function HabitsScreen() {
     reorderHabits,
     addSection,
     removeSection,
+    updateSection,
     setHabitStatus,
     setHabitAmount,
     getHabitsWithStatus,
@@ -91,8 +102,63 @@ export default function HabitsScreen() {
   /** The desired habit whose "Start this habit" opened the editor, if any. */
   const [startingDesired, setStartingDesired] = useState<DesiredHabit | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  /** The routine whose sheet is open, by id. */
+  const [editingRoutineId, setEditingRoutineId] = useState<string | null>(null);
   const [transitionDirection, setTransitionDirection] =
     useState<TransitionDirection>('backward');
+
+  /** Set by the routine takeover when it hands over: scroll here, outline this. */
+  const { routine: landedRoutineId } = useLocalSearchParams<{ routine?: string }>();
+  const listRef = useRef<HabitSectionListHandle>(null);
+  const [upNowHabitId, setUpNowHabitId] = useState<string | undefined>();
+
+  // Landing from the routine takeover: scroll the routine into view and mark
+  // the habit it left off on, then let it fade back into an ordinary row.
+  //
+  // `routine` is a route param, so it survives every later render — it is a
+  // one-shot command living in persistent state. Clearing it once the handover
+  // is done is what stops the outline reappearing on every check-in, and the
+  // store is read here rather than closed over so the effect needs no other
+  // dependency to be correct.
+  //
+  // The timer lives in a ref rather than in the effect's cleanup: clearing the
+  // param re-runs this effect immediately, and a cleanup would cancel the fade
+  // it had just armed, leaving the row outlined for good.
+  const upNowTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => () => clearTimeout(upNowTimer.current), []);
+
+  useEffect(() => {
+    if (!landedRoutineId || isLoading) return;
+
+    const { habits: current, dateLogs: logs } = useHabitsStore.getState();
+    const progress = getRoutineProgress(
+      landedRoutineId,
+      current,
+      logs.get(getTodayDate()) ?? new Map(),
+      getTodayDate()
+    );
+    const upNow = progress.current ?? progress.due[progress.due.length - 1];
+
+    listRef.current?.scrollToSection(landedRoutineId);
+    setUpNowHabitId(upNow?.id);
+    router.setParams({ routine: undefined });
+
+    clearTimeout(upNowTimer.current);
+    upNowTimer.current = setTimeout(() => setUpNowHabitId(undefined), UP_NOW_MS);
+  }, [isLoading, landedRoutineId]);
+
+  const editingRoutine = useMemo(
+    () => sections.find((section) => section.id === editingRoutineId) ?? null,
+    [editingRoutineId, sections]
+  );
+  /** Lowercased, so the sheet's rename check is case-insensitive like the DB's. */
+  const takenRoutineNames = useMemo(
+    () =>
+      sections
+        .filter((section) => section.id !== editingRoutineId)
+        .map((section) => section.name.toLowerCase()),
+    [editingRoutineId, sections]
+  );
 
   const habitsWithStatus = getHabitsWithStatus();
   const activeHabitCount = useMemo(
@@ -380,6 +446,7 @@ export default function HabitsScreen() {
             exiting={listExiting}
           >
             <HabitSectionList
+              ref={listRef}
               sections={sections}
               habits={habitsWithStatus}
               isDragging={isDragging}
@@ -394,6 +461,8 @@ export default function HabitsScreen() {
               onStatusChange={handleStatusChange}
               onCheckIn={handleCheckIn}
               onPressHabit={handlePressHabit}
+              onPressRoutine={setEditingRoutineId}
+              highlightHabitId={upNowHabitId}
               footer={<DesiredHabitsSection onStartHabit={handleStartDesiredHabit} />}
             />
           </Animated.View>
@@ -441,6 +510,15 @@ export default function HabitsScreen() {
           onClose={() => setLoggingHabitId(null)}
           onSaveAmount={handleAmountChange}
           onSetStatus={handleStatusChange}
+        />
+
+        <RoutineSheet
+          visible={editingRoutine !== null}
+          section={editingRoutine}
+          habits={habits}
+          takenNames={takenRoutineNames}
+          onClose={() => setEditingRoutineId(null)}
+          onSave={updateSection}
         />
       </View>
     </GestureDetector>

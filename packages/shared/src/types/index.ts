@@ -69,6 +69,17 @@ export interface HabitSection {
   id: string;
   name: string;
   sortOrder: number;
+  /** False pauses the alarm without losing the week: the switch is not a delete. */
+  alarmEnabled: boolean;
+  /** The days this routine rings, and at what time (HH:MM, 24h). */
+  alarmByDay: Partial<Record<HabitWeekday, string>>;
+}
+
+/** The fields the routine sheet can change. */
+export interface HabitSectionDraft {
+  name: string;
+  alarmEnabled: boolean;
+  alarmByDay: Partial<Record<HabitWeekday, string>>;
 }
 
 export interface HabitSchedule {

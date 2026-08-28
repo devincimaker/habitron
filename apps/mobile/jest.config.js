@@ -18,6 +18,7 @@ module.exports = {
   moduleNameMapper: {
     '^@habits-coach/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^@sentry/react-native$': '<rootDir>/__mocks__/@sentry/react-native.ts',
+    '.*/modules/routine-alarms$': '<rootDir>/__mocks__/modules/routine-alarms.ts',
   },
   collectCoverageFrom: [
     'utils/**/*.ts',

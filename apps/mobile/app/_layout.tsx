@@ -191,6 +191,17 @@ export default Sentry.wrap(function RootLayout() {
               sheetCornerRadius: 28,
             }}
           />
+          <Stack.Screen
+            name="routine-start"
+            options={{
+              // A routine takeover is what the alarm handed over to, so it owns
+              // the screen: no tab bar, and no swipe back to a list the user did
+              // not come from.
+              presentation: 'fullScreenModal',
+              headerShown: false,
+              gestureEnabled: false,
+            }}
+          />
         </Stack>
       </GestureHandlerRootView>
     </ColorsProvider>

@@ -2,6 +2,7 @@
 import { supabase } from './supabase';
 import {
   HABIT_DEFAULT_SECTION_NAMES,
+  HABIT_WEEKDAYS,
   Habit,
   HabitCheckInMode,
   HabitDraft,
@@ -9,6 +10,7 @@ import {
   HabitGoalType,
   HabitLogEntry,
   HabitSection,
+  HabitSectionDraft,
   HabitStatus,
   HabitWeekday,
 } from '@habits-coach/shared';
@@ -46,6 +48,8 @@ interface DbHabitSection {
   user_id: string;
   name: string;
   sort_order: number;
+  alarm_enabled: boolean;
+  habit_section_alarms: { weekday: HabitWeekday; time: string }[];
 }
 
 interface DbHabitLog {
@@ -58,6 +62,7 @@ interface DbHabitLog {
 }
 
 const HABIT_SELECT = '*, habit_reminders(time)';
+const SECTION_SELECT = '*, habit_section_alarms(weekday, time)';
 
 function toNumber(value: number | string | null): number | undefined {
   if (value === null) return undefined;
@@ -99,7 +104,17 @@ function mapDbHabitToHabit(dbHabit: DbHabit): Habit {
 }
 
 function mapDbSectionToSection(row: DbHabitSection): HabitSection {
-  return { id: row.id, name: row.name, sortOrder: row.sort_order };
+  const alarmByDay: Partial<Record<HabitWeekday, string>> = {};
+  for (const alarm of row.habit_section_alarms ?? []) {
+    alarmByDay[alarm.weekday] = toReminderTime(alarm.time);
+  }
+  return {
+    id: row.id,
+    name: row.name,
+    sortOrder: row.sort_order,
+    alarmEnabled: row.alarm_enabled,
+    alarmByDay,
+  };
 }
 
 function toDbHabitFields(draft: HabitDraft) {
@@ -327,7 +342,7 @@ export async function restoreHabit(habitId: string): Promise<Habit> {
 export async function getSections(): Promise<HabitSection[]> {
   const { data, error } = await supabase
     .from('habit_sections')
-    .select('*')
+    .select(SECTION_SELECT)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true });
 
@@ -349,7 +364,7 @@ export async function getSections(): Promise<HabitSection[]> {
         sort_order: index,
       }))
     )
-    .select('*');
+    .select(SECTION_SELECT);
 
   if (seedError) {
     console.error('Error seeding habit sections:', seedError);
@@ -365,7 +380,7 @@ export async function addSection(name: string, sortOrder: number): Promise<Habit
   const { data, error } = await supabase
     .from('habit_sections')
     .insert({ user_id: userId, name: name.trim(), sort_order: sortOrder })
-    .select('*')
+    .select(SECTION_SELECT)
     .single();
 
   if (error) {
@@ -374,6 +389,60 @@ export async function addSection(name: string, sortOrder: number): Promise<Habit
   }
 
   return mapDbSectionToSection(data as DbHabitSection);
+}
+
+/**
+ * Writes the routine sheet's four fields. The alarm rows are replaced wholesale,
+ * the way habit reminders are: the sheet always sends the whole week.
+ */
+export async function updateSection(
+  sectionId: string,
+  draft: HabitSectionDraft
+): Promise<HabitSection> {
+  const userId = await requireUserId();
+
+  // The section row goes first, and the alarm rows are only cleared once it has
+  // landed. Running the two together would be one round trip cheaper and would
+  // wipe the routine's whole week whenever the rename lost the
+  // UNIQUE (user_id, name) race — a delete that has already committed while the
+  // caller sees a throw.
+  const { data, error } = await supabase
+    .from('habit_sections')
+    .update({ name: draft.name.trim(), alarm_enabled: draft.alarmEnabled })
+    .eq('id', sectionId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Error updating habit section:', error);
+    throw error;
+  }
+
+  const { error: deleteError } = await supabase
+    .from('habit_section_alarms')
+    .delete()
+    .eq('section_id', sectionId);
+
+  if (deleteError) {
+    console.error('Error clearing habit section alarms:', deleteError);
+    throw deleteError;
+  }
+
+  const rows = HABIT_WEEKDAYS.flatMap((weekday) => {
+    const time = draft.alarmByDay[weekday];
+    return time ? [{ section_id: sectionId, user_id: userId, weekday, time }] : [];
+  });
+
+  if (rows.length > 0) {
+    const { error: insertError } = await supabase.from('habit_section_alarms').insert(rows);
+    if (insertError) {
+      console.error('Error saving habit section alarms:', insertError);
+      throw insertError;
+    }
+  }
+
+  // No read-back: the week that came back would be the one just written.
+  return { ...mapDbSectionToSection(data as DbHabitSection), alarmByDay: draft.alarmByDay };
 }
 
 export async function removeSection(sectionId: string): Promise<void> {

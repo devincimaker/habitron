@@ -154,6 +154,17 @@ export const CATEGORY_LABELS: Record<string, string> = {
  */
 export const TASK_SCHEDULED = '#2F80ED';
 
+/**
+ * The routine header's alarm chip. A tint of the app's amber rather than a
+ * palette entry: it has to read as a quiet badge on a list header in both
+ * themes, where `primaryLight` is a solid fill in one and a dark one in the
+ * other.
+ */
+export const ROUTINE_ALARM_CHIP = {
+  fill: 'rgba(245, 166, 35, 0.14)',
+  height: 28,
+} as const;
+
 // Touch targets (iOS minimum is 44pt)
 export const TOUCH_TARGET = {
   min: 44,

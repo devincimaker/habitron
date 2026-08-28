@@ -22,7 +22,8 @@
         "UIBackgroundModes": [
           "remote-notification"
         ],
-        "NSMicrophoneUsageDescription": "This app uses the microphone to record voice messages for your coaching sessions."
+        "NSMicrophoneUsageDescription": "This app uses the microphone to record voice messages for your coaching sessions.",
+        "NSAlarmKitUsageDescription": "Habits Coach rings an alarm when one of your routines starts."
       }
     },
     "android": {

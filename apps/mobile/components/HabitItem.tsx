@@ -19,11 +19,19 @@ interface HabitItemProps {
   /** Tap on the status circle or swipe right: one check-in (boolean toggle or quantity increment). */
   onCheckIn: (habit: HabitWithStatus) => void;
   onPress?: (habitId: string) => void;
+  /** Outlines the row after a routine takeover hands over to the list. */
+  highlighted?: boolean;
 }
 
 const SWIPE_THRESHOLD = 80;
 
-export function HabitItem({ habit, onStatusChange, onCheckIn, onPress }: HabitItemProps) {
+export function HabitItem({
+  habit,
+  onStatusChange,
+  onCheckIn,
+  onPress,
+  highlighted = false,
+}: HabitItemProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const translateX = useSharedValue(0);
   const habitIcon = resolveHabitIcon(habit.name, habit.icon);
@@ -125,7 +133,9 @@ export function HabitItem({ habit, onStatusChange, onCheckIn, onPress }: HabitIt
       </Animated.View>
 
       <GestureDetector gesture={composedGesture}>
-        <Animated.View style={[styles.content, animatedStyle]}>
+        <Animated.View
+          style={[styles.content, animatedStyle, highlighted && styles.contentHighlighted]}
+        >
           <GestureDetector gesture={checkInTap}>
             <View
               accessibilityRole="button"
@@ -208,6 +218,12 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.border,
     ...SHADOWS.small,
+  },
+  // The border is already 1pt, so this recolours rather than resizes: a row
+  // that changed width on landing would shift the whole list.
+  contentHighlighted: {
+    borderColor: colors.primary,
+    borderWidth: 1,
   },
   statusIndicator: {
     width: STATUS_INDICATOR.size,
