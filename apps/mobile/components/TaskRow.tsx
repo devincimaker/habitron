@@ -7,12 +7,14 @@ import { runOnJS } from 'react-native-reanimated';
 import type { Todo } from '@habits-coach/shared';
 import { BodyMedium, Caption } from './ui';
 import { TodoTagPill } from './TodoTagPill';
-import { BORDER_RADIUS, SPACING, type Colors } from '../constants/theme';
+import { BORDER_RADIUS, SPACING, TASK_SCHEDULED, type Colors } from '../constants/theme';
 import { formatRelativeDateLabel, getTaskDateBadge } from '../utils/dateUtils';
 import {
   decrementDuration,
   formatDurationMinutes,
   getEstimateDelta,
+  getEstimateDeltaColor,
+  type EstimateDelta,
   incrementDuration,
 } from '../utils/todoEstimate';
 import { getTodoPriorityOption } from '../utils/todoPriority';
@@ -88,8 +90,7 @@ export function TaskRow({
     isAsking && todo.estimateMinutes
       ? getEstimateDelta(todo.estimateMinutes, askingActualMinutes)
       : null;
-  const deltaColor = (tone: 'over' | 'under' | 'exact') =>
-    tone === 'over' ? colors.error : tone === 'under' ? colors.success : colors.textSecondary;
+  const deltaColor = (tone: EstimateDelta['tone']) => getEstimateDeltaColor(tone, colors);
   const displayDate = todo.scheduledDate ?? todo.dueDate;
   const dateBadge = displayDate ? getTaskDateBadge(displayDate) : null;
   const scheduledTimeLabel = formatTodoScheduledTime(todo.scheduledTime);
@@ -104,7 +105,7 @@ export function TaskRow({
       ? colors.textLight
       : dateBadge?.tone === 'overdue'
         ? colors.error
-        : '#2F80ED';
+        : TASK_SCHEDULED;
 
   const handleDragStart = useCallback(
     (absoluteX: number, absoluteY: number) => {

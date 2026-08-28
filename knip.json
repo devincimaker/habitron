@@ -29,12 +29,17 @@
     },
 
     "apps/mobile": {
-      // Parked, not reached: HAB-90 keeps this one file because goals are coming
-      // back to the app. Note that docs/native-rewrite-plan.md (2026-08-20) says
-      // the opposite — it cuts Goals entirely — and HAB-90 (2026-08-25) is the
-      // newer of the two. HAB-131 reconciles them; whichever way it lands, this
-      // entry goes with it.
-      "ignore": ["components/GoalEditorModal.tsx"],
+      // Parked, not reached: HAB-90 keeps these because goals are coming back to
+      // the app. Note that docs/native-rewrite-plan.md (2026-08-20) says the
+      // opposite — it cuts Goals entirely — and HAB-90 (2026-08-25) is the newer
+      // of the two. HAB-131 reconciles them; whichever way it lands, these
+      // entries go with it. QuickDatePickerModal joined the list in HAB-135:
+      // the task editor form was its other caller, and that form is gone, so the
+      // parked goal editor is now the only thing that reaches it.
+      "ignore": [
+        "components/GoalEditorModal.tsx",
+        "components/QuickDatePickerModal.tsx"
+      ],
 
       "ignoreDependencies": [
         // Inferred by knip's Expo plugin from app.json keys rather than from

@@ -1,15 +1,18 @@
-import { useCallback, useState } from 'react';
+import { useCallback } from 'react';
 import { Alert } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { Todo } from '@habits-coach/shared';
 import { useTodoPlanOutcomeSync } from './useTodoPlanOutcomeSync';
 import { useTodosStore } from '../stores/useTodosStore';
+import { useTodoRemovalStore } from '../stores/useTodoRemovalStore';
 import { getTodoPlanOutcomeForStatus } from '../utils/todoPlanOutcome';
 
 export function useUndoableTodoRemoval() {
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const setTodoStatusOptimistic = useTodosStore((state) => state.setTodoStatusOptimistic);
-  const [removedTodo, setRemovedTodo] = useState<Todo | null>(null);
+  const removedTodo = useTodoRemovalStore((state) => state.removedTodo);
+  const setRemovedTodo = useTodoRemovalStore((state) => state.setRemovedTodo);
+  const clearIfSame = useTodoRemovalStore((state) => state.clearIfSame);
 
   const removeTodo = useCallback(
     (todo: Todo) => {
@@ -22,12 +25,12 @@ export function useUndoableTodoRemoval() {
           await syncTodoPlanOutcome(todo.scheduledDate, todo.id, 'canceled');
         } catch (error) {
           console.warn('Failed to remove todo:', error);
-          setRemovedTodo((current) => (current?.id === todo.id ? null : current));
+          clearIfSame(todo.id);
           Alert.alert('Could not remove task', 'Please try again.');
         }
       })();
     },
-    [setTodoStatusOptimistic, syncTodoPlanOutcome]
+    [clearIfSame, setRemovedTodo, setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
 
   const undoRemoveTodo = useCallback(() => {
@@ -49,11 +52,11 @@ export function useUndoableTodoRemoval() {
         Alert.alert('Could not restore task', 'Please try again.');
       }
     })();
-  }, [removedTodo, setTodoStatusOptimistic, syncTodoPlanOutcome]);
+  }, [removedTodo, setRemovedTodo, setTodoStatusOptimistic, syncTodoPlanOutcome]);
 
   const dismissRemovedTodo = useCallback(() => {
     setRemovedTodo(null);
-  }, []);
+  }, [setRemovedTodo]);
 
   return {
     removedTodo,

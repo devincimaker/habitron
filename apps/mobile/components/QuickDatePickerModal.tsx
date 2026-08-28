@@ -1,8 +1,42 @@
 import { Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { BodyMedium, Button, Caption, HeadingLarge } from './ui';
 import { SPACING, BORDER_RADIUS, type Colors } from '../constants/theme';
-import { getUpcomingDays } from '../utils/dateUtils';
+import { toDateString } from '../utils/dateUtils';
 import { useThemedStyles } from '../hooks/useColors';
+
+
+interface UpcomingDayOption {
+  date: string;
+  label: string;
+  secondaryLabel: string;
+}
+
+function getUpcomingDays(count = 7): UpcomingDayOption[] {
+  const days: UpcomingDayOption[] = [];
+  const today = new Date();
+
+  for (let i = 0; i < count; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+
+    const dateString = toDateString(
+      date.getFullYear(),
+      date.getMonth() + 1,
+      date.getDate()
+    );
+
+    days.push({
+      date: dateString,
+      label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' }),
+      secondaryLabel: date.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+      }),
+    });
+  }
+
+  return days;
+}
 
 interface QuickDatePickerModalProps {
   visible: boolean;

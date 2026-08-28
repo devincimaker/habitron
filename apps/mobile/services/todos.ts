@@ -175,20 +175,37 @@ async function syncChecklist(
     }
   }
 
-  if (drafts.length > 0) {
-    const { error } = await supabase.from('todo_checklist_items').upsert(
-      drafts.map((item, position) => ({
-        ...(item.id ? { id: item.id } : {}),
-        user_id: userId,
-        todo_id: todoId,
-        title: item.title,
-        done: item.done ?? false,
-        position,
-      }))
-    );
+  const rows = drafts.map((item, position) => ({
+    user_id: userId,
+    todo_id: todoId,
+    title: item.title,
+    done: item.done ?? false,
+    position,
+  }));
+
+  // PostgREST rejects a bulk write whose objects do not all carry the same keys
+  // (PGRST102), and an item the user has just typed has no id yet — so the ones
+  // being updated and the ones being created go in separate calls.
+  const updates = rows.flatMap((row, index) => {
+    const id = drafts[index].id;
+    return id ? [{ ...row, id }] : [];
+  });
+  const inserts = rows.filter((_row, index) => !drafts[index].id);
+
+  if (updates.length > 0) {
+    const { error } = await supabase.from('todo_checklist_items').upsert(updates);
 
     if (error) {
       console.error('Error saving checklist items:', error);
+      throw error;
+    }
+  }
+
+  if (inserts.length > 0) {
+    const { error } = await supabase.from('todo_checklist_items').insert(inserts);
+
+    if (error) {
+      console.error('Error adding checklist items:', error);
       throw error;
     }
   }
@@ -580,9 +597,12 @@ export async function updateTodo(
   const updateData: Partial<DbTodo> = {};
 
   if (changes.title !== undefined) updateData.title = changes.title;
-  if (changes.notes !== undefined) updateData.notes = changes.notes ?? null;
-  if (changes.priority !== undefined) updateData.priority = changes.priority ?? null;
-  if (changes.dueDate !== undefined) updateData.due_date = changes.dueDate ?? null;
+  // These five test for the key rather than the value, the way the schedule
+  // pair below already does: `{ priority: undefined }` is how a caller says
+  // "clear it", and reading the value instead makes that a silent no-op.
+  if ('notes' in changes) updateData.notes = changes.notes ?? null;
+  if ('priority' in changes) updateData.priority = changes.priority ?? null;
+  if ('dueDate' in changes) updateData.due_date = changes.dueDate ?? null;
   if ('scheduledDate' in changes || 'scheduledTime' in changes) {
     const resolvedSchedule = resolveNewTodoSchedule(
       changes.scheduledDate,
@@ -596,10 +616,10 @@ export async function updateTodo(
     updateData.scheduled_date = resolvedSchedule.scheduledDate ?? null;
     updateData.scheduled_time = serializeScheduledTime(resolvedSchedule.scheduledTime);
   }
-  if (changes.estimateMinutes !== undefined) {
+  if ('estimateMinutes' in changes) {
     updateData.estimate_minutes = changes.estimateMinutes ?? null;
   }
-  if (changes.goalId !== undefined) updateData.goal_id = changes.goalId ?? null;
+  if ('goalId' in changes) updateData.goal_id = changes.goalId ?? null;
 
   const tagId = await resolveTagId(userId, changes);
   if (tagId !== undefined) updateData.tag_id = tagId;

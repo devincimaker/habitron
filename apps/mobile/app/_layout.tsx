@@ -176,6 +176,21 @@ export default Sentry.wrap(function RootLayout() {
               gestureEnabled: false, // Prevent accidental swipe dismiss
             }}
           />
+          <Stack.Screen
+            name="task/[id]"
+            options={{
+              presentation: 'formSheet',
+              headerShown: false,
+              // Two detents rather than the 'fitToContents' the issue asked
+              // for: that one is exclusive, so it cannot also offer the large
+              // detent, and the sheet's body is flex: 1 to pin the action bar,
+              // which measures full height anyway. 0.55 clears a task with a
+              // short checklist; dragging up or focusing a field gets the rest.
+              sheetAllowedDetents: [0.55, 1],
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 28,
+            }}
+          />
         </Stack>
       </GestureHandlerRootView>
     </ColorsProvider>

@@ -1,4 +1,5 @@
-import { Pressable, StyleSheet } from 'react-native';
+import { forwardRef } from 'react';
+import { Pressable, StyleSheet, type View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import {
@@ -12,13 +13,14 @@ interface HeaderIconButtonProps {
   name: keyof typeof Ionicons.glyphMap;
   accessibilityLabel: string;
   onPress: () => void;
+  /** Overrides the control tint — the task sheet's flag wears its priority. */
+  color?: string;
 }
 
-export function HeaderIconButton({
-  name,
-  accessibilityLabel,
-  onPress,
-}: HeaderIconButtonProps) {
+export const HeaderIconButton = forwardRef<View, HeaderIconButtonProps>(function HeaderIconButton(
+  { name, accessibilityLabel, onPress, color },
+  ref
+) {
   const [styles, colors] = useThemedStyles(createStyles);
 
   const handlePress = () => {
@@ -28,6 +30,7 @@ export function HeaderIconButton({
 
   return (
     <Pressable
+      ref={ref}
       onPress={handlePress}
       style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
       hitSlop={HEADER_CONTROL_HIT_SLOP}
@@ -37,11 +40,11 @@ export function HeaderIconButton({
       <Ionicons
         name={name}
         size={HEADER.controlIconSize}
-        color={colors.controlIcon}
+        color={color ?? colors.controlIcon}
       />
     </Pressable>
   );
-}
+});
 
 const createStyles = (colors: Colors) => StyleSheet.create({
   button: {

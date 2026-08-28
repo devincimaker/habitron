@@ -147,6 +147,13 @@ export const CATEGORY_LABELS: Record<string, string> = {
   general: "General",
 };
 
+/**
+ * The blue a scheduled task's date is written in, on the row and on the detail
+ * sheet. Deliberately outside the themed palette: it reads as "this is on the
+ * calendar" in both themes, and the palette's primary is the app's amber.
+ */
+export const TASK_SCHEDULED = '#2F80ED';
+
 // Touch targets (iOS minimum is 44pt)
 export const TOUCH_TARGET = {
   min: 44,

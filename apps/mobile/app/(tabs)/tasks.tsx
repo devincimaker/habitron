@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import {
   Alert,
   Pressable,
@@ -10,14 +10,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
+import type { Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { TaskDragList } from '../../components/TaskDragList';
 import { TaskDragOverlay } from '../../components/TaskDragOverlay';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
 import { TaskSectionCard } from '../../components/TaskSectionCard';
-import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyMedium, Card } from '../../components/ui';
 import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
@@ -25,7 +24,6 @@ import { useThemedStyles } from '../../hooks/useColors';
 import { useTaskListDrag } from '../../hooks/useTaskListDrag';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
-import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 
@@ -38,25 +36,20 @@ function compareCompletedTodos(a: Todo, b: Todo) {
 
 export default function TasksScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const {
     todos,
-    lists,
     isLoading,
     loadTodos,
-    addTodo,
     addTodoOptimistic,
-    updateTodo,
     setTodoStatusOptimistic,
     reorderTodos,
   } = useTodosStore();
-  const { goals, loadGoals } = useGoalsStore();
 
-  const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
-  const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const openTodos = useMemo(() => todos.filter((todo) => todo.status === 'open'), [todos]);
   const completedTodos = useMemo(
@@ -69,28 +62,12 @@ export default function TasksScreen() {
   });
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadTodos(), loadGoals()]);
-  }, [loadGoals, loadTodos]);
+    await loadTodos();
+  }, [loadTodos]);
 
   useEffect(() => {
     refreshAll();
   }, [refreshAll]);
-
-  const handleSaveTodo = useCallback(
-    async (draft: TodoDraft) => {
-      if (editingTodo) {
-        const previousScheduledDate = editingTodo.scheduledDate;
-        const updatedTodo = await updateTodo(editingTodo.id, draft);
-
-        if (previousScheduledDate && updatedTodo.scheduledDate !== previousScheduledDate) {
-          await syncTodoPlanOutcome(previousScheduledDate, updatedTodo.id, 'deferred');
-        }
-      } else {
-        await addTodo(draft);
-      }
-    },
-    [addTodo, editingTodo, syncTodoPlanOutcome, updateTodo]
-  );
 
   const handleQuickCreate = useCallback(
     async (draft: TodoDraft) => {
@@ -121,10 +98,10 @@ export default function TasksScreen() {
     [setTodoStatusOptimistic, syncTodoPlanOutcome]
   );
 
-  const openTaskEditor = useCallback((todo?: Todo | null) => {
-    setEditingTodo(todo ?? null);
-    setShowTodoEditor(true);
-  }, []);
+  const openTaskSheet = useCallback(
+    (todo: Todo) => router.push({ pathname: '/task/[id]', params: { id: todo.id } }),
+    [router]
+  );
 
   return (
     <>
@@ -163,7 +140,7 @@ export default function TasksScreen() {
                     todo={todo}
                     onToggleStatus={handleToggleTodoStatus}
                     onRemove={removeTodo}
-                    onEdit={openTaskEditor}
+                    onEdit={openTaskSheet}
                     onReschedule={setReschedulingTodo}
                     onDragStart={start}
                     onDragMove={move}
@@ -197,7 +174,7 @@ export default function TasksScreen() {
                   todo={todo}
                   onToggleStatus={handleToggleTodoStatus}
                   onRemove={removeTodo}
-                  onEdit={openTaskEditor}
+                  onEdit={openTaskSheet}
                   onReschedule={setReschedulingTodo}
                   variant="compact"
                   isLast={index === completedTodos.length - 1}
@@ -228,18 +205,6 @@ export default function TasksScreen() {
         <TaskRescheduleModal
           todo={reschedulingTodo}
           onClose={() => setReschedulingTodo(null)}
-        />
-
-        <TodoEditorModal
-          visible={showTodoEditor}
-          todo={editingTodo}
-          lists={lists}
-          goals={goals as Goal[]}
-          onClose={() => {
-            setShowTodoEditor(false);
-            setEditingTodo(null);
-          }}
-          onSave={handleSaveTodo}
         />
 
         {removedTodo ? (

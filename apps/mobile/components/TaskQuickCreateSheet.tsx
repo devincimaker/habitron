@@ -22,7 +22,14 @@ import {
   TaskQuickCreatePopover,
   type TaskQuickCreatePopoverContent,
 } from './TaskQuickCreatePopover';
-import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
+import {
+  BORDER_RADIUS,
+  SHADOWS,
+  SPACING,
+  TASK_SCHEDULED,
+  TYPOGRAPHY,
+  type Colors,
+} from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { useTodosStore } from '../stores/useTodosStore';
 import { formatRelativeDateLabel } from '../utils/dateUtils';
@@ -458,7 +465,7 @@ const createStyles = (colors: Colors) =>
       color: colors.text,
     },
     inputHighlightScheduledTime: {
-      color: '#2F80ED',
+      color: TASK_SCHEDULED,
       fontWeight: '600',
     },
     inputHighlightEstimate: {
