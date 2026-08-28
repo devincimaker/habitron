@@ -82,9 +82,10 @@ over-broad refusal ends a run exactly as dead as a bad merge does.
 
 - **Linear is the queue, whole and only.** No project, no queue file: the state
   machine is the run.
-  - `Backlog` / `Todo` — the user's spec pipeline. Not yours to take, with one
-    exception: an `auto-filed` issue the loop parked in `Backlog` because Ready
-    already held three (*Filing*).
+  - `Backlog` / `Todo` — the user's spec pipeline. Never yours to take. Nothing
+    the loop may work on is ever parked here: a finding that qualifies goes to
+    `Ready` at once, and one that does not is a proposal the loop never picks
+    (*Filing*).
   - `Ready` — approved. Yours. Two populations: the user's, and the loop's own
     `auto-filed` A–C findings. The user's always pick first.
   - `In Progress` — this tick, exactly one issue at a time.
@@ -292,11 +293,12 @@ Then, by class:
 - **A, B or C, and it clears the bar → `Ready`, labelled `auto-filed`.** The
   tick just verified it in code, the spec is complete, and the guards that make
   a merge safe — one issue one PR, the gate, the review pass, the squash revert —
-  are the same for an issue the loop wrote as for one the user wrote. **At most
-  three `auto-filed` issues sit in Ready at once**; past that, the finding goes
-  to `Backlog` with the same label and Phase 1 promotes it when a slot frees.
-  Ready stays the user's list first: an `auto-filed` issue is picked only when
-  nothing of the user's is takeable.
+  are the same for an issue the loop wrote as for one the user wrote. There is no
+  cap and no holding pen: **if the loop may work on it, it sits in `Ready` where
+  the user can see it**, because a Backlog that the loop silently promotes from
+  is a Ready queue wearing the wrong name. Ready stays the user's list first —
+  the `auto-filed` label ranks the loop's own work below the user's (Phase 1),
+  which is what keeps the two apart, not a second state.
 - **D, or anything that needs a decision the tick may not make** — a value
   worth snapping to a neighbouring token, a design the issue left open, a fix
   with two honest shapes — **→ `Backlog`, unlabelled, as a proposal.** Write the three sections
@@ -342,10 +344,9 @@ by moving it to `Todo` or `Canceled` — the two states the loop never reads.
      worktrees to reach the refusal streak would say the same thing later and
      cost more.
 4. List team **Habitron**'s `Ready` issues and drop the blocked ones (any
-   `blocked by` relation not `Done`). **Refill first**: when Ready holds fewer
-   than three `auto-filed` issues and `Backlog` holds some, move the oldest up
-   until it holds three — they cleared the bar when they were filed, so this is
-   a move, not a review. **None left?** That is an idle tick, not a
+   `blocked by` relation not `Done`). Nothing is promoted here: `Ready` already
+   holds everything the loop may take, so what is left after the blocked ones
+   are dropped is the whole queue. **None left?** That is an idle tick, not a
    stop: `add idle 'nothing Ready · N blocked behind <issue>'` (which logs the
    line and marks the run idle from this tick), narrate it, `ScheduleWakeup`
    with `noop: true` and 1200–1800s, and end the invocation.
@@ -643,7 +644,7 @@ smaller class to jump the queue.
 ## `/autopilot status` / `stop`
 
 `status`: print the `Ready` list in pick order, with blocked flags, the `next`
-pin marked and the `auto-filed` tier below the user's with its count (`2/3
+pin marked and the `auto-filed` tier below the user's with its count (`2
 auto-filed`), the issue in `In Progress` if any, and the output of
 `node scripts/autopilot-run.mjs status` — the report's header line and path. No
 work. `stop`: `node scripts/autopilot-run.mjs close stopped`, then
