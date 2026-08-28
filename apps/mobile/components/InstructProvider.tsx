@@ -83,14 +83,25 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const submitRef = useRef<(audioUri?: string) => Promise<void>>(async () => {});
-  const recorder = useAudioRecorder({ onAutoStop: (uri) => void submitRef.current(uri) });
+  /** Whether a hold is still driving the recorder — not whether a finger is down. */
+  const holdingRef = useRef(false);
+  const recorder = useAudioRecorder({
+    // At the recording limit the recorder hands its file straight to `submit`,
+    // so the hold has stopped driving anything and the release still to come
+    // has nothing left to do. Clearing the flag is what makes `end` return at
+    // its guard: left set, that release submitted a second time, aborting the
+    // turn carrying the four minutes and reporting them as "Didn't catch that".
+    onAutoStop: (uri) => {
+      holdingRef.current = false;
+      void submitRef.current(uri);
+    },
+  });
   // A render mirror is right here, unlike the one `send` replaced: this is the
   // recorder handle itself, not state a callback could read a stale copy of.
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
   /** The in-flight `startRecording`, so a release never races the start. */
   const startingRef = useRef<Promise<void>>(Promise.resolve());
-  const holdingRef = useRef(false);
   /** The in-flight turn's controller: aborting it is also what orphans its results. */
   const abortRef = useRef<AbortController | null>(null);
 
