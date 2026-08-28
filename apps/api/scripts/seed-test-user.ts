@@ -101,15 +101,7 @@ for (const task of fixtures.tasks) {
     tagId: task.tag ? tagId.get(task.tag) : undefined,
   });
   if (task.status === 'completed') {
-    await habitron.db.setTaskStatus(created.id, 'completed');
-    // setTaskStatus stamps completed_at as now; the fixture wants the day it
-    // claims, so that yesterday's completions do not all land on today.
-    const { error } = await supabase
-      .from('todos')
-      .update({ completed_at: task.completedAt })
-      .eq('id', created.id)
-      .eq('user_id', user.id);
-    if (error) throw new Error(`Failed to backdate ${task.title}: ${error.message}`);
+    await habitron.db.setTaskStatus(created.id, 'completed', { completedAt: task.completedAt });
   }
 }
 

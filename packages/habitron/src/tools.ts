@@ -334,13 +334,21 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'set_task_status',
       title: 'Set task status',
       description:
-        'Complete, cancel, or reopen a task. When completing, pass actualMinutes if known — it feeds future estimates.',
+        'Complete, cancel, or reopen a task. When completing, pass actualMinutes if known — it feeds future estimates — and completedAt when it was finished earlier than now. completedAt is what the history and get_day_context read; the Calendar day comes from scheduledDate, so move that with update_task too if the task should land on the earlier day everywhere.',
       inputSchema: {
         id: z.uuid(),
         status: todoStatusSchema,
         actualMinutes: z.int().positive().optional(),
+        completedAt: dateTimeSchema
+          .optional()
+          .describe('When it was finished. Defaults to now. Only when completing'),
       },
-      handler: ({ id, status, actualMinutes }) => db.setTaskStatus(id, status, actualMinutes),
+      // The local wall clock becomes an instant here, so db.ts stays timezone-free.
+      handler: ({ id, status, actualMinutes, completedAt }) =>
+        db.setTaskStatus(id, status, {
+          actualMinutes,
+          ...(completedAt ? { completedAt: instantFrom(completedAt, timezone) } : {}),
+        }),
     }),
 
     defineTool({
