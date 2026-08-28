@@ -13,7 +13,7 @@ import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
 import { getTodayDate, type CoachInstructRequest } from '@habits-coach/shared';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import { streamInstructTurn, transcribeAudio } from '../services/api';
+import { TranscriptionTimeoutError, streamInstructTurn, transcribeAudio } from '../services/api';
 import { getCoachRequestErrorMessage } from '../services/apiUrl';
 import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useGoalsStore } from '../stores/useGoalsStore';
@@ -175,6 +175,13 @@ export function InstructProvider({ children }: { children: ReactNode }) {
           if (signal.aborted) return;
           console.warn('Transcription failed:', error);
           Sentry.captureException(error, { tags: { feature: 'instruct', stage: 'transcription' } });
+          // A dead server is not a misheard sentence. Falling through would
+          // leave the transcript empty and say "Didn't catch that", inviting an
+          // immediate retry against the thing that just timed out.
+          if (error instanceof TranscriptionTimeoutError) {
+            dispatch({ type: 'notice', message: error.message });
+            return;
+          }
         }
       }
       if (signal.aborted) return;

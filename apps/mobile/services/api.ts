@@ -108,8 +108,102 @@ export function streamInstructTurn(
   return streamEvents('/api/instruct', request, onEvent, signal);
 }
 
+/**
+ * The deadline covers the whole call, and most of that is the upload, not
+ * Whisper: a four-minute recording is the longest the recorder allows
+ * (`useAudioRecorder.ts:13`) and lands around 4 MB, which needs well over a
+ * minute on a weak uplink. Whisper's own share is seconds.
+ *
+ * So this is sized for the worst upload that should still succeed rather than
+ * for server think time — a tighter bound would fail long recordings on bad
+ * connections that used to work, and the retry would re-upload the same file
+ * into the same deadline and fail again. Three minutes is still a bound where
+ * there was none.
+ */
+const TRANSCRIBE_TIMEOUT_MS = 180_000;
+
+/**
+ * A signal that aborts after `ms`, or as soon as `caller` does.
+ *
+ * `AbortSignal.timeout` and `AbortSignal.any` would say this in two lines, but
+ * neither is guaranteed on Hermes, and a `TypeError` would land on exactly the
+ * path this deadline exists to rescue. `AbortController` is already proven in
+ * this app — InstructProvider builds one per turn.
+ *
+ * `release()` is not optional: a pending timer holds its callback alive, and a
+ * listener left on the caller's signal outlives the request it belonged to.
+ */
+/**
+ * Settles with `work`, or rejects as soon as `signal` aborts. The work itself
+ * carries on — `getAuthToken` takes no signal — but the caller stops waiting.
+ */
+function raceSignal<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
+  return Promise.race([
+    work,
+    new Promise<never>((_resolve, reject) => {
+      const fail = () => {
+        const error = new Error('Aborted');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      if (signal.aborted) fail();
+      else signal.addEventListener('abort', fail, { once: true });
+    }),
+  ]);
+}
+
+function withDeadline(ms: number, caller?: AbortSignal) {
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, ms);
+
+  const forward = () => controller.abort();
+  if (caller?.aborted) controller.abort();
+  else caller?.addEventListener('abort', forward);
+
+  return {
+    signal: controller.signal,
+    /** True only when the deadline fired — a caller's own abort is not a timeout. */
+    get timedOut() {
+      return timedOut;
+    },
+    release() {
+      clearTimeout(timer);
+      caller?.removeEventListener('abort', forward);
+    },
+  };
+}
+
+export class TranscriptionTimeoutError extends Error {
+  constructor(cause?: unknown) {
+    super('Transcription timed out. Check your connection and try again.', { cause });
+    this.name = 'TranscriptionTimeoutError';
+  }
+}
+
 export async function transcribeAudio(audioUri: string, signal?: AbortSignal): Promise<string> {
-  const token = await getAuthToken();
+  // Armed before the token, not after: refreshing a JWT is itself a network
+  // call, and a hang there is the same failure this deadline exists to bound.
+  const deadline = withDeadline(TRANSCRIBE_TIMEOUT_MS, signal);
+
+  try {
+    return await transcribeWithin(audioUri, deadline.signal);
+  } catch (error) {
+    // The pill and the Instruct notice both show this message, and "Aborted"
+    // would read as though the user had cancelled something they never touched.
+    if (deadline.timedOut) throw new TranscriptionTimeoutError(error);
+    throw error;
+  } finally {
+    deadline.release();
+  }
+}
+
+async function transcribeWithin(audioUri: string, signal: AbortSignal): Promise<string> {
+  const token = await raceSignal(getAuthToken(), signal);
 
   // Create form data with the audio file
   const formData = new FormData();
@@ -131,6 +225,8 @@ export async function transcribeAudio(audioUri: string, signal?: AbortSignal): P
     name: `recording.${extension}`,
   } as unknown as Blob);
 
+  // A server that accepts the connection and never answers is indistinguishable
+  // from a slow one, and NSURLSession's own request timeout does not fire on it.
   const response = await fetch(createApiUrl('/api/transcribe'), {
     method: 'POST',
     headers: {
