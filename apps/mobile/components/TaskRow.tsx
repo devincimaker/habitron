@@ -514,7 +514,14 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   deltaPill: {
     borderRadius: BORDER_RADIUS.full,
     paddingHorizontal: 8,
-    paddingVertical: 2,
+    // taskMeta is a stretch row, so this pill is already drawn as tall as the
+    // TodoTagPill beside it on a compact row — but its own padding still decides
+    // where the label sits inside that box. Matching TodoTagPill exactly (4pt
+    // over a 1pt border the fill hides) centres the two labels together;
+    // anything less and the delta rides high while the tag's label is centred.
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: 'transparent',
   },
   deltaPillExact: {
     backgroundColor: colors.surface,
