@@ -1,7 +1,7 @@
 import { View, Text, StyleSheet } from 'react-native';
 import type { DayReviewSummary } from '@habits-coach/shared';
 import { rampColor } from '../constants/dayTrend';
-import { AXIS_LABELS, TREND_AXES, ratingWord } from '../utils/dayTrend';
+import { AXIS_LABELS, TREND_AXES } from '../utils/dayTrend';
 import { BORDER_RADIUS, FONT_SIZES, SPACING, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
@@ -20,11 +20,19 @@ export function DayAxisRows({ review }: DayAxisRowsProps) {
       {TREND_AXES.map((axis) => {
         const value = review[axis];
         const fill = rampColor(colors.primary, value);
-        const word = ratingWord(value);
 
         return (
-          <View key={axis} style={styles.row}>
-            <Text style={styles.label}>{AXIS_LABELS[axis]}</Text>
+          <View
+            key={axis}
+            style={styles.row}
+            accessible
+            // The dots are unlabelled Views, so without this the row reads as
+            // its axis and nothing else.
+            accessibilityLabel={`${AXIS_LABELS[axis]}, ${value ? `${value} of 5` : 'not rated'}`}
+          >
+            <Text style={styles.label} numberOfLines={1}>
+              {AXIS_LABELS[axis]}
+            </Text>
             <View style={styles.dots}>
               {VALUES.map((v) => {
                 const filled = value !== undefined && v <= value;
@@ -41,9 +49,6 @@ export function DayAxisRows({ review }: DayAxisRowsProps) {
                 );
               })}
             </View>
-            <Text style={styles.word} numberOfLines={1}>
-              {word ? `${value} · ${word}` : 'not rated'}
-            </Text>
           </View>
         );
       })}
@@ -66,12 +71,15 @@ const createStyles = (colors: Colors) =>
       gap: SPACING.sm + 4,
     },
     label: {
-      width: 84,
-      flexShrink: 0,
+      // At an accessibility text size the label is what gives way, not the
+      // dots — they are the only thing on the row that carries the rating.
+      flexShrink: 1,
       fontSize: FONT_SIZES.sm + 1,
       color: colors.text,
     },
     dots: {
+      // One right edge for all four rows, whatever the labels measure.
+      marginLeft: 'auto',
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
@@ -86,11 +94,5 @@ const createStyles = (colors: Colors) =>
     dotEmpty: {
       backgroundColor: 'transparent',
       borderColor: colors.hairline,
-    },
-    word: {
-      flex: 1,
-      textAlign: 'right',
-      fontSize: FONT_SIZES.footnote,
-      color: colors.textSecondary,
     },
   });
