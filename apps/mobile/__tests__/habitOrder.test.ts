@@ -24,8 +24,12 @@ function habit(id: string, sectionId: string | undefined, position: number, crea
   };
 }
 
-const morning: HabitSection = { id: 'morning', name: 'Morning', sortOrder: 0 };
-const afternoon: HabitSection = { id: 'afternoon', name: 'Afternoon', sortOrder: 1 };
+function section(id: string, name: string, sortOrder: number): HabitSection {
+  return { id, name, sortOrder, alarmEnabled: true, alarmByDay: {} };
+}
+
+const morning = section('morning', 'Morning', 0);
+const afternoon = section('afternoon', 'Afternoon', 1);
 const sections = [morning, afternoon];
 
 /** The flat row array the screen renders, as ids, for readable assertions. */

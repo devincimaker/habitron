@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react';
-import { RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
+import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
 import ReorderableList, {
   reorderItems,
   useReorderableDrag,
@@ -10,12 +10,12 @@ import { runOnJS } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import type { HabitSection, HabitWithStatus } from '@habits-coach/shared';
 import { HabitItem } from './HabitItem';
+import { RoutineHeader } from './RoutineHeader';
 import {
   BORDER_RADIUS,
   SPACING,
   STATUS_INDICATOR,
   TAB_BAR,
-  TYPOGRAPHY,
   type Colors,
 } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -45,9 +45,17 @@ interface HabitSectionListProps {
   onStatusChange: HabitItemProps['onStatusChange'];
   onCheckIn: HabitItemProps['onCheckIn'];
   onPressHabit: (habitId: string) => void;
+  onPressRoutine: (sectionId: string) => void;
+  /** Outlined after a routine takeover hands over to the list. */
+  highlightHabitId?: string;
 }
 
-export function HabitSectionList({
+export interface HabitSectionListHandle {
+  scrollToSection: (sectionId: string) => void;
+}
+
+export const HabitSectionList = forwardRef<HabitSectionListHandle, HabitSectionListProps>(
+  function HabitSectionList({
   sections,
   habits,
   isDragging,
@@ -63,8 +71,11 @@ export function HabitSectionList({
   onStatusChange,
   onCheckIn,
   onPressHabit,
-}: HabitSectionListProps) {
+  onPressRoutine,
+  highlightHabitId,
+}: HabitSectionListProps, ref) {
   const [styles] = useThemedStyles(createStyles);
+  const listRef = useRef<FlatList<Row> | null>(null);
 
   // Per instance: a gesture object carries handler state, so a module-level one
   // shared between mounts silently stops recognising. This pan only *tracks* a
@@ -75,6 +86,10 @@ export function HabitSectionList({
   // visibility depends on the drag. See habitOrder.ts for why they cannot be
   // inserted on drag start instead.
   const rows = useMemo(() => buildHabitRows(sections, habits), [habits, sections]);
+  const sectionsById = useMemo(
+    () => new Map(sections.map((section) => [section.id, section])),
+    [sections]
+  );
 
   const handleReorder = useCallback(
     ({ from, to }: ReorderableListReorderEvent) => {
@@ -113,7 +128,15 @@ export function HabitSectionList({
       // the worklet that drives the drag.
       if (item.type === 'header') {
         if (item.idleHidden && !isDragging) return <View />;
-        return <Text style={styles.sectionHeader}>{item.title}</Text>;
+        // The trailing "No routine" bucket is not a section, so it has nothing
+        // to open and no alarm to carry — the header renders as a bare title.
+        return (
+          <RoutineHeader
+            title={item.title}
+            section={item.sectionId ? sectionsById.get(item.sectionId) : undefined}
+            onPress={onPressRoutine}
+          />
+        );
       }
       if (item.type === 'placeholder') {
         return isDragging ? <View style={styles.placeholder} /> : <View />;
@@ -125,14 +148,55 @@ export function HabitSectionList({
           onStatusChange={onStatusChange}
           onCheckIn={onCheckIn}
           onPress={onPressHabit}
+          highlighted={item.habit.id === highlightHabitId}
         />
       );
     },
-    [dragPan, isDragging, onCheckIn, onPressHabit, onStatusChange, styles]
+    [
+      dragPan,
+      isDragging,
+      onCheckIn,
+      onPressHabit,
+      highlightHabitId,
+      onPressRoutine,
+      onStatusChange,
+      sectionsById,
+      styles,
+    ]
+  );
+
+  // The handle reads the rows through a ref, so it is built once instead of on
+  // every check-in — a new handle object would re-run the parent's effects.
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  useImperativeHandle(ref, () => ({
+    scrollToSection: (sectionId) => {
+      const index = rowsRef.current.findIndex(
+        (row) => row.type === 'header' && row.sectionId === sectionId
+      );
+      if (index < 0) return;
+      listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+    },
+  }), []);
+
+  // VirtualizedList throws on scrollToIndex past the last measured row, which is
+  // every routine below the fold on a list that has only just mounted — exactly
+  // the case the routine takeover hands over in. Scroll to the offset it guessed
+  // and try again once those rows have been measured.
+  const handleScrollToIndexFailed = useCallback(
+    ({ index, averageItemLength }: { index: number; averageItemLength: number }) => {
+      listRef.current?.scrollToOffset({ offset: index * averageItemLength, animated: true });
+      setTimeout(() => {
+        listRef.current?.scrollToIndex({ index, animated: true, viewPosition: 0 });
+      }, 100);
+    },
+    []
   );
 
   return (
     <ReorderableList
+      ref={listRef}
       data={rows}
       renderItem={renderItem}
       keyExtractor={(item: Row) => item.key}
@@ -140,6 +204,7 @@ export function HabitSectionList({
       onReorder={handleReorder}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
+      onScrollToIndexFailed={handleScrollToIndexFailed}
       // The card is lifted off the recess it leaves: scale and offset, no new
       // colour. No drop indicator — the floating card sits directly over the
       // landing slot for the whole drag, so a line drawn there would be under
@@ -164,7 +229,7 @@ export function HabitSectionList({
       showsVerticalScrollIndicator={false}
     />
   );
-}
+});
 
 /** Runs on the JS thread: Haptics is not available inside a worklet. */
 function dragHaptic() {
@@ -216,15 +281,6 @@ const CELL_ANIMATIONS = {
 
 const createStyles = (colors: Colors) =>
   StyleSheet.create({
-    sectionHeader: {
-      ...TYPOGRAPHY.label,
-      color: colors.textSecondary,
-      textTransform: 'uppercase',
-      letterSpacing: 0.6,
-      marginTop: SPACING.lg,
-      marginBottom: SPACING.sm,
-      paddingHorizontal: SPACING.md,
-    },
     // The drop target an empty routine offers: a recess, not an indicator line.
     // Height tracks HabitItem's own content box — a 28pt status indicator
     // between SPACING.md padding, plus its hairline border.

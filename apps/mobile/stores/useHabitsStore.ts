@@ -4,6 +4,7 @@ import {
   HabitDraft,
   HabitLogEntry,
   HabitSection,
+  HabitSectionDraft,
   HabitStatus,
   HabitWithStatus,
   getTodayDate,
@@ -13,6 +14,7 @@ import {
 import * as Sentry from '@sentry/react-native';
 import * as habitsService from '../services/habits';
 import { notifyFirstSkip } from '../services/api';
+import { syncHabitSchedules } from '../services/habitSchedules';
 import { syncHabitReminders } from '../services/habitReminders';
 import { getLast7Days } from '../utils/dateUtils';
 import { applyHabitOrder } from '../utils/habitOrder';
@@ -39,6 +41,7 @@ interface HabitsState {
   archiveHabit: (habitId: string) => Promise<Habit>;
   restoreHabit: (habitId: string) => Promise<Habit>;
   addSection: (name: string) => Promise<HabitSection>;
+  updateSection: (sectionId: string, draft: HabitSectionDraft) => Promise<HabitSection>;
   removeSection: (sectionId: string) => Promise<void>;
   setHabitStatus: (habitId: string, status: HabitStatus) => Promise<void>;
   setHabitAmount: (habitId: string, amount: number) => Promise<void>;
@@ -47,6 +50,16 @@ interface HabitsState {
 }
 
 const EMPTY_LOG: HabitLogEntry = { status: 'pending', amount: 0 };
+
+/**
+ * Re-plan reminders and routine alarms from the store as it stands now. Every
+ * mutation ends with this, so it reads the state back rather than taking it —
+ * the caller has just written it.
+ */
+function syncSchedules(get: () => HabitsState): Promise<void> {
+  const { habits, sections, dateLogs } = get();
+  return syncHabitSchedules(habits, sections, dateLogs.get(getTodayDate()) ?? new Map());
+}
 
 export const useHabitsStore = create<HabitsState>((set, get) => ({
   habits: [],
@@ -73,7 +86,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
       });
 
       set({ habits, sections, dateLogs, isLoading: false });
-      void syncHabitReminders(habits, dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
     } catch (error) {
       console.error('Failed to load habits:', error);
       set({ isLoading: false });
@@ -105,7 +118,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
     try {
       const habit = await habitsService.addHabit(draft);
       set((state) => ({ habits: [...state.habits, habit] }));
-      void syncHabitReminders(get().habits, get().dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
       return habit;
     } catch (error) {
       console.error('Failed to add habit:', error);
@@ -146,7 +159,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
           dateLogs: newDateLogs,
         };
       });
-      void syncHabitReminders(get().habits, get().dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
     } catch (error) {
       console.error('Failed to remove habit:', error);
       throw error;
@@ -167,7 +180,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
           h.id === habitId ? updatedHabit : h
         ),
       }));
-      void syncHabitReminders(get().habits, get().dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
       return updatedHabit;
     } catch (error) {
       console.error('Failed to update habit:', error);
@@ -183,7 +196,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
           habit.id === habitId ? archivedHabit : habit
         ),
       }));
-      void syncHabitReminders(get().habits, get().dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
       return archivedHabit;
     } catch (error) {
       console.error('Failed to archive habit:', error);
@@ -199,7 +212,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
           habit.id === habitId ? restoredHabit : habit
         ),
       }));
-      void syncHabitReminders(get().habits, get().dateLogs.get(getTodayDate()) ?? new Map());
+      void syncSchedules(get);
       return restoredHabit;
     } catch (error) {
       console.error('Failed to restore habit:', error);
@@ -222,6 +235,16 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
         habit.sectionId === sectionId ? { ...habit, sectionId: undefined } : habit
       ),
     }));
+    void syncSchedules(get);
+  },
+
+  updateSection: async (sectionId, draft) => {
+    const section = await habitsService.updateSection(sectionId, draft);
+    set((state) => ({
+      sections: state.sections.map((current) => (current.id === sectionId ? section : current)),
+    }));
+    void syncSchedules(get);
+    return section;
   },
 
   setHabitStatus: async (habitId, status) => {
@@ -270,6 +293,10 @@ async function writeLog(habitId: string, entry: HabitLogEntry): Promise<void> {
       if (entry.status === 'skipped') {
         notifyFirstSkip(habitId);
       }
+      // Reminders only: a check-in is what silences the rest of today's
+      // notifications for that habit. It cannot change the alarm plan, which is
+      // read from the routines' weeks alone — re-planning here would cancel and
+      // re-schedule every AlarmKit alarm on every tap.
       const { habits, dateLogs } = useHabitsStore.getState();
       void syncHabitReminders(habits, dateLogs.get(today) ?? new Map());
     }

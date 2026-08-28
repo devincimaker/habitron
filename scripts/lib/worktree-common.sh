@@ -22,7 +22,10 @@ WT_PROJECT_REF="fitklsshlhjwddbxhhdi"
 # Match the main checkout's simulator so QA differences are never an
 # iOS-version artifact (apps/mobile/.env → IOS_SIMULATOR=iPhone 16e).
 WT_SIM_DEVICE_TYPE="com.apple.CoreSimulator.SimDeviceType.iPhone-16e"
-WT_SIM_RUNTIME="com.apple.CoreSimulator.SimRuntime.iOS-18-5"
+# Overridable so a worktree whose work needs a newer iOS (AlarmKit is iOS 26)
+# can create its simulator on that runtime; the default stays 18.5 for every
+# other worktree, matching the main checkout.
+WT_SIM_RUNTIME="${WT_SIM_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-18-5}"
 
 # Gitignored files that must be recreated in a worktree (git does not carry them).
 WT_ENV_FILES=("apps/api/.env" "apps/mobile/.env")
