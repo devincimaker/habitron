@@ -9,6 +9,8 @@ export interface RenderedHook<T> {
   current: () => T;
   /** Runs `fn` inside `act`, so state it sets is flushed before the next read. */
   act: (fn: () => void) => void;
+  /** The same, for state that settles on a promise — a storage read, say. */
+  actAsync: (fn: () => Promise<unknown>) => Promise<void>;
   unmount: () => void;
 }
 
@@ -32,6 +34,11 @@ export function renderHook<T>(hook: () => T): RenderedHook<T> {
   return {
     current: () => latest,
     act: (fn) => act(fn),
+    actAsync: async (fn) => {
+      await act(async () => {
+        await fn();
+      });
+    },
     unmount: () => act(() => renderer.unmount()),
   };
 }

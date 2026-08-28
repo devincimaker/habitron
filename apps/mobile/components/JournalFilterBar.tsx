@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { JournalMood } from '@habits-coach/shared';
+import { Caption, Label } from './ui';
 import { JOURNAL_MOODS, JOURNAL_MOOD_STYLES } from '../constants/journal';
 import {
   BORDER_RADIUS,
@@ -70,7 +71,7 @@ export function JournalFilterBar({
           accessibilityState={{ selected: mood === null }}
           accessibilityLabel="All moods"
         >
-          <Text style={[styles.allLabel, mood === null ? styles.allLabelSelected : null]}>All</Text>
+          <Label color={mood === null ? colors.primaryDark : colors.textSecondary}>All</Label>
         </Pressable>
 
         {JOURNAL_MOODS.map((option) => {
@@ -99,9 +100,9 @@ export function JournalFilterBar({
       </View>
 
       {isFiltering ? (
-        <Text style={styles.count}>
+        <Caption style={styles.count}>
           {matchCount} {matchCount === 1 ? 'entry' : 'entries'}
-        </Text>
+        </Caption>
       ) : null}
     </View>
   );
@@ -117,8 +118,8 @@ const createStyles = (colors: Colors) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: SPACING.sm,
-      paddingHorizontal: SPACING.md - 4,
-      borderRadius: BORDER_RADIUS.md + 2,
+      paddingHorizontal: 12,
+      borderRadius: 10,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
@@ -142,7 +143,7 @@ const createStyles = (colors: Colors) =>
       height: TOUCH_TARGET.min,
       justifyContent: 'center',
       paddingHorizontal: SPACING.md,
-      borderRadius: 22,
+      borderRadius: BORDER_RADIUS.full,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.background,
@@ -150,13 +151,6 @@ const createStyles = (colors: Colors) =>
     allChipSelected: {
       backgroundColor: colors.primaryLight,
       borderColor: colors.primary,
-    },
-    allLabel: {
-      ...TYPOGRAPHY.label,
-      color: colors.textSecondary,
-    },
-    allLabelSelected: {
-      color: colors.primaryDark,
     },
     moodChip: {
       width: TOUCH_TARGET.min,
@@ -172,7 +166,6 @@ const createStyles = (colors: Colors) =>
       fontSize: 20,
     },
     count: {
-      fontSize: 12,
       color: colors.textLight,
       paddingHorizontal: SPACING.xs,
     },

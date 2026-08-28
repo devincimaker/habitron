@@ -22,6 +22,8 @@ import { groupByDay, recentReviews } from '../../utils/dayTrend';
 import { BORDER_RADIUS, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
+const FAB_SIZE = 56;
+
 export default function JournalScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const router = useRouter();
@@ -38,13 +40,16 @@ export default function JournalScreen() {
 
   const composer = useJournalComposer();
   const commitDelete = useCallback(
-    async (entry: JournalEntry) => {
-      await removeEntry(entry.id);
-    },
+    (entry: JournalEntry) => removeEntry(entry.id),
     [removeEntry]
   );
   const { pending: pendingDelete, remove: deleteEntry, undo: undoDelete } =
     useUndoableDelete(commitDelete);
+  const openComposer = composer.open;
+  const handleEditEntry = useCallback(
+    (entry: JournalEntry) => openComposer({ entry }),
+    [openComposer]
+  );
 
   useEffect(() => {
     void loadEntries();
@@ -95,8 +100,8 @@ export default function JournalScreen() {
     [router]
   );
 
-  const showEmptyFeed = entries.length === 0;
-  const showEmptyResults = !showEmptyFeed && dayGroups.length === 0;
+  const isFiltering = Boolean(searchQuery.trim()) || selectedMood !== null;
+  const showEmptyResults = isFiltering && dayGroups.length === 0;
   const overlayBottom = TAB_BAR.height + insets.bottom + SPACING.lg;
 
   return (
@@ -107,7 +112,7 @@ export default function JournalScreen() {
           styles.content,
           // Clears the tab bar and the FAB above it, so the button never sits
           // on the last card's mood pill.
-          { paddingBottom: TAB_BAR.height + insets.bottom + 56 + SPACING.lg },
+          { paddingBottom: overlayBottom + FAB_SIZE },
         ]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="interactive"
@@ -146,10 +151,8 @@ export default function JournalScreen() {
                       key={entry.id}
                       entry={entry}
                       isHighlighted={entry.id === lastSavedEntryId}
-                      onEdit={(selectedEntry) => composer.open({ entry: selectedEntry })}
-                      // The card awaits its delete; this one only starts the
-                      // undo window, and the commit happens when it closes.
-                      onDelete={(selectedEntry) => Promise.resolve(deleteEntry(selectedEntry))}
+                      onEdit={handleEditEntry}
+                      onDelete={deleteEntry}
                     />
                   ))}
                 </View>
@@ -213,9 +216,9 @@ const createStyles = (colors: Colors) =>
     fab: {
       position: 'absolute',
       right: SPACING.lg,
-      width: 56,
-      height: 56,
-      borderRadius: 28,
+      width: FAB_SIZE,
+      height: FAB_SIZE,
+      borderRadius: FAB_SIZE / 2,
       backgroundColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',

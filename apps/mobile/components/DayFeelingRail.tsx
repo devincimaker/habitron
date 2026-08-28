@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useState } from 'react';
+import { memo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Feather } from '@expo/vector-icons';
 import type { DayReviewSummary } from '@habits-coach/shared';
 import { AxisIcon } from './AxisIcon';
 import { DayFeelingCard } from './DayFeelingCard';
+import { Label } from './ui';
 import { AXIS_LABELS, TREND_AXES } from '../utils/dayTrend';
-import { SPACING, TOUCH_TARGET, TYPOGRAPHY, type Colors } from '../constants/theme';
+import { SPACING, TOUCH_TARGET, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { usePersistedFlag } from '../hooks/usePersistedFlag';
 
 /** Collapsing the rail is a preference, so it outlives the visit. */
 const COLLAPSED_KEY = 'journal.feelingRail.collapsed';
@@ -25,25 +26,17 @@ interface DayFeelingRailProps {
  * fill in — a day is reviewed on the day or not at all — so the rail holds only
  * days that happened, and the whole section is absent until one has.
  */
-export function DayFeelingRail({ reviews, today, onOpenDay }: DayFeelingRailProps) {
+export const DayFeelingRail = memo(function DayFeelingRail({
+  reviews,
+  today,
+  onOpenDay,
+}: DayFeelingRailProps) {
   const [styles, colors] = useThemedStyles(createStyles);
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { value: isCollapsed, isReady, toggle } = usePersistedFlag(COLLAPSED_KEY);
 
-  useEffect(() => {
-    void AsyncStorage.getItem(COLLAPSED_KEY)
-      .then((stored) => setIsCollapsed(stored === '1'))
-      .catch(() => {});
-  }, []);
-
-  const toggle = useCallback(() => {
-    setIsCollapsed((current) => {
-      const next = !current;
-      void AsyncStorage.setItem(COLLAPSED_KEY, next ? '1' : '0').catch(() => {});
-      return next;
-    });
-  }, []);
-
-  if (reviews.length === 0) return null;
+  // Nothing until storage has answered, so a rail the user collapsed does not
+  // appear for a frame and snap shut.
+  if (reviews.length === 0 || !isReady) return null;
 
   return (
     <View style={styles.section}>
@@ -54,7 +47,7 @@ export function DayFeelingRail({ reviews, today, onOpenDay }: DayFeelingRailProp
         accessibilityState={{ expanded: !isCollapsed }}
         accessibilityLabel="How you've been"
       >
-        <Text style={styles.headerText}>How you&apos;ve been</Text>
+        <Label color={colors.textSecondary}>How you&apos;ve been</Label>
         <Feather
           name={isCollapsed ? 'chevron-down' : 'chevron-up'}
           size={18}
@@ -91,7 +84,7 @@ export function DayFeelingRail({ reviews, today, onOpenDay }: DayFeelingRailProp
       )}
     </View>
   );
-}
+});
 
 const createStyles = (colors: Colors) =>
   StyleSheet.create({
@@ -102,17 +95,13 @@ const createStyles = (colors: Colors) =>
       height: TOUCH_TARGET.min,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.xs + 2,
+      gap: 6,
       paddingHorizontal: SPACING.xs,
-    },
-    headerText: {
-      ...TYPOGRAPHY.label,
-      color: colors.textSecondary,
     },
     key: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.md - 4,
+      gap: 12,
       paddingHorizontal: SPACING.xs,
     },
     keyItem: {

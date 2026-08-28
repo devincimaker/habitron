@@ -40,15 +40,20 @@ function parseDayDate(date: string): Date {
   return new Date(`${date}T12:00:00`);
 }
 
+// Built once. Constructing an Intl formatter is the expensive half of
+// formatting, and a rail of thirty cards asks for two of these apiece.
+const WEEKDAY_SHORT = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+const DAY_TITLE = new Intl.DateTimeFormat(undefined, {
+  weekday: 'long',
+  month: 'short',
+  day: 'numeric',
+});
+
 /** `Today`, `Yesterday`, or the full weekday and date. */
 export function formatDayTitle(date: string, today: string): string {
   if (date === today) return 'Today';
   if (date === addDays(today, -1)) return 'Yesterday';
-  return new Intl.DateTimeFormat(undefined, {
-    weekday: 'long',
-    month: 'short',
-    day: 'numeric',
-  }).format(parseDayDate(date));
+  return DAY_TITLE.format(parseDayDate(date));
 }
 
 /**
@@ -60,8 +65,7 @@ export function formatDayTitle(date: string, today: string): string {
  */
 export function formatChipLabel(date: string): string {
   const day = parseDayDate(date);
-  const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' }).format(day);
-  return `${weekday} ${day.getDate()}`;
+  return `${WEEKDAY_SHORT.format(day)} ${day.getDate()}`;
 }
 
 /**

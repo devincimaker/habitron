@@ -58,25 +58,23 @@ export function useJournalComposer(): JournalComposer {
     prompt?: string | string[];
   }>();
 
-  const [entry, setEntry] = useState<JournalEntry | null>(null);
-  const [isOpen, setIsOpen] = useState(false);
-  const [prompt, setPrompt] = useState<string | null>(null);
-  const [autoStartVoice, setAutoStartVoice] = useState(false);
+  // One piece of state: open is "there is something being composed", and the
+  // three fields only ever change together with it.
+  const [composing, setComposing] = useState<
+    (ComposerIntent & { entry: JournalEntry | null }) | null
+  >(null);
+  const isOpen = composing !== null;
 
   const open = useCallback<JournalComposer['open']>((options) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setEntry(options?.entry ?? null);
-    setPrompt(options?.prompt ?? null);
-    setAutoStartVoice(Boolean(options?.autoStartVoice));
-    setIsOpen(true);
+    setComposing({
+      entry: options?.entry ?? null,
+      prompt: options?.prompt ?? null,
+      autoStartVoice: Boolean(options?.autoStartVoice),
+    });
   }, []);
 
-  const close = useCallback(() => {
-    setIsOpen(false);
-    setEntry(null);
-    setPrompt(null);
-    setAutoStartVoice(false);
-  }, []);
+  const close = useCallback(() => setComposing(null), []);
 
   // One link, one opening. Replacing the route is what clears the param, and
   // that lands a render or two later — long enough for a close in between to
@@ -89,11 +87,20 @@ export function useJournalComposer(): JournalComposer {
       consumed.current = false;
       return;
     }
-    if (consumed.current) return;
+    // Never over an open composer: the link would swap the entry underneath
+    // whatever is being typed, and the draft would go with it.
+    if (consumed.current || isOpen) return;
     consumed.current = true;
     open(intent);
     router.replace('/journal');
-  }, [open, params, router]);
+  }, [isOpen, open, params, router]);
 
-  return { entry, isOpen, prompt, autoStartVoice, open, close };
+  return {
+    entry: composing?.entry ?? null,
+    isOpen,
+    prompt: composing?.prompt ?? null,
+    autoStartVoice: composing?.autoStartVoice ?? false,
+    open,
+    close,
+  };
 }

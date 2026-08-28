@@ -71,6 +71,19 @@ describe('useJournalComposer', () => {
     expect(replace).not.toHaveBeenCalled();
   });
 
+  // A link that landed while the user was mid-draft would swap the entry out
+  // from under the sheet and take everything typed with it.
+  it('does not open over a composer that is already open', () => {
+    const hook = renderHook(() => useJournalComposer());
+    hook.act(() => hook.current().open({ prompt: 'Mine' }));
+
+    params = { compose: '1', prompt: 'The link' };
+    hook.act(() => hook.current().open({ prompt: 'Mine' }));
+
+    expect(hook.current().prompt).toBe('Mine');
+    expect(replace).not.toHaveBeenCalled();
+  });
+
   it('opens on an entry, and close clears the entry, the prompt and the voice flag', () => {
     const hook = renderHook(() => useJournalComposer());
     const entry: JournalEntry = {

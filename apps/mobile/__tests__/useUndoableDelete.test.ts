@@ -11,7 +11,7 @@ describe('useUndoableDelete', () => {
   beforeEach(() => jest.useFakeTimers());
   afterEach(() => jest.useRealTimers());
 
-  it('hides the item at once and commits it when the window closes', () => {
+  it('hides the item at once and commits it when the window closes', async () => {
     const commit = jest.fn().mockResolvedValue(undefined);
     const hook = renderHook(() => useUndoableDelete<Entry>(commit));
 
@@ -20,8 +20,13 @@ describe('useUndoableDelete', () => {
     expect(commit).not.toHaveBeenCalled();
 
     hook.act(() => jest.advanceTimersByTime(5000));
-    expect(hook.current().pending).toBeNull();
     expect(commit).toHaveBeenCalledWith(entry);
+    // Still hidden until the commit lands — the list only drops the item when
+    // the store has, and clearing sooner flashes the row back.
+    expect(hook.current().pending).toBe(entry);
+
+    await hook.actAsync(() => Promise.resolve());
+    expect(hook.current().pending).toBeNull();
   });
 
   it('restores the item and never commits when undone in time', () => {
@@ -50,7 +55,9 @@ describe('useUndoableDelete', () => {
     expect(commit).not.toHaveBeenCalled();
   });
 
-  it('replaces a pending delete rather than losing its timer', () => {
+  // Only undo takes a delete back, so a second one inside the window commits
+  // the first rather than quietly resurrecting it.
+  it('commits the first item when a second delete starts inside its window', () => {
     const commit = jest.fn().mockResolvedValue(undefined);
     const second: Entry = { id: 'entry-2' };
     const hook = renderHook(() => useUndoableDelete<Entry>(commit));
@@ -58,9 +65,27 @@ describe('useUndoableDelete', () => {
     hook.act(() => hook.current().remove(entry));
     hook.act(() => jest.advanceTimersByTime(3000));
     hook.act(() => hook.current().remove(second));
-    hook.act(() => jest.advanceTimersByTime(5000));
 
     expect(commit).toHaveBeenCalledTimes(1);
-    expect(commit).toHaveBeenCalledWith(second);
+    expect(commit).toHaveBeenCalledWith(entry);
+    expect(hook.current().pending).toBe(second);
+
+    hook.act(() => jest.advanceTimersByTime(5000));
+    expect(commit).toHaveBeenCalledTimes(2);
+    expect(commit).toHaveBeenLastCalledWith(second);
+  });
+
+  it('reports a failed delete rather than swallowing it', async () => {
+    const commit = jest.fn().mockRejectedValue(new Error('offline'));
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const hook = renderHook(() => useUndoableDelete<Entry>(commit));
+
+    hook.act(() => hook.current().remove(entry));
+    hook.act(() => jest.advanceTimersByTime(5000));
+    await hook.actAsync(() => Promise.resolve());
+
+    expect(warn).toHaveBeenCalled();
+    expect(hook.current().pending).toBeNull();
+    warn.mockRestore();
   });
 });

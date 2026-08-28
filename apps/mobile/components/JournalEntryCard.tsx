@@ -14,7 +14,7 @@ interface JournalEntryCardProps {
   isHighlighted?: boolean;
   /** Both omitted where the card is a record rather than a list item. */
   onEdit?: (entry: JournalEntry) => void;
-  onDelete?: (entry: JournalEntry) => Promise<void>;
+  onDelete?: (entry: JournalEntry) => void;
 }
 
 function formatEntryTimestamp(timestamp: number): string {

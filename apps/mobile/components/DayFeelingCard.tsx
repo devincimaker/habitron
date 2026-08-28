@@ -1,8 +1,9 @@
+import { memo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { DayReviewSummary } from '@habits-coach/shared';
 import { AxisIcon } from './AxisIcon';
 import { TREND_AXES, formatChipLabel, formatDayTitle } from '../utils/dayTrend';
-import { SPACING, type Colors } from '../constants/theme';
+import { type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
 /** Every axis is rated 1–5, so a row is five pips. */
@@ -22,7 +23,11 @@ interface DayFeelingCardProps {
  * axes — a review that stopped before it renders no number rather than an
  * average nobody said.
  */
-export function DayFeelingCard({ review, today, onPress }: DayFeelingCardProps) {
+export const DayFeelingCard = memo(function DayFeelingCard({
+  review,
+  today,
+  onPress,
+}: DayFeelingCardProps) {
   const [styles, colors] = useThemedStyles(createStyles);
 
   return (
@@ -44,20 +49,14 @@ export function DayFeelingCard({ review, today, onPress }: DayFeelingCardProps) 
           <AxisIcon axis={axis} size={14} color={colors.textSecondary} />
           <View style={styles.pips}>
             {PIPS.map((pip) => (
-              <View
-                key={pip}
-                style={[
-                  styles.pip,
-                  { backgroundColor: pip <= (review[axis] ?? 0) ? colors.primary : colors.border },
-                ]}
-              />
+              <View key={pip} style={pip <= (review[axis] ?? 0) ? styles.pipOn : styles.pipOff} />
             ))}
           </View>
         </View>
       ))}
     </Pressable>
   );
-}
+});
 
 const createStyles = (colors: Colors) =>
   StyleSheet.create({
@@ -94,7 +93,7 @@ const createStyles = (colors: Colors) =>
       height: 18,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: SPACING.xs + 2,
+      gap: 6,
     },
     pips: {
       flex: 1,
@@ -102,9 +101,16 @@ const createStyles = (colors: Colors) =>
       alignItems: 'center',
       gap: 3,
     },
-    pip: {
+    pipOn: {
       flex: 1,
       height: 5,
       borderRadius: 2.5,
+      backgroundColor: colors.primary,
+    },
+    pipOff: {
+      flex: 1,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: colors.border,
     },
   });
