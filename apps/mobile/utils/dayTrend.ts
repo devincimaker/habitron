@@ -15,13 +15,6 @@ export const AXIS_LABELS: Record<TrendAxis, string> = {
 /** A month — long enough to read a run of days, short enough to scroll once. */
 const RAIL_DAYS = 30;
 
-/** One ramp of words for all four axes, matching what the coach prints. */
-const RATING_WORDS = ['bad', 'low', 'ok', 'good', 'great'];
-
-export function ratingWord(value: number | undefined): string | null {
-  return value ? (RATING_WORDS[value - 1] ?? null) : null;
-}
-
 /** A day the list shows: one or more entries written on it. */
 export interface DayGroup {
   date: string;

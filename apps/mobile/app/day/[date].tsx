@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -12,7 +12,6 @@ import { formatDayTitle } from '../../utils/dayTrend';
 import { formatVerdict } from '../../utils/coachSessions';
 import { getTodayDate } from '@habits-coach/shared';
 import {
-  BORDER_RADIUS,
   FONT_SIZES,
   SPACING,
   TOUCH_TARGET,
@@ -36,9 +35,8 @@ function formatReviewedAt(review: DayReviewDetail): string {
 /**
  * One day, whole: the verdict, the four axes, the prose, that day's entries.
  *
- * The single action opens the day's own review session. Streaks key on
- * `review_date`, so filling a skipped night in over coffee repairs the streak —
- * the record is the point.
+ * Read-only, and deliberately so. A day is reviewed on the day or not at all,
+ * so there is nothing here to press.
  */
 export default function DayDetailScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -74,10 +72,6 @@ export default function DayDetailScreen() {
 
   const dayEntries = entries.filter((entry) => entry.entryDate === date);
 
-  const handleReview = useCallback(() => {
-    router.push({ pathname: '/session', params: { ritual: 'review-day', date } });
-  }, [date, router]);
-
   const verdict = formatVerdict(review?.overall);
 
   return (
@@ -102,7 +96,7 @@ export default function DayDetailScreen() {
         <ScrollView contentContainerStyle={styles.content}>
           <View style={styles.verdictRow}>
             <View>
-              <Text style={styles.sectionLabel}>OVERALL</Text>
+              <Text style={styles.sectionLabel}>Overall</Text>
               <View style={styles.verdictGroup}>
                 <Text style={styles.verdictNumber}>{review?.overall ?? '—'}</Text>
                 {verdict ? <Text style={styles.verdictWord}>{verdict}</Text> : null}
@@ -121,38 +115,28 @@ export default function DayDetailScreen() {
 
           {review?.highlight ? (
             <View style={styles.prose}>
-              <Text style={styles.sectionLabel}>HIGHLIGHT</Text>
+              <Text style={styles.sectionLabel}>Highlight</Text>
               <Text style={styles.proseText}>{review.highlight}</Text>
             </View>
           ) : null}
 
+          {review?.highlight && review.friction ? <View style={styles.proseRule} /> : null}
+
           {review?.friction ? (
             <View style={styles.prose}>
-              <Text style={styles.sectionLabel}>FRICTION</Text>
+              <Text style={styles.sectionLabel}>Friction</Text>
               <Text style={styles.proseText}>{review.friction}</Text>
             </View>
           ) : null}
 
           <View style={styles.entries}>
-            <Text style={styles.sectionLabel}>ENTRIES · {dayEntries.length}</Text>
+            <Text style={styles.sectionLabel}>Entries · {dayEntries.length}</Text>
             {dayEntries.length === 0 ? (
               <Text style={styles.reviewedAt}>Nothing written that day.</Text>
             ) : (
               dayEntries.map((entry) => <JournalEntryCard key={entry.id} entry={entry} />)
             )}
           </View>
-
-          <Pressable
-            style={({ pressed }) => [styles.action, pressed && styles.actionPressed]}
-            onPress={handleReview}
-            accessibilityRole="button"
-            accessibilityLabel={review ? 'Add to this review' : 'Review this day'}
-          >
-            <Feather name="moon" size={18} color={colors.primaryDark} />
-            <Text style={styles.actionLabel}>
-              {review ? 'Add to this review' : 'Review this day'}
-            </Text>
-          </Pressable>
         </ScrollView>
       )}
     </View>
@@ -202,9 +186,10 @@ const createStyles = (colors: Colors) =>
       gap: SPACING.sm,
     },
     sectionLabel: {
-      fontSize: FONT_SIZES.xs,
+      fontSize: FONT_SIZES.footnote,
       fontWeight: '600',
-      color: colors.textSecondary,
+      lineHeight: 18,
+      color: colors.text,
     },
     verdictGroup: {
       flexDirection: 'row',
@@ -229,30 +214,16 @@ const createStyles = (colors: Colors) =>
     prose: {
       gap: SPACING.xs,
     },
+    proseRule: {
+      height: StyleSheet.hairlineWidth,
+      backgroundColor: colors.border,
+    },
     proseText: {
-      ...TYPOGRAPHY.bodyMedium,
-      lineHeight: 24,
+      // The app's long-form token: this is a paragraph, not a caption.
+      ...TYPOGRAPHY.editorBody,
       color: colors.text,
     },
     entries: {
       gap: SPACING.sm + 2,
-    },
-    action: {
-      height: TOUCH_TARGET.min,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: SPACING.sm,
-      borderRadius: BORDER_RADIUS.md,
-      borderWidth: 1,
-      borderColor: colors.primary,
-    },
-    actionPressed: {
-      opacity: 0.7,
-    },
-    actionLabel: {
-      ...TYPOGRAPHY.label,
-      fontSize: FONT_SIZES.md,
-      color: colors.primaryDark,
     },
   });
