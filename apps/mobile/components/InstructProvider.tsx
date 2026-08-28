@@ -30,6 +30,7 @@ import {
   holdOutcome,
   instructReducer,
   parseProposal,
+  type InstructAction,
   type InstructState,
 } from '../utils/instruct';
 import { InstructOverlay } from './InstructOverlay';
@@ -67,18 +68,29 @@ type TurnRequest = Omit<CoachInstructRequest, 'timezone' | 'userName'>;
  */
 export function InstructProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(instructReducer, INITIAL_INSTRUCT_STATE);
-  const stateRef = useRef(state);
-  stateRef.current = state;
+  /** Never assigned from render: `send` is the only writer. See below. */
+  const stateRef = useRef(INITIAL_INSTRUCT_STATE);
+
+  /**
+   * Dispatch, and advance the ref in the same breath, so a gesture or async
+   * callback reading `stateRef` sees what it just dispatched rather than what
+   * React last rendered. A flick that arms cancel and releases in one tick is
+   * the case that matters. `instructReducer` is pure, so mirroring it is safe.
+   */
+  const send = useCallback((action: InstructAction) => {
+    stateRef.current = instructReducer(stateRef.current, action);
+    dispatch(action);
+  }, []);
 
   const submitRef = useRef<(audioUri?: string) => Promise<void>>(async () => {});
   const recorder = useAudioRecorder({ onAutoStop: (uri) => void submitRef.current(uri) });
+  // A render mirror is right here, unlike the one `send` replaced: this is the
+  // recorder handle itself, not state a callback could read a stale copy of.
   const recorderRef = useRef(recorder);
   recorderRef.current = recorder;
   /** The in-flight `startRecording`, so a release never races the start. */
   const startingRef = useRef<Promise<void>>(Promise.resolve());
   const holdingRef = useRef(false);
-  /** The gesture's own measurement, so the release never waits on a render. */
-  const liftRef = useRef(0);
   /** The in-flight turn's controller: aborting it is also what orphans its results. */
   const abortRef = useRef<AbortController | null>(null);
 
@@ -120,10 +132,10 @@ export function InstructProvider({ children }: { children: ReactNode }) {
             if (signal?.aborted) return;
             switch (event.type) {
               case 'session':
-                dispatch({ type: 'session', claudeSessionId: event.claudeSessionId });
+                send({ type: 'session', claudeSessionId: event.claudeSessionId });
                 break;
               case 'tool':
-                dispatch({ type: 'activity', label: describeCoachActivity(event.name) });
+                send({ type: 'activity', label: describeCoachActivity(event.name) });
                 break;
               case 'text':
                 streamed += event.delta;
@@ -151,7 +163,7 @@ export function InstructProvider({ children }: { children: ReactNode }) {
 
       return { text: finalText ?? streamed, error };
     },
-    [userName]
+    [send, userName]
   );
 
   const submit = useCallback(
@@ -163,7 +175,7 @@ export function InstructProvider({ children }: { children: ReactNode }) {
       const controller = new AbortController();
       abortRef.current = controller;
       const { signal } = controller;
-      dispatch({ type: 'submit' });
+      send({ type: 'submit' });
 
       await startingRef.current;
       const uri = audioUri ?? (await recorderRef.current.stopRecording());
@@ -179,14 +191,14 @@ export function InstructProvider({ children }: { children: ReactNode }) {
           // leave the transcript empty and say "Didn't catch that", inviting an
           // immediate retry against the thing that just timed out.
           if (error instanceof TranscriptionTimeoutError) {
-            dispatch({ type: 'notice', message: error.message });
+            send({ type: 'notice', message: error.message });
             return;
           }
         }
       }
       if (signal.aborted) return;
       if (!transcript) {
-        dispatch({ type: 'nothing-heard' });
+        send({ type: 'nothing-heard' });
         return;
       }
 
@@ -197,44 +209,44 @@ export function InstructProvider({ children }: { children: ReactNode }) {
       const { text, error } = await runTurn(request, signal);
       if (signal.aborted) return;
       if (error) {
-        dispatch({ type: 'notice', message: error, transcript });
+        send({ type: 'notice', message: error, transcript });
         return;
       }
 
       const outcome = parseProposal(text);
-      dispatch(
+      send(
         outcome.kind === 'proposal'
           ? { type: 'proposal', transcript, proposal: outcome.proposal }
           : { type: 'notice', message: outcome.message, transcript }
       );
     },
-    [runTurn]
+    [runTurn, send]
   );
   submitRef.current = submit;
 
   const apply = useCallback(async () => {
     const { phase, claudeSessionId } = stateRef.current;
     if (phase !== 'proposal' || !claudeSessionId) return;
-    dispatch({ type: 'apply' });
+    send({ type: 'apply' });
 
     const { error } = await runTurn({ kind: 'apply', claudeSessionId });
     await refreshData();
     if (error) {
-      dispatch({ type: 'notice', message: error });
+      send({ type: 'notice', message: error });
       return;
     }
     void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    dispatch({ type: 'applied' });
-  }, [refreshData, runTurn]);
+    send({ type: 'applied' });
+  }, [refreshData, runTurn, send]);
 
-  const dismiss = useCallback(() => dispatch({ type: 'dismiss' }), []);
+  const dismiss = useCallback(() => send({ type: 'dismiss' }), [send]);
 
   const abort = useCallback(() => {
     if (!canAbort(stateRef.current)) return;
     abortRef.current?.abort();
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    dispatch({ type: 'abort' });
-  }, []);
+    send({ type: 'abort' });
+  }, [send]);
 
   // Stable handlers: the gesture holds on to whatever it was given when the hold began.
   const hold = useMemo<InstructHold>(
@@ -242,36 +254,34 @@ export function InstructProvider({ children }: { children: ReactNode }) {
       start: () => {
         if (holdingRef.current || !canHold(stateRef.current)) return;
         holdingRef.current = true;
-        liftRef.current = 0;
         void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        dispatch({ type: 'hold-start' });
+        send({ type: 'hold-start' });
         startingRef.current = recorderRef.current.startRecording();
       },
       move: (lift) => {
         if (!holdingRef.current) return;
-        liftRef.current = lift;
-        dispatch({ type: 'hold-move', lift });
+        send({ type: 'hold-move', lift });
       },
       end: (released) => {
         if (!holdingRef.current) return;
         holdingRef.current = false;
-        if (holdOutcome(released, liftRef.current) === 'cancel') {
+        if (holdOutcome(released, stateRef.current) === 'cancel') {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          dispatch({ type: 'hold-cancel' });
+          send({ type: 'hold-cancel' });
           void startingRef.current.then(() => recorderRef.current.cancelRecording());
         } else {
           void submitRef.current();
         }
       },
     }),
-    []
+    [send]
   );
 
   useEffect(() => {
     if (state.phase !== 'toast') return;
-    const timer = setTimeout(() => dispatch({ type: 'toast-expired' }), TOAST_MS);
+    const timer = setTimeout(() => send({ type: 'toast-expired' }), TOAST_MS);
     return () => clearTimeout(timer);
-  }, [state.phase]);
+  }, [send, state.phase]);
 
   const value = useMemo(() => ({ state, hold, abort }), [state, hold, abort]);
 

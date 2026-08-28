@@ -74,18 +74,20 @@ export type InstructAction =
   | { type: 'dismiss' }
   | { type: 'toast-expired' };
 
-/** The one place the cancel line is drawn: the outcome and the hint agree by construction. */
+/** Where the cancel line is drawn. Only `hold-move` calls it; everything else reads `cancelArmed`. */
 function armed(lift: number): boolean {
   return lift > CANCEL_LIFT;
 }
 
 /**
- * What a finished hold means. The lift is measured by the gesture itself, so
- * this never depends on state React has not rendered yet: a flick up and
- * release is a cancel even when the arming dispatch has not flushed.
+ * What a finished hold means, read from the state the gesture has been feeding.
+ *
+ * `cancelArmed` is safe to trust here only because the provider advances its
+ * ref through this reducer at dispatch time: the `hold-move` that armed the
+ * cancel is already applied when the release asks, without waiting on a render.
  */
-export function holdOutcome(released: boolean, lift: number): 'submit' | 'cancel' {
-  return released && !armed(lift) ? 'submit' : 'cancel';
+export function holdOutcome(released: boolean, state: InstructState): 'submit' | 'cancel' {
+  return released && !state.cancelArmed ? 'submit' : 'cancel';
 }
 
 /** Only a working turn can be stopped: applying is already writing real data. */
