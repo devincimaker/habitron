@@ -63,7 +63,7 @@ export function formatDurationMinutes(minutes: number): string {
 }
 
 // Step scales with the value: 5m under an hour, 15m up to four hours, 30m beyond.
-function getDurationStep(minutes: number): number {
+export function getDurationStep(minutes: number): number {
   if (minutes < 60) return 5;
   if (minutes < 240) return 15;
   return 30;
@@ -92,4 +92,18 @@ export function getEstimateDelta(estimateMinutes: number, actualMinutes: number)
   return diff > 0
     ? { minutes: diff, tone: 'over', label: `+${formatDurationMinutes(diff)} over` }
     : { minutes: diff, tone: 'under', label: `${formatDurationMinutes(-diff)} under` };
+}
+
+/**
+ * The colour an estimate delta is written in. Here rather than in either
+ * component, because the row and the task sheet both show it and had already
+ * drifted on what "spot on" looks like.
+ */
+export function getEstimateDeltaColor(
+  tone: EstimateDelta['tone'],
+  colors: { error: string; success: string; textSecondary: string }
+): string {
+  if (tone === 'over') return colors.error;
+  if (tone === 'under') return colors.success;
+  return colors.textSecondary;
 }

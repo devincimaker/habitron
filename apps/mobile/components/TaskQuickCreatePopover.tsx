@@ -1,5 +1,5 @@
-import { useEffect, useState, type RefObject } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState, type RefObject } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Priority, TodoTag } from '@habits-coach/shared';
 import { TodoTagPill } from './TodoTagPill';
@@ -17,6 +17,8 @@ export type TaskQuickCreatePopoverContent =
       kind: 'tags';
       tags: TodoTag[];
       onSelect: (tagName: string) => void;
+      /** Offers a "New category…" field. Quick-create types `#` instead. */
+      onCreate?: (tagName: string) => void;
     };
 
 interface TaskQuickCreatePopoverProps {
@@ -30,26 +32,35 @@ interface TaskQuickCreatePopoverProps {
    * follows inline `#` typing, so the input stays tappable and the context decides.
    */
   onClose?: () => void;
+  /**
+   * Which edge the card hangs from. `above` is the quick-create actions row,
+   * which rides the sheet's bottom edge; `below` is for an anchor near the top,
+   * where a card opening upward would have nowhere to go.
+   */
+  placement?: 'above' | 'below';
 }
 
 interface Placement {
-  left: number;
-  bottom: number;
+  left?: number;
+  right?: number;
+  top?: number;
+  bottom?: number;
   maxWidth: number;
 }
 
 /**
- * The one picker style the quick-create sheet uses: a card floating above the
- * action that opened it. It lives inside the sheet's own modal so the keyboard
- * stays up, and it is anchored from the sheet's bottom edge — the actions row
- * rides that edge, so the card stays put as the input grows or the keyboard
- * frame changes.
+ * The one picker style the task sheets use: a card floating off the action that
+ * opened it. It lives inside its sheet so the keyboard stays up, and it hangs
+ * from whichever sheet edge its anchor rides — the bottom for the quick-create
+ * actions row, the top for the detail sheet's flag — so the card stays put as
+ * the content grows or the keyboard frame changes.
  */
 export function TaskQuickCreatePopover({
   anchorRef,
   containerRef,
   content,
   onClose,
+  placement: side = 'above',
 }: TaskQuickCreatePopoverProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const [placement, setPlacement] = useState<Placement | null>(null);
@@ -59,16 +70,28 @@ export function TaskQuickCreatePopover({
     const container = containerRef.current;
     if (!anchor || !container) return;
 
-    anchor.measureLayout(container, (x, y) => {
+    anchor.measureLayout(container, (x, y, anchorWidth, anchorHeight) => {
       container.measure((_x, _y, width, height) => {
-        setPlacement({
-          left: x,
-          bottom: height - y + SPACING.xs,
-          maxWidth: width - x - SPACING.md,
-        });
+        setPlacement(
+          side === 'above'
+            ? // The quick-create actions ride the left edge, so the card grows
+              // rightward from the anchor.
+              {
+                left: x,
+                bottom: height - y + SPACING.xs,
+                maxWidth: width - x - SPACING.md,
+              }
+            : // The sheet's flag sits at the right edge, so the card has to hang
+              // leftward — anchored from `left` it would run off the screen.
+              {
+                right: width - x - anchorWidth,
+                top: y + anchorHeight + SPACING.xs,
+                maxWidth: x + anchorWidth - SPACING.md,
+              }
+        );
       });
     });
-  }, [anchorRef, containerRef]);
+  }, [anchorRef, containerRef, side]);
 
   if (!placement) return null;
 
@@ -131,10 +154,61 @@ export function TaskQuickCreatePopover({
                 onPress={() => content.onSelect(tag.name)}
               />
             ))}
+            {content.onCreate ? <NewTagRow onCreate={content.onCreate} /> : null}
           </ScrollView>
         )}
       </View>
     </>
+  );
+}
+
+/** The last row of the tag picker: a pill that becomes a field when tapped. */
+function NewTagRow({ onCreate }: { onCreate: (tagName: string) => void }) {
+  const [styles, colors] = useThemedStyles(createStyles);
+  const [isTyping, setIsTyping] = useState(false);
+  const [name, setName] = useState('');
+  const committed = useRef(false);
+
+  if (!isTyping) {
+    return (
+      <Pressable
+        style={styles.newTag}
+        onPress={() => {
+          committed.current = false;
+          setIsTyping(true);
+        }}
+        accessibilityRole="button"
+        accessibilityLabel="New category"
+      >
+        <Text style={styles.newTagLabel}>New category…</Text>
+      </Pressable>
+    );
+  }
+
+  // Submitting also blurs, so the ref keeps one name from creating two tags.
+  const commit = () => {
+    const next = name.trim();
+    setIsTyping(false);
+    setName('');
+    if (next && !committed.current) {
+      committed.current = true;
+      onCreate(next);
+    }
+  };
+
+  return (
+    <TextInput
+      style={[styles.newTag, styles.newTagInput]}
+      value={name}
+      onChangeText={setName}
+      placeholder="Category name"
+      placeholderTextColor={colors.textLight}
+      autoFocus
+      returnKeyType="done"
+      onSubmitEditing={commit}
+      onBlur={commit}
+      accessibilityLabel="New category name"
+    />
   );
 }
 
@@ -171,5 +245,22 @@ const createStyles = (colors: Colors) =>
       flexWrap: 'wrap',
       gap: SPACING.xs,
       padding: SPACING.xs,
+    },
+    newTag: {
+      borderRadius: BORDER_RADIUS.full,
+      borderWidth: 1,
+      borderStyle: 'dashed',
+      borderColor: colors.border,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    newTagLabel: {
+      ...TYPOGRAPHY.caption,
+      color: colors.textSecondary,
+    },
+    newTagInput: {
+      ...TYPOGRAPHY.caption,
+      minWidth: 120,
+      color: colors.text,
     },
   });

@@ -7,12 +7,6 @@ export interface DayInfo {
   isToday: boolean;
 }
 
-export interface UpcomingDayOption {
-  date: string;
-  label: string;
-  secondaryLabel: string;
-}
-
 export function getLast7Days(): DayInfo[] {
   const days: DayInfo[] = [];
   const today = new Date();
@@ -26,33 +20,6 @@ export function getLast7Days(): DayInfo[] {
       dayNumber: d.getDate(),
       weekdayLetter: ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()],
       isToday: i === 0,
-    });
-  }
-
-  return days;
-}
-
-export function getUpcomingDays(count = 7): UpcomingDayOption[] {
-  const days: UpcomingDayOption[] = [];
-  const today = new Date();
-
-  for (let i = 0; i < count; i++) {
-    const date = new Date(today);
-    date.setDate(today.getDate() + i);
-
-    const dateString = toDateString(
-      date.getFullYear(),
-      date.getMonth() + 1,
-      date.getDate()
-    );
-
-    days.push({
-      date: dateString,
-      label: i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : date.toLocaleDateString('en-US', { weekday: 'long' }),
-      secondaryLabel: date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-      }),
     });
   }
 
@@ -106,6 +73,19 @@ export function formatShortDate(dateStr: string): string {
     month: 'short',
     day: 'numeric',
   });
+}
+
+// Built once: constructing an Intl formatter is the expensive half of
+// formatting, and the task sheet asks for two of these per render.
+const SHEET_DATE = new Intl.DateTimeFormat('en-US', {
+  weekday: 'short',
+  month: 'short',
+  day: 'numeric',
+});
+
+/** `Thu, Aug 20` — the task sheet's date, shorter than `formatDateString`. */
+export function formatSheetDate(dateStr: string): string {
+  return SHEET_DATE.format(new Date(dateStr + 'T00:00:00'));
 }
 
 export function formatRelativeDateLabel(dateStr: string): string {

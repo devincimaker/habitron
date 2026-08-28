@@ -1,6 +1,6 @@
 /* eslint-disable max-lines -- HAB-89: split pending */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, useRouter } from 'expo-router';
 import {
   Alert,
   Pressable,
@@ -12,7 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import type { Goal, Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
+import type { Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
 import { TaskCalendar, type TaskCalendarRef } from '../../components/TaskCalendar';
 import { TaskDragList } from '../../components/TaskDragList';
@@ -25,7 +25,6 @@ import {
   type TaskRowDragMoveEvent,
   type TaskRowDragStartEvent,
 } from '../../components/TaskRow';
-import { TodoEditorModal } from '../../components/TodoEditorModal';
 import { TaskSectionCard } from '../../components/TaskSectionCard';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { Caption } from '../../components/ui';
@@ -36,7 +35,6 @@ import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useTodoReschedule } from '../../hooks/useTodoReschedule';
 import { useDailyPlansStore } from '../../stores/useDailyPlansStore';
-import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useHabitsStore } from '../../stores/useHabitsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { formatRelativeDateLabel, getMonthDisplayString } from '../../utils/dateUtils';
@@ -44,6 +42,7 @@ import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 
 export default function CalendarScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
+  const router = useRouter();
   const insets = useSafeAreaInsets();
   const today = getTodayDate();
   const taskCalendarRef = useRef<TaskCalendarRef>(null);
@@ -52,25 +51,19 @@ export default function CalendarScreen() {
   const { selectedDate, setSelectedDate } = useHabitsStore();
   const {
     todos,
-    lists,
     isLoading,
     loadTodos,
-    addTodo,
     addTodoOptimistic,
-    updateTodo,
     setTodoStatusOptimistic,
     reorderTodos,
     getTodosForDate,
     getOverdueTodos,
   } = useTodosStore();
-  const { goals, loadGoals } = useGoalsStore();
   const { loadPlan } = useDailyPlansStore();
 
-  const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
   const rescheduleTodo = useTodoReschedule();
   const [showQuickCreate, setShowQuickCreate] = useState(false);
-  const [showTodoEditor, setShowTodoEditor] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
   const [dragHoverDate, setDragHoverDate] = useState<string | null>(null);
   // Dragging a task re-renders this screen every pointer frame, so keep the
@@ -126,32 +119,16 @@ export default function CalendarScreen() {
   }, [todos]);
 
   const refreshAll = useCallback(async () => {
-    await Promise.all([loadTodos(), loadGoals(), loadPlan(selectedDate)]);
-  }, [loadGoals, loadPlan, loadTodos, selectedDate]);
+    await Promise.all([loadTodos(), loadPlan(selectedDate)]);
+  }, [loadPlan, loadTodos, selectedDate]);
 
   useEffect(() => {
-    void Promise.all([loadTodos(), loadGoals()]);
-  }, [loadGoals, loadTodos]);
+    void loadTodos();
+  }, [loadTodos]);
 
   useEffect(() => {
     void loadPlan(selectedDate);
   }, [selectedDate, loadPlan]);
-
-  const handleSaveTodo = useCallback(
-    async (draft: TodoDraft) => {
-      if (editingTodo) {
-        const previousScheduledDate = editingTodo.scheduledDate;
-        const updatedTodo = await updateTodo(editingTodo.id, draft);
-
-        if (previousScheduledDate && updatedTodo.scheduledDate !== previousScheduledDate) {
-          await syncTodoPlanOutcome(previousScheduledDate, updatedTodo.id, 'deferred');
-        }
-      } else {
-        await addTodo(draft);
-      }
-    },
-    [addTodo, editingTodo, syncTodoPlanOutcome, updateTodo]
-  );
 
   const handleToggleTodoStatus = useCallback(
     async (todo: Todo, options?: TaskStatusToggleOptions) => {
@@ -183,10 +160,10 @@ export default function CalendarScreen() {
   );
 
 
-  const openTaskEditor = useCallback((todo?: Todo | null) => {
-    setEditingTodo(todo ?? null);
-    setShowTodoEditor(true);
-  }, []);
+  const openTaskSheet = useCallback(
+    (todo: Todo) => router.push({ pathname: '/task/[id]', params: { id: todo.id } }),
+    [router]
+  );
 
   const getCalendarDropDate = useCallback((absoluteX: number, absoluteY: number) => {
     return taskCalendarRef.current?.getDateAtScreenPosition(absoluteX, absoluteY) ?? null;
@@ -246,7 +223,7 @@ export default function CalendarScreen() {
         isLast={isLast}
         onToggleStatus={handleToggleTodoStatus}
         onRemove={removeTodo}
-        onEdit={openTaskEditor}
+        onEdit={openTaskSheet}
         onReschedule={setReschedulingTodo}
         onDragStart={handleTaskDragStart}
         onDragMove={handleTaskDragMove}
@@ -260,7 +237,7 @@ export default function CalendarScreen() {
       handleTaskDragMove,
       handleTaskDragStart,
       handleToggleTodoStatus,
-      openTaskEditor,
+      openTaskSheet,
       removeTodo,
     ]
   );
@@ -363,19 +340,6 @@ export default function CalendarScreen() {
         <TaskRescheduleModal
           todo={reschedulingTodo}
           onClose={() => setReschedulingTodo(null)}
-        />
-
-        <TodoEditorModal
-          visible={showTodoEditor}
-          todo={editingTodo}
-          defaultScheduledDate={editingTodo ? undefined : selectedDate}
-          lists={lists}
-          goals={goals as Goal[]}
-          onClose={() => {
-            setShowTodoEditor(false);
-            setEditingTodo(null);
-          }}
-          onSave={handleSaveTodo}
         />
 
         {removedTodo ? (
