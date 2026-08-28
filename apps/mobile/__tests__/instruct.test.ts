@@ -181,19 +181,31 @@ describe('parseProposal', () => {
 });
 
 describe('holdOutcome', () => {
+  /** A hold that has been moved to `lift`, as the provider's ref would hold it. */
+  const held = (lift: number) => run([{ type: 'hold-start' }, { type: 'hold-move', lift }]);
+
   it('submits a clean release that never rose past the cancel line', () => {
-    expect(holdOutcome(true, 0)).toBe('submit');
-    expect(holdOutcome(true, CANCEL_LIFT)).toBe('submit');
+    expect(holdOutcome(true, held(0))).toBe('submit');
+    expect(holdOutcome(true, held(CANCEL_LIFT))).toBe('submit');
   });
 
   it('cancels a release above the cancel line, however fast the flick', () => {
-    expect(holdOutcome(true, CANCEL_LIFT + 1)).toBe('cancel');
-    expect(holdOutcome(true, 200)).toBe('cancel');
+    expect(holdOutcome(true, held(CANCEL_LIFT + 1))).toBe('cancel');
+    expect(holdOutcome(true, held(200))).toBe('cancel');
   });
 
   it('cancels a gesture that ended without a release', () => {
-    expect(holdOutcome(false, 0)).toBe('cancel');
-    expect(holdOutcome(false, 200)).toBe('cancel');
+    expect(holdOutcome(false, held(0))).toBe('cancel');
+    expect(holdOutcome(false, held(200))).toBe('cancel');
+  });
+
+  // A lift back down below the line re-arms submit, so the state the release
+  // reads is the latest move rather than the highest one.
+  it('submits when the finger came back down before release', () => {
+    const backDown = run([{ type: 'hold-move', lift: 0 }], held(200));
+
+    expect(backDown.cancelArmed).toBe(false);
+    expect(holdOutcome(true, backDown)).toBe('submit');
   });
 });
 
