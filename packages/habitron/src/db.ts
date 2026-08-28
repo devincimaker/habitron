@@ -119,6 +119,17 @@ export interface TaskInput {
   actualMinutes?: number;
 }
 
+/** What closing a task can record beyond the status itself. */
+export interface TaskStatusChange {
+  /**
+   * An ISO instant, already converted from local wall clock by the tool layer.
+   * Defaults to now — "I finished that yesterday" is what this is for.
+   */
+  completedAt?: string;
+  /** How long it actually took. Only meaningful when completing. */
+  actualMinutes?: number;
+}
+
 /** `null` clears a field; `undefined` leaves it untouched. */
 export interface TaskPatch {
   title?: string;
@@ -559,16 +570,23 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   async function setTaskStatus(
     id: string,
     status: TodoStatus,
-    actualMinutes?: number
+    change: TaskStatusChange = {}
   ): Promise<Task> {
+    if (change.completedAt !== undefined && status !== 'completed') {
+      throw new Error(
+        `completedAt says when a task was finished, so it only goes with status 'completed', not '${status}'. ` +
+          'Reopening or cancelling clears the stamp.'
+      );
+    }
+
     const now = new Date().toISOString();
     const update: Record<string, unknown> = {
       status,
-      completed_at: status === 'completed' ? now : null,
+      completed_at: status === 'completed' ? change.completedAt ?? now : null,
       canceled_at: status === 'canceled' ? now : null,
     };
-    if (status === 'completed' && actualMinutes !== undefined) {
-      update.actual_minutes = actualMinutes;
+    if (status === 'completed' && change.actualMinutes !== undefined) {
+      update.actual_minutes = change.actualMinutes;
     }
     if (status === 'open') {
       update.actual_minutes = null;

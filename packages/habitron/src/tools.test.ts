@@ -98,3 +98,66 @@ describe('create_task', () => {
     });
   });
 });
+
+function setTaskStatusTool(db: Db, timezone = 'Europe/Paris') {
+  const tool = createTools(db, timezone).find((t) => t.name === 'set_task_status');
+  if (!tool) throw new Error('set_task_status is missing from the tool list');
+  return tool;
+}
+
+describe('set_task_status', () => {
+  const ID = '11111111-1111-4111-8111-111111111111';
+
+  it('converts completedAt from local wall clock to an instant', async () => {
+    const setTaskStatus = vi.fn().mockResolvedValue({ id: ID });
+    const tool = setTaskStatusTool(stubDb({ setTaskStatus }));
+
+    await tool.handler({ id: ID, status: 'completed', completedAt: '2026-08-25T07:00' });
+
+    expect(setTaskStatus).toHaveBeenCalledWith(ID, 'completed', {
+      actualMinutes: undefined,
+      completedAt: '2026-08-25T05:00:00.000Z',
+    });
+  });
+
+  // Absent, not null: db.ts falls back to now on `undefined`, and sending the
+  // key with nothing in it would be a caller claiming a time it does not have.
+  it('passes no completedAt at all when none was given', async () => {
+    const setTaskStatus = vi.fn().mockResolvedValue({ id: ID });
+    const tool = setTaskStatusTool(stubDb({ setTaskStatus }));
+
+    await tool.handler({ id: ID, status: 'completed', actualMinutes: 25 });
+
+    const change = setTaskStatus.mock.calls[0][2];
+    expect('completedAt' in change).toBe(false);
+    expect(change.actualMinutes).toBe(25);
+  });
+
+  it('converts using the tool list\u2019s timezone, not the machine\u2019s', async () => {
+    const setTaskStatus = vi.fn().mockResolvedValue({ id: ID });
+    const tool = setTaskStatusTool(stubDb({ setTaskStatus }), 'America/New_York');
+
+    await tool.handler({ id: ID, status: 'completed', completedAt: '2026-08-25T09:30' });
+
+    expect(setTaskStatus.mock.calls[0][2].completedAt).toBe('2026-08-25T13:30:00.000Z');
+  });
+
+  describe('input schema', () => {
+    const schema = () => z.object(setTaskStatusTool(stubDb({})).inputSchema);
+
+    it('rejects a space separator in completedAt', () => {
+      const result = schema().safeParse({ id: ID, status: 'completed', completedAt: '2026-08-25 07:15' });
+      expect(result.success).toBe(false);
+    });
+
+    it('accepts a completion with a time and a duration', () => {
+      const result = schema().safeParse({
+        id: ID,
+        status: 'completed',
+        completedAt: '2026-08-25T07:00',
+        actualMinutes: 40,
+      });
+      expect(result.success).toBe(true);
+    });
+  });
+});
