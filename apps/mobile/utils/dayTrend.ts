@@ -1,6 +1,6 @@
 import type { DayReviewSummary, JournalEntry } from '@habits-coach/shared';
 
-/** The four axes the strip plots, in row order. `overall` is the verdict, not a row. */
+/** The four axes a card plots, in row order. `overall` is the verdict, not a row. */
 export const TREND_AXES = ['happy', 'energy', 'momentum', 'calm'] as const;
 
 export type TrendAxis = (typeof TREND_AXES)[number];
@@ -12,6 +12,9 @@ export const AXIS_LABELS: Record<TrendAxis, string> = {
   calm: 'Calm',
 };
 
+/** A month — long enough to read a run of days, short enough to scroll once. */
+const RAIL_DAYS = 30;
+
 /** One ramp of words for all four axes, matching what the coach prints. */
 const RATING_WORDS = ['bad', 'low', 'ok', 'good', 'great'];
 
@@ -19,21 +22,10 @@ export function ratingWord(value: number | undefined): string | null {
   return value ? (RATING_WORDS[value - 1] ?? null) : null;
 }
 
-/** Two weeks — long enough to read a run, short enough that a column stays legible. */
-const TREND_DAYS = 14;
-
-export interface TrendDay {
-  date: string;
-  /** Day of the month, the label under the column. */
-  dayOfMonth: number;
-  review: DayReviewSummary | null;
-}
-
-/** A day the list shows: a review, some entries, or both. Never neither. */
+/** A day the list shows: one or more entries written on it. */
 export interface DayGroup {
   date: string;
   title: string;
-  review: DayReviewSummary | null;
   entries: JournalEntry[];
 }
 
@@ -60,11 +52,11 @@ export function formatDayTitle(date: string, today: string): string {
 }
 
 /**
- * The short form the gap chips use: `Sat 16`.
+ * The short form a feeling card heads with: `Sat 16`.
  *
- * Composed rather than formatted whole, the way `formatRange` is: asking Intl
- * for `weekday + day` lets the locale reorder them, and a chip that reads
- * `16 Sat` next to a strip of day numbers is a chip nobody parses.
+ * Composed rather than formatted whole: asking Intl for `weekday + day` lets
+ * the locale reorder them, and a card that reads `16 Sat` beside a rail of
+ * others is one nobody parses at a glance.
  */
 export function formatChipLabel(date: string): string {
   const day = parseDayDate(date);
@@ -72,67 +64,37 @@ export function formatChipLabel(date: string): string {
   return `${weekday} ${day.getDate()}`;
 }
 
-/** `Aug 12 – 25`, the range under the strip. */
-export function formatRange(start: string, end: string): string {
-  const month = new Intl.DateTimeFormat(undefined, { month: 'short' });
-  const first = parseDayDate(start);
-  const last = parseDayDate(end);
-  const tail =
-    first.getMonth() === last.getMonth()
-      ? `${last.getDate()}`
-      : `${month.format(last)} ${last.getDate()}`;
-  return `${month.format(first)} ${first.getDate()} – ${tail}`;
-}
-
 /**
- * The `TREND_DAYS` columns ending today, oldest first — every day, reviewed or
- * not, because an unreviewed day is a gap in the strip rather than a missing
- * column.
+ * The list, grouped by **day** rather than by entry. Entries only: a day that
+ * was reviewed but never written on is reached through its card in the rail,
+ * not through a heading with nothing under it.
  */
-export function buildTrendWindow(
-  reviews: DayReviewSummary[],
-  today: string,
-  days = TREND_DAYS
-): TrendDay[] {
-  const byDate = new Map(reviews.map((review) => [review.reviewDate, review]));
-
-  return Array.from({ length: days }, (_, i) => {
-    const date = addDays(today, i - (days - 1));
-    return {
-      date,
-      dayOfMonth: parseDayDate(date).getDate(),
-      review: byDate.get(date) ?? null,
-    };
-  });
-}
-
-/** The days in the window with no review — what the chips offer to fill in. */
-export function findGaps(window: TrendDay[]): string[] {
-  return window.filter((day) => day.review === null).map((day) => day.date);
-}
-
-/**
- * The list, grouped by **day** rather than by entry: a reviewed day is a row
- * even with nothing written on it, and a day with entries is a row even if it
- * was never reviewed.
- */
-export function groupByDay(
-  reviews: DayReviewSummary[],
-  entries: JournalEntry[],
-  today: string
-): DayGroup[] {
+export function groupByDay(entries: JournalEntry[], today: string): DayGroup[] {
   const byDate = new Map<string, DayGroup>();
 
-  const ensure = (date: string): DayGroup => {
-    const existing = byDate.get(date);
-    if (existing) return existing;
-    const group: DayGroup = { date, title: formatDayTitle(date, today), review: null, entries: [] };
-    byDate.set(date, group);
-    return group;
-  };
-
-  for (const review of reviews) ensure(review.reviewDate).review = review;
-  for (const entry of entries) ensure(entry.entryDate).entries.push(entry);
+  for (const entry of entries) {
+    let group = byDate.get(entry.entryDate);
+    if (!group) {
+      group = { date: entry.entryDate, title: formatDayTitle(entry.entryDate, today), entries: [] };
+      byDate.set(entry.entryDate, group);
+    }
+    group.entries.push(entry);
+  }
 
   return [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * The reviews the rail shows: the newest `days` of them, newest first. The
+ * store holds 400 days for streaks; the rail is a month of feeling, not that.
+ */
+export function recentReviews(
+  reviews: DayReviewSummary[],
+  today: string,
+  days = RAIL_DAYS
+): DayReviewSummary[] {
+  const earliest = addDays(today, -(days - 1));
+  return reviews
+    .filter((review) => review.reviewDate >= earliest && review.reviewDate <= today)
+    .sort((a, b) => b.reviewDate.localeCompare(a.reviewDate));
 }
