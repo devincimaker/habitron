@@ -74,6 +74,23 @@ describe('TurnCollector', () => {
     expect(collector.outcome).toEqual(done[0]);
   });
 
+  it('records habitron tool calls with their arguments, and only those', () => {
+    const collector = new TurnCollector();
+
+    collector.handle(
+      assistant([
+        { type: 'tool_use', id: 't1', name: 'Skill', input: { skill: 'instruct' } },
+        { type: 'tool_use', id: 't2', name: 'mcp__habitron__list_tasks', input: { query: 'run' } },
+        { type: 'tool_use', id: 't3', name: 'mcp__habitron__update_task', input: { id: 'a', scheduledTime: '18:00' } },
+      ])
+    );
+
+    expect(collector.toolCalls).toEqual([
+      { name: 'list_tasks', input: { query: 'run' } },
+      { name: 'update_task', input: { id: 'a', scheduledTime: '18:00' } },
+    ]);
+  });
+
   it('ignores messages produced inside subagents', () => {
     const collector = new TurnCollector();
     const nested = { ...assistant([{ type: 'text', text: 'hidden' }]), parent_tool_use_id: 'parent' } as SDKMessage;

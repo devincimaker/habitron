@@ -2,7 +2,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useReducer,
   useRef,
@@ -10,30 +9,19 @@ import {
 } from 'react';
 import { StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
-import * as Sentry from '@sentry/react-native';
-import { getTodayDate, type CoachInstructRequest } from '@habits-coach/shared';
 import { useAudioRecorder } from '../hooks/useAudioRecorder';
-import { TranscriptionTimeoutError, streamInstructTurn, transcribeAudio } from '../services/api';
-import { getCoachRequestErrorMessage } from '../services/apiUrl';
-import { useDailyPlansStore } from '../stores/useDailyPlansStore';
-import { useGoalsStore } from '../stores/useGoalsStore';
-import { useHabitsStore } from '../stores/useHabitsStore';
-import { useJournalStore } from '../stores/useJournalStore';
-import { useProfileStore } from '../stores/useProfileStore';
-import { useTodosStore } from '../stores/useTodosStore';
-import { describeCoachActivity } from '../utils/coachActivity';
+import { useInstructLogStore } from '../stores/useInstructLogStore';
 import {
   INITIAL_INSTRUCT_STATE,
-  TOAST_MS,
-  canAbort,
   canHold,
   holdOutcome,
   instructReducer,
-  parseProposal,
   type InstructAction,
   type InstructState,
 } from '../utils/instruct';
+import { CoachActivitySheet } from './CoachActivitySheet';
 import { InstructOverlay } from './InstructOverlay';
+import { InstructTickerPill } from './InstructTickerPill';
 
 /** What the Coach tab's hold gesture drives. */
 export interface InstructHold {
@@ -47,8 +35,6 @@ export interface InstructHold {
 interface InstructContextValue {
   state: InstructState;
   hold: InstructHold;
-  /** Stop a working turn and return to whatever the hold interrupted. */
-  abort: () => void;
 }
 
 const InstructContext = createContext<InstructContextValue | null>(null);
@@ -59,12 +45,12 @@ export function useInstruct(): InstructContextValue {
   return value;
 }
 
-type TurnRequest = Omit<CoachInstructRequest, 'timezone' | 'userName'>;
-
 /**
- * Owns hold-to-instruct: the recorder, the turns against /api/instruct, and
- * the sheet. Wraps the tab navigator so the tab bar (inside it) can drive the
- * hold while the overlay renders above the screens and below the tab bar.
+ * Owns hold-to-instruct's gesture and recorder. Release fires and forgets:
+ * the recording goes to the queue store, which uploads it and re-derives all
+ * later UI — the ticker pill, the activity sheet — from the server's log.
+ * Wraps the tab navigator so the tab bar (inside it) can drive the hold while
+ * the overlay renders above the screens and below the tab bar.
  */
 export function InstructProvider({ children }: { children: ReactNode }) {
   const [state, dispatch] = useReducer(instructReducer, INITIAL_INSTRUCT_STATE);
@@ -72,18 +58,25 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   const stateRef = useRef(INITIAL_INSTRUCT_STATE);
 
   /**
-   * Dispatch, and advance the ref in the same breath, so a gesture or async
-   * callback reading `stateRef` sees what it just dispatched rather than what
-   * React last rendered. A flick that arms cancel and releases in one tick is
-   * the case that matters. `instructReducer` is pure, so mirroring it is safe.
+   * Dispatch, and advance the ref in the same breath, so a gesture callback
+   * reading `stateRef` sees what it just dispatched rather than what React
+   * last rendered. A flick that arms cancel and releases in one tick is the
+   * case that matters. `instructReducer` is pure, so mirroring it is safe.
    */
   const send = useCallback((action: InstructAction) => {
     stateRef.current = instructReducer(stateRef.current, action);
     dispatch(action);
   }, []);
 
-  const submitRef = useRef<(audioUri?: string) => Promise<void>>(async () => {});
-  const recorder = useAudioRecorder({ onAutoStop: (uri) => void submitRef.current(uri) });
+  const submit = useInstructLogStore((s) => s.submit);
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+
+  const recorder = useAudioRecorder({
+    onAutoStop: (uri) => {
+      if (uri) void submitRef.current(uri);
+    },
+  });
   // A render mirror is right here, unlike the one `send` replaced: this is the
   // recorder handle itself, not state a callback could read a stale copy of.
   const recorderRef = useRef(recorder);
@@ -91,162 +84,6 @@ export function InstructProvider({ children }: { children: ReactNode }) {
   /** The in-flight `startRecording`, so a release never races the start. */
   const startingRef = useRef<Promise<void>>(Promise.resolve());
   const holdingRef = useRef(false);
-  /** The in-flight turn's controller: aborting it is also what orphans its results. */
-  const abortRef = useRef<AbortController | null>(null);
-
-  const userName = useProfileStore((s) => s.name);
-  const loadHabits = useHabitsStore((s) => s.loadHabits);
-  const loadGoals = useGoalsStore((s) => s.loadGoals);
-  const loadTodos = useTodosStore((s) => s.loadTodos);
-  const loadEntries = useJournalStore((s) => s.loadEntries);
-  const loadPlan = useDailyPlansStore((s) => s.loadPlan);
-
-  // An applied instruction changed real data; pull the app's stores back in line.
-  const refreshData = useCallback(async () => {
-    try {
-      await Promise.all([loadHabits(), loadGoals(), loadTodos(), loadEntries(), loadPlan(getTodayDate())]);
-    } catch (error) {
-      console.warn('Failed to refresh data after instruction:', error);
-    }
-  }, [loadEntries, loadGoals, loadHabits, loadPlan, loadTodos]);
-
-  const runTurn = useCallback(
-    async (
-      request: TurnRequest,
-      signal?: AbortSignal
-    ): Promise<{ text: string; error: string | null }> => {
-      let streamed = '';
-      let finalText: string | null = null;
-      let error: string | null = null;
-
-      try {
-        await streamInstructTurn(
-          {
-            ...request,
-            timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-            userName: userName || undefined,
-          },
-          (event) => {
-            // A turn that was aborted or overtaken must not paint anything,
-            // including the session id a later correction would resume.
-            if (signal?.aborted) return;
-            switch (event.type) {
-              case 'session':
-                send({ type: 'session', claudeSessionId: event.claudeSessionId });
-                break;
-              case 'tool':
-                send({ type: 'activity', label: describeCoachActivity(event.name) });
-                break;
-              case 'text':
-                streamed += event.delta;
-                break;
-              case 'done':
-                finalText = event.message;
-                break;
-              case 'error':
-                error = event.message;
-                break;
-            }
-          },
-          signal
-        );
-      } catch (caught) {
-        // An abort is a deliberate cancel, not a failure: silent, unreported.
-        if (signal?.aborted) return { text: '', error: null };
-        console.warn('Instruction turn failed:', caught);
-        Sentry.captureException(caught, {
-          tags: { feature: 'instruct', stage: 'chat_generation' },
-          extra: { kind: request.kind },
-        });
-        error = getCoachRequestErrorMessage(caught);
-      }
-
-      return { text: finalText ?? streamed, error };
-    },
-    [send, userName]
-  );
-
-  const submit = useCallback(
-    async (audioUri?: string) => {
-      const { correcting, claudeSessionId } = stateRef.current;
-      // One mechanism for both jobs: a new turn orphans whatever is still
-      // running, and the same signal is what every later dispatch checks.
-      abortRef.current?.abort();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      const { signal } = controller;
-      send({ type: 'submit' });
-
-      await startingRef.current;
-      const uri = audioUri ?? (await recorderRef.current.stopRecording());
-      let transcript = '';
-      if (uri) {
-        try {
-          transcript = (await transcribeAudio(uri, signal)).trim();
-        } catch (error) {
-          if (signal.aborted) return;
-          console.warn('Transcription failed:', error);
-          Sentry.captureException(error, { tags: { feature: 'instruct', stage: 'transcription' } });
-          // A dead server is not a misheard sentence. Falling through would
-          // leave the transcript empty and say "Didn't catch that", inviting an
-          // immediate retry against the thing that just timed out.
-          if (error instanceof TranscriptionTimeoutError) {
-            send({ type: 'notice', message: error.message });
-            return;
-          }
-        }
-      }
-      if (signal.aborted) return;
-      if (!transcript) {
-        send({ type: 'nothing-heard' });
-        return;
-      }
-
-      const request: TurnRequest =
-        correcting && claudeSessionId
-          ? { kind: 'correct', text: transcript, claudeSessionId }
-          : { kind: 'propose', text: transcript };
-      const { text, error } = await runTurn(request, signal);
-      if (signal.aborted) return;
-      if (error) {
-        send({ type: 'notice', message: error, transcript });
-        return;
-      }
-
-      const outcome = parseProposal(text);
-      send(
-        outcome.kind === 'proposal'
-          ? { type: 'proposal', transcript, proposal: outcome.proposal }
-          : { type: 'notice', message: outcome.message, transcript }
-      );
-    },
-    [runTurn, send]
-  );
-  submitRef.current = submit;
-
-  const apply = useCallback(async () => {
-    const { phase, claudeSessionId } = stateRef.current;
-    if (phase !== 'proposal' || !claudeSessionId) return;
-    send({ type: 'apply' });
-
-    const { error } = await runTurn({ kind: 'apply', claudeSessionId });
-    await refreshData();
-    if (error) {
-      send({ type: 'notice', message: error });
-      return;
-    }
-    void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    send({ type: 'applied' });
-  }, [refreshData, runTurn, send]);
-
-  const dismiss = useCallback(() => send({ type: 'dismiss' }), [send]);
-
-  const abort = useCallback(() => {
-    if (!canAbort(stateRef.current)) return;
-    abortRef.current?.abort();
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    send({ type: 'abort' });
-  }, [send]);
 
   // Stable handlers: the gesture holds on to whatever it was given when the hold began.
   const hold = useMemo<InstructHold>(
@@ -270,20 +107,20 @@ export function InstructProvider({ children }: { children: ReactNode }) {
           send({ type: 'hold-cancel' });
           void startingRef.current.then(() => recorderRef.current.cancelRecording());
         } else {
-          void submitRef.current();
+          send({ type: 'submit' });
+          // The thumb may lift and the phone may lock: the only client
+          // obligation left is this upload, which the store owns.
+          void startingRef.current.then(async () => {
+            const uri = await recorderRef.current.stopRecording();
+            if (uri) void submitRef.current(uri);
+          });
         }
       },
     }),
     [send]
   );
 
-  useEffect(() => {
-    if (state.phase !== 'toast') return;
-    const timer = setTimeout(() => send({ type: 'toast-expired' }), TOAST_MS);
-    return () => clearTimeout(timer);
-  }, [send, state.phase]);
-
-  const value = useMemo(() => ({ state, hold, abort }), [state, hold, abort]);
+  const value = useMemo(() => ({ state, hold }), [state, hold]);
 
   return (
     <InstructContext.Provider value={value}>
@@ -293,10 +130,9 @@ export function InstructProvider({ children }: { children: ReactNode }) {
           state={state}
           meterLevel={recorder.meterLevel}
           recordingDuration={recorder.recordingDuration}
-          onApply={apply}
-          onDismiss={dismiss}
-          onAbort={abort}
         />
+        <InstructTickerPill recording={state.phase === 'recording'} />
+        <CoachActivitySheet />
       </View>
     </InstructContext.Provider>
   );

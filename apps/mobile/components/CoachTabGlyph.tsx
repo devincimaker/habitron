@@ -1,4 +1,4 @@
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TAB_BAR, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -14,8 +14,8 @@ interface CoachTabGlyphProps {
 
 /**
  * The Coach tab's icon through a hold: the chat bubble at rest, a mic puck
- * while recording (red with an X once cancel is armed), a spinner while the
- * instruction is being worked on.
+ * while recording (red with an X once cancel is armed). Once the finger lifts
+ * the queue owns the work, and the ticker pill — not this glyph — narrates it.
  */
 export function CoachTabGlyph({ state, focused, color }: CoachTabGlyphProps) {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -27,14 +27,6 @@ export function CoachTabGlyph({ state, focused, color }: CoachTabGlyphProps) {
         accessibilityLabel={state.cancelArmed ? 'Release to discard' : 'Recording'}
       >
         <Ionicons name={state.cancelArmed ? 'close' : 'mic'} size={28} color={colors.white} />
-      </View>
-    );
-  }
-
-  if (state.phase === 'working' || state.phase === 'applying') {
-    return (
-      <View style={styles.spinner}>
-        <ActivityIndicator size="small" color={colors.primary} />
       </View>
     );
   }
@@ -66,9 +58,5 @@ const createStyles = (colors: Colors) =>
     },
     puckCancel: {
       backgroundColor: colors.error,
-    },
-    spinner: {
-      height: TAB_BAR.iconSize,
-      justifyContent: 'center',
     },
   });

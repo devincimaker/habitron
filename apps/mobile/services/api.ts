@@ -1,6 +1,6 @@
 import { fetch as streamingFetch } from 'expo/fetch';
 import { supabase } from './supabase';
-import type { CoachInstructRequest, CoachStreamEvent, CoachTurnRequest } from '@habits-coach/shared';
+import type { CoachStreamEvent, CoachTurnRequest, InstructActionRow } from '@habits-coach/shared';
 import { createApiUrl } from './apiUrl';
 import { CoachStreamDroppedError, createSseParser } from '../utils/sse';
 
@@ -99,13 +99,85 @@ export function streamCoachTurn(
   return streamEvents('/api/chat', request, onEvent);
 }
 
-/** One hold-to-instruct turn: propose, correct, or apply. No coaching session involved. */
-export function streamInstructTurn(
-  request: CoachInstructRequest,
-  onEvent: (event: CoachStreamEvent) => void,
+/** The server heard silence: nothing intelligible to enqueue. */
+export class NothingHeardError extends Error {
+  constructor() {
+    super('Nothing heard');
+    this.name = 'NothingHeardError';
+  }
+}
+
+export type InstructVerb = 'retry' | 'cancel' | 'dismiss' | 'rewind' | 'restore';
+
+/**
+ * Fire-and-forget hold-to-instruct: upload the recording (or text), get the
+ * queued row back. The same deadline as transcription — the server runs
+ * Whisper inside this call — and after it resolves, everything is server state.
+ */
+export async function enqueueInstruction(
+  input: { audioUri?: string; text?: string; reinstructOf?: string },
   signal?: AbortSignal
-): Promise<void> {
-  return streamEvents('/api/instruct', request, onEvent, signal);
+): Promise<InstructActionRow> {
+  const deadline = withDeadline(TRANSCRIBE_TIMEOUT_MS, signal);
+  try {
+    const token = await raceSignal(getAuthToken(), deadline.signal);
+
+    const formData = new FormData();
+    formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
+    if (input.text) formData.append('text', input.text);
+    if (input.reinstructOf) formData.append('reinstructOf', input.reinstructOf);
+    if (input.audioUri) formData.append('audio', audioFormPart(input.audioUri));
+
+    const response = await fetch(createApiUrl('/api/instruct/enqueue'), {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+      signal: deadline.signal,
+    });
+
+    if (response.status === 422) throw new NothingHeardError();
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || 'Failed to send the instruction');
+    }
+    const data = await response.json();
+    return data.action as InstructActionRow;
+  } catch (error) {
+    if (deadline.timedOut) throw new TranscriptionTimeoutError(error);
+    throw error;
+  } finally {
+    deadline.release();
+  }
+}
+
+/** The activity log: the rows the pill, the sheet, and the hub count derive from. */
+export async function fetchInstructLog(since?: string): Promise<InstructActionRow[]> {
+  const token = await getAuthToken();
+  const query = since ? `?since=${encodeURIComponent(since)}` : '';
+  const response = await fetch(createApiUrl(`/api/instruct/log${query}`), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || 'Failed to read the activity log');
+  }
+  const data = await response.json();
+  return data.actions as InstructActionRow[];
+}
+
+/** One row action: retry, cancel, dismiss, rewind, or restore. */
+export async function postInstructAction(id: string, verb: InstructVerb): Promise<InstructActionRow> {
+  const token = await getAuthToken();
+  const response = await fetch(createApiUrl(`/api/instruct/${id}/${verb}`), {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.error || `Failed to ${verb}`);
+  }
+  const data = await response.json();
+  return data.action as InstructActionRow;
 }
 
 /**
@@ -202,13 +274,8 @@ export async function transcribeAudio(audioUri: string, signal?: AbortSignal): P
   }
 }
 
-async function transcribeWithin(audioUri: string, signal: AbortSignal): Promise<string> {
-  const token = await raceSignal(getAuthToken(), signal);
-
-  // Create form data with the audio file
-  const formData = new FormData();
-
-  // Get the file extension from URI and determine mime type
+/** A recording as a multipart part: uri + mime type inferred from the extension. */
+function audioFormPart(audioUri: string): Blob {
   const extension = audioUri.split('.').pop()?.toLowerCase() || 'm4a';
   const mimeTypeMap: Record<string, string> = {
     wav: 'audio/wav',
@@ -219,11 +286,18 @@ async function transcribeWithin(audioUri: string, signal: AbortSignal): Promise<
   };
   const mimeType = mimeTypeMap[extension] || 'audio/x-m4a';
 
-  formData.append('audio', {
+  return {
     uri: audioUri,
     type: mimeType,
     name: `recording.${extension}`,
-  } as unknown as Blob);
+  } as unknown as Blob;
+}
+
+async function transcribeWithin(audioUri: string, signal: AbortSignal): Promise<string> {
+  const token = await raceSignal(getAuthToken(), signal);
+
+  const formData = new FormData();
+  formData.append('audio', audioFormPart(audioUri));
 
   // A server that accepts the connection and never answers is indistinguishable
   // from a slow one, and NSURLSession's own request timeout does not fire on it.

@@ -15,6 +15,7 @@ import { getTodayDate } from '@habits-coach/shared';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useInstructLogStore } from '../stores/useInstructLogStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useMemoriesStore } from '../stores/useMemoriesStore';
 import { useRitualsStore } from '../stores/useRitualsStore';
@@ -42,6 +43,9 @@ export function CoachHubScreen() {
   const { sessions, isLoading, loadSessions, deleteSession } = useSessionsStore();
   const { memories, loadMemories } = useMemoriesStore();
   const { load: loadRituals, ritualState, reviewFor } = useRitualsStore();
+  const activityCount = useInstructLogStore((s) => s.actions.length);
+  const refreshActivity = useInstructLogStore((s) => s.refresh);
+  const setActivitySheetOpen = useInstructLogStore((s) => s.setSheetOpen);
   const today = getTodayDate();
 
   const [refreshing, setRefreshing] = useState(false);
@@ -105,6 +109,11 @@ export function CoachHubScreen() {
   const handleOpenMemories = useCallback(() => {
     router.push('/memories');
   }, [router]);
+
+  const handleOpenActivity = useCallback(() => {
+    void refreshActivity();
+    setActivitySheetOpen(true);
+  }, [refreshActivity, setActivitySheetOpen]);
 
   const bottomOffset = TAB_BAR.height + insets.bottom + SPACING.lg;
 
@@ -179,6 +188,22 @@ export function CoachHubScreen() {
           <Text style={styles.memoriesLabel}>What Habitron remembers</Text>
           {memories.length > 0 && (
             <Text style={styles.memoriesCount}>{memories.length}</Text>
+          )}
+          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+        </Pressable>
+
+        <Pressable
+          style={styles.memoriesRow}
+          onPress={handleOpenActivity}
+          accessibilityRole="button"
+          accessibilityLabel="Coach activity"
+        >
+          <View style={styles.memoriesIcon}>
+            <Feather name="activity" size={18} color={colors.textSecondary} />
+          </View>
+          <Text style={styles.memoriesLabel}>Coach activity</Text>
+          {activityCount > 0 && (
+            <Text style={styles.memoriesCount}>{`${activityCount} today`}</Text>
           )}
           <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
         </Pressable>

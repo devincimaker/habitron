@@ -9,6 +9,7 @@ import memoriesRouter from './routes/memories.js';
 import notificationsRouter from './routes/notifications.js';
 import sessionsRouter from './routes/sessions.js';
 import transcribeRouter from './routes/transcribe.js';
+import { instructQueue } from './services/instructQueue.js';
 
 const app = express();
 
@@ -63,3 +64,8 @@ app.listen(config.port, () => {
   console.log(`API server running on http://localhost:${config.port}`);
   console.log(`Health check: http://localhost:${config.port}/health`);
 });
+
+// A turn that died with the last process resumes from `queued`.
+instructQueue()
+  .resume()
+  .catch((error) => console.error('Instruct queue resume failed:', error));
