@@ -6,6 +6,12 @@ export const HABITRON_TOOL_PREFIX = 'mcp__habitron__';
 /** How a turn ended: the `done` or `error` event that closed it. */
 export type CoachTurnOutcome = Extract<CoachStreamEvent, { type: 'done' | 'error' }>;
 
+/** One Habitron tool call the turn made, recorded with its arguments. */
+export interface RecordedToolCall {
+  name: string;
+  input: unknown;
+}
+
 /** `mcp__habitron__get_day_context` → `get_day_context`; other tools keep their name. */
 export function toolDisplayName(name: string): string {
   return name.startsWith(HABITRON_TOOL_PREFIX) ? name.slice(HABITRON_TOOL_PREFIX.length) : name;
@@ -22,6 +28,8 @@ export class TurnCollector {
   private readonly segments: string[] = [];
   private streamedText = false;
   claudeSessionId: string | null = null;
+  /** Every Habitron tool call the turn made, with arguments, in order. */
+  readonly toolCalls: RecordedToolCall[] = [];
   /** Set by the SDK's result message; null while the turn is still running. */
   outcome: CoachTurnOutcome | null = null;
 
@@ -61,6 +69,9 @@ export class TurnCollector {
           if (block.type === 'text') {
             if (block.text.trim()) this.segments.push(block.text.trim());
           } else if (block.type === 'tool_use') {
+            if (block.name.startsWith(HABITRON_TOOL_PREFIX)) {
+              this.toolCalls.push({ name: toolDisplayName(block.name), input: block.input });
+            }
             events.push({ type: 'tool', name: toolDisplayName(block.name) });
           }
         }

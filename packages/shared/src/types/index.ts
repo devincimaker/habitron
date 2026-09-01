@@ -346,20 +346,27 @@ export interface CoachTurnRequest {
 }
 
 /**
- * Hold-to-instruct (POST /api/instruct): one spoken instruction handled as a
- * proposal, then applied on confirmation — no coaching session row, no memories.
- * `propose` opens an Agent SDK session; `correct` and `apply` resume it.
+ * Hold-to-instruct (POST /api/instruct/enqueue): fire-and-forget. The app
+ * uploads the recording, gets `{id}` back immediately, and re-derives all UI
+ * from the action log — nothing streams to the client.
  */
-export type CoachInstructKind = 'propose' | 'correct' | 'apply';
+export type InstructActionStatus = 'queued' | 'working' | 'applied' | 'failed' | 'rewound' | 'canceled';
 
-export interface CoachInstructRequest {
-  kind: CoachInstructKind;
-  /** The transcribed instruction (`propose`) or correction (`correct`). */
-  text?: string;
-  /** The Agent SDK session the proposal turn returned; required for `correct` and `apply`. */
-  claudeSessionId?: string;
-  timezone: string;
-  userName?: string;
+/** One row of the Coach activity log (GET /api/instruct/log). */
+export interface InstructActionRow {
+  id: string;
+  status: InstructActionStatus;
+  /** What the user said, verbatim. */
+  transcript: string;
+  /** The working label while the turn runs ("Moving 'Gym' to 6:00 PM…"). */
+  summary: string | null;
+  /** The done label once applied, or what a rewind could not restore. */
+  result: string | null;
+  /** Why the turn failed: an error, or the coach's question when it would not guess. */
+  error: string | null;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
 }
 
 export type CoachStreamEvent =

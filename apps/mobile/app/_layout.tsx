@@ -14,6 +14,7 @@ import { useJournalStore } from '../stores/useJournalStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useDailyPlansStore } from '../stores/useDailyPlansStore';
 import { useDesiredHabitsStore } from '../stores/useDesiredHabitsStore';
+import { useInstructLogStore } from '../stores/useInstructLogStore';
 import { useAppStateHandler } from '../hooks/useAppState';
 import { ColorsProvider, useColorsValue } from '../hooks/useColors';
 import {
@@ -62,6 +63,7 @@ export default Sentry.wrap(function RootLayout() {
   const clearPlans = useDailyPlansStore((state) => state.clearPlans);
   const loadDesiredHabits = useDesiredHabitsStore((state) => state.loadDesiredHabits);
   const clearDesiredHabits = useDesiredHabitsStore((state) => state.clearDesiredHabits);
+  const clearInstructLog = useInstructLogStore((state) => state.clear);
   const { loadProfile, reset: resetProfile } = useProfileStore();
   const isSessionActive = useSessionStore((state) => state.isActive);
   const router = useRouter();
@@ -104,11 +106,13 @@ export default Sentry.wrap(function RootLayout() {
       clearSessions();
       clearPlans();
       clearDesiredHabits();
+      clearInstructLog();
       resetProfile();
     }
   }, [
     session,
     clearDesiredHabits,
+    clearInstructLog,
     clearEntries,
     clearGoals,
     clearHabits,

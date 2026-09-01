@@ -3,7 +3,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHabitron, localNow, type AnyHabitronTool } from '@habits-coach/habitron';
 import type { CoachStreamEvent } from '@habits-coach/shared';
 import { config } from '../config.js';
-import { HABITRON_TOOL_PREFIX, TurnCollector, type CoachTurnOutcome } from './events.js';
+import { HABITRON_TOOL_PREFIX, TurnCollector, type CoachTurnOutcome, type RecordedToolCall } from './events.js';
 import { buildSystemPrompt } from './prompt.js';
 
 /** The skills a coaching session may invoke (folders in packages/coach-skills/.claude/skills). */
@@ -30,6 +30,8 @@ export interface CoachTurnResult {
   /** The terminal event the stream carried, so a record of the turn says what the client saw. */
   outcome: CoachTurnOutcome;
   claudeSessionId: string | null;
+  /** The write-tool calls the turn made, with arguments — an instruct turn's undo source. */
+  writeToolCalls: RecordedToolCall[];
 }
 
 function toolResult(data: unknown): CallToolResult {
@@ -127,5 +129,12 @@ export async function runCoachTurn(
   }
   if (!collector.outcome) throw new Error('The coach turn ended without a result.');
 
-  return { outcome: collector.outcome, claudeSessionId: collector.claudeSessionId };
+  const writable = new Set(
+    habitron.tools.filter((t) => !t.annotations?.readOnlyHint).map((t) => t.name)
+  );
+  return {
+    outcome: collector.outcome,
+    claudeSessionId: collector.claudeSessionId,
+    writeToolCalls: collector.toolCalls.filter((call) => writable.has(call.name)),
+  };
 }

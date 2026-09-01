@@ -6,8 +6,9 @@ import type { ErrorResponse } from '@habits-coach/shared';
 
 const router: Router = Router();
 
-// Configure multer for memory storage (max 10MB for 4 min audio)
-const upload = multer({
+// Configure multer for memory storage (max 10MB for 4 min audio).
+// Shared with /api/instruct/enqueue, which takes the same recordings.
+export const audioUpload = multer({
   storage: multer.memoryStorage(),
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB max
@@ -34,7 +35,7 @@ const upload = multer({
 router.post(
   '/',
   authMiddleware,
-  upload.single('audio'),
+  audioUpload.single('audio'),
   async (req: Request, res: Response): Promise<void> => {
     try {
       if (!req.file) {
