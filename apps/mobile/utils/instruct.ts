@@ -75,6 +75,21 @@ export function instructReducer(state: InstructState, action: InstructAction): I
   }
 }
 
+/**
+ * The id the client gives an instruction before uploading it, so a reply lost
+ * with the connection can still be looked up in the log. React Native has no
+ * `crypto.randomUUID`, and this is an idempotency key for one user's own queue,
+ * not a secret, so `Math.random` is enough to shape a v4.
+ */
+export function newActionId(): string {
+  const hex = (digits: number) =>
+    Math.floor(Math.random() * 16 ** digits)
+      .toString(16)
+      .padStart(digits, '0');
+  const variant = (8 + Math.floor(Math.random() * 4)).toString(16); // 8, 9, a or b
+  return `${hex(8)}-${hex(4)}-4${hex(3)}-${variant}${hex(3)}-${hex(12)}`;
+}
+
 export function formatElapsed(ms: number): string {
   const total = Math.floor(ms / 1000);
   const minutes = Math.floor(total / 60);

@@ -32,6 +32,13 @@ export async function handleEnqueueRequest(req: Request, res: Response): Promise
       res.status(400).json({ error: 'Invalid request: reinstructOf is not an action id' } satisfies ErrorResponse);
       return;
     }
+    // The client names the row so it can look this instruction up when the
+    // reply is lost with the connection; a repeat of the same id is that row.
+    const id = isNonEmptyString(body.id) ? body.id.trim() : undefined;
+    if (id && !UUID.test(id)) {
+      res.status(400).json({ error: 'Invalid request: id is not an action id' } satisfies ErrorResponse);
+      return;
+    }
 
     let transcript = isNonEmptyString(body.text) ? body.text.trim() : '';
     if (!transcript && req.file) {
@@ -44,6 +51,7 @@ export async function handleEnqueueRequest(req: Request, res: Response): Promise
     }
 
     const row = await instructQueue().enqueue({
+      id,
       userId: req.user!.id,
       transcript,
       timezone: body.timezone.trim(),

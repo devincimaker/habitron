@@ -18,6 +18,8 @@ export interface EnqueueInput {
   transcript: string;
   timezone: string;
   reinstructOf?: string;
+  /** The id the client gave this instruction, so a repeat resolves to one row. */
+  id?: string;
 }
 
 const now = () => new Date().toISOString();
@@ -202,8 +204,9 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
   }
 
   return {
-    async enqueue({ userId, transcript, timezone, reinstructOf }: EnqueueInput): Promise<InstructActionRecord> {
+    async enqueue({ userId, transcript, timezone, reinstructOf, id }: EnqueueInput): Promise<InstructActionRecord> {
       const row = await db.insert({
+        ...(id ? { id } : {}),
         user_id: userId,
         transcript,
         timezone,

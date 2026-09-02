@@ -33,10 +33,19 @@ export type InstructActionPatch = Partial<
  * tests substitute an in-memory one, so the state machine is provable without
  * a database.
  */
+/**
+ * A new row. `id` is the client's: it names the instruction before uploading
+ * it, so an upload whose reply was lost resolves to the same row instead of a
+ * second instruction.
+ */
+type NewInstructAction = Pick<
+  InstructActionRecord,
+  'user_id' | 'transcript' | 'timezone' | 'reinstruct_of'
+> & { id?: string };
+
 export interface InstructActionsDb {
-  insert(
-    row: Pick<InstructActionRecord, 'user_id' | 'transcript' | 'timezone' | 'reinstruct_of'>
-  ): Promise<InstructActionRecord>;
+  /** Idempotent on `id`: a repeat of an insert already taken returns that row. */
+  insert(row: NewInstructAction): Promise<InstructActionRecord>;
   get(id: string): Promise<InstructActionRecord | null>;
   /** Applies `patch` only when the row's status is in `from`; null when the guard misses. */
   transition(id: string, from: InstructActionStatus[], patch: InstructActionPatch): Promise<InstructActionRecord | null>;
@@ -68,18 +77,29 @@ export function createSupabaseInstructActionsDb(): InstructActionsDb {
   const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
   const table = () => supabase.from('instruct_actions');
 
+  const get = async (id: string): Promise<InstructActionRecord | null> => {
+    const { data, error } = await table().select().eq('id', id).maybeSingle();
+    if (error) throw new Error(`Failed to read instruct action: ${error.message}`);
+    return (data as InstructActionRecord | null) ?? null;
+  };
+
   return {
     async insert(row) {
       const { data, error } = await table().insert(row).select().single();
-      if (error) throw new Error(`Failed to enqueue instruction: ${error.message}`);
+      if (error) {
+        // The id is the client's, so a duplicate key is the same instruction
+        // arriving twice — the reply to the first attempt was lost, not the
+        // upload. Hand back the row it already made.
+        if (error.code === '23505' && row.id) {
+          const existing = await get(row.id);
+          if (existing?.user_id === row.user_id) return existing;
+        }
+        throw new Error(`Failed to enqueue instruction: ${error.message}`);
+      }
       return data as InstructActionRecord;
     },
 
-    async get(id) {
-      const { data, error } = await table().select().eq('id', id).maybeSingle();
-      if (error) throw new Error(`Failed to read instruct action: ${error.message}`);
-      return (data as InstructActionRecord | null) ?? null;
-    },
+    get,
 
     async transition(id, from, patch) {
       const { data, error } = await table().update(patch).eq('id', id).in('status', from).select().maybeSingle();
