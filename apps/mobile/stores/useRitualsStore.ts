@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import type { DayReviewSummary, RitualId } from '@habits-coach/shared';
+import type { DayReviewSummary } from '@habits-coach/shared';
 import { getTodayDate } from '@habits-coach/shared';
+import type { DayRitualId } from '../constants/rituals';
 import * as dayReviewsService from '../services/dayReviews';
 import { dateStreak, type DateStreak } from '../utils/streaks';
 
@@ -30,7 +31,7 @@ interface RitualsState {
   isLoading: boolean;
 
   load: () => Promise<void>;
-  ritualState: (ritual: RitualId, date: string) => RitualState;
+  ritualState: (ritual: DayRitualId, date: string) => RitualState;
   reviewFor: (date: string) => DayReviewSummary | null;
   clear: () => void;
 }

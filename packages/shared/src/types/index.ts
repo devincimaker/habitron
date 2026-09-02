@@ -405,7 +405,7 @@ export interface ErrorResponse {
 }
 
 // Memory types
-export type MemoryCategory = 'motivation' | 'obstacle' | 'preference' | 'personal' | 'goal' | 'general';
+export type MemoryCategory = 'motivation' | 'obstacle' | 'preference' | 'personal' | 'general';
 
 export interface Memory {
   id: string;
@@ -460,8 +460,8 @@ export interface DayReviewDetail extends DayReviewSummary {
   reviewedAt: number;
 }
 
-/** The two daily coach practices. A session that is neither is a plain `coach` chat. */
-export type RitualId = 'plan-day' | 'review-day';
+/** The two daily coach practices, plus the goals review. A session that is none of them is a plain `coach` chat. */
+export type RitualId = 'plan-day' | 'review-day' | 'review-goals';
 
 /** The skill a session's first turn sends. */
 export type SessionOpener = 'coach' | RitualId;

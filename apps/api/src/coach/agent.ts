@@ -1,13 +1,22 @@
 import { createSdkMcpServer, query, tool, type Options } from '@anthropic-ai/claude-agent-sdk';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { createHabitron, localNow, type AnyHabitronTool } from '@habits-coach/habitron';
-import type { CoachStreamEvent } from '@habits-coach/shared';
+import type { CoachStreamEvent, Module } from '@habits-coach/shared';
 import { config } from '../config.js';
 import { HABITRON_TOOL_PREFIX, TurnCollector, type CoachTurnOutcome, type RecordedToolCall } from './events.js';
 import { buildSystemPrompt } from './prompt.js';
 
 /** The skills a coaching session may invoke (folders in packages/coach-skills/.claude/skills). */
-const COACH_SKILLS = ['coach', 'first-session', 'plan-day', 'review-day', 'review-habits'];
+const COACH_SKILLS = ['coach', 'first-session', 'plan-day', 'review-day', 'review-habits', 'review-goals'];
+/** A skill that only makes sense with its module on; off in Profile means it is not offered. */
+const SKILL_MODULES: Partial<Record<string, Module>> = { 'review-goals': 'goals' };
+
+function skillsFor(skills: string[], disabledModules: Module[]): string[] {
+  return skills.filter((skill) => {
+    const module = SKILL_MODULES[skill];
+    return !module || !disabledModules.includes(module);
+  });
+}
 /** The one skill a hold-to-instruct turn runs. */
 export const INSTRUCT_SKILLS = ['instruct'];
 
@@ -76,7 +85,7 @@ export async function runCoachTurn(
   input: CoachTurnInput,
   onEvent: (event: CoachStreamEvent) => void
 ): Promise<CoachTurnResult> {
-  const habitron = createHabitron({
+  const habitron = await createHabitron({
     supabaseUrl: config.supabase.url,
     serviceRoleKey: config.supabase.serviceRoleKey,
     userId: input.userId,
@@ -103,7 +112,7 @@ export async function runCoachTurn(
     model: config.coach.model,
     effort: config.coach.effort,
     settingSources: ['project'],
-    skills: input.skills ?? COACH_SKILLS,
+    skills: skillsFor(input.skills ?? COACH_SKILLS, habitron.disabledModules),
     tools: ['Skill'],
     allowedTools: ['Skill', ...tools.map((t) => `${HABITRON_TOOL_PREFIX}${t.name}`)],
     permissionMode: 'dontAsk',

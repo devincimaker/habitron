@@ -7,9 +7,9 @@ describe('parseJsonReply', () => {
   });
 
   it('parses JSON wrapped in a code fence with prose around it', () => {
-    const reply = 'Here you go:\n```json\n{"memories":[{"content":"x","category":"goal"}]}\n```\nDone.';
+    const reply = 'Here you go:\n```json\n{"memories":[{"content":"x","category":"motivation"}]}\n```\nDone.';
     expect(parseJsonReply<{ memories: unknown[] }>(reply)).toEqual({
-      memories: [{ content: 'x', category: 'goal' }],
+      memories: [{ content: 'x', category: 'motivation' }],
     });
   });
 

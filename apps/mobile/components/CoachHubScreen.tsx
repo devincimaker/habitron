@@ -19,7 +19,7 @@ import { useInstructLogStore } from '../stores/useInstructLogStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useMemoriesStore } from '../stores/useMemoriesStore';
 import { useGoalsStore } from '../stores/useGoalsStore';
-import { useRitualsStore } from '../stores/useRitualsStore';
+import { useRitualsStore, type RitualState } from '../stores/useRitualsStore';
 import { CoachHubLink } from './CoachHubLink';
 import { SessionListItem } from './SessionListItem';
 import { RitualCard } from './RitualCard';
@@ -41,6 +41,16 @@ import { buildMemoryWarning, sortSessions } from '../utils/coachSessions';
 const NEW_SESSION_PILL_HEIGHT = 48;
 
 const reportDeleteFailure = () => Alert.alert('Could not delete the session', 'Please try again.');
+
+/** `Done · 3 day streak`, or `Not yet · 30s` — the state and the size of the ask. */
+function ritualMeta(ritual: RitualDefinition, state: RitualState): string {
+  return [
+    state.doneOnDate ? 'Done' : `Not yet · ${ritual.notYetHint}`,
+    state.streak.current > 0 ? `${state.streak.current} day streak` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+}
 
 export function CoachHubScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
@@ -146,14 +156,19 @@ export function CoachHubScreen() {
         }
       >
         <View style={styles.rituals}>
-          {RITUALS.map((ritual) => (
-            <RitualCard
-              key={ritual.id}
-              ritual={ritual}
-              state={ritualState(ritual.id, today)}
-              onPress={handleRitualPress}
-            />
-          ))}
+          {RITUALS.map((ritual) => {
+            const state = ritualState(ritual.id, today);
+            return (
+              <RitualCard
+                key={ritual.id}
+                icon={ritual.icon}
+                label={ritual.label}
+                meta={ritualMeta(ritual, state)}
+                done={state.doneOnDate}
+                onPress={() => handleRitualPress(ritual)}
+              />
+            );
+          })}
         </View>
 
         {sortedSessions.length === 0 ? (

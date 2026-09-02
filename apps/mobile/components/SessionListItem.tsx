@@ -34,6 +34,7 @@ const SESSION_ICONS: Record<SessionOpener, keyof typeof Ionicons.glyphMap> = {
   'coach': 'chatbubble-outline',
   'plan-day': 'sunny-outline',
   'review-day': 'moon-outline',
+  'review-goals': 'flag-outline',
 };
 
 export function SessionListItem({

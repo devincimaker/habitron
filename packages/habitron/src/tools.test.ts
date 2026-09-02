@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { createTools } from './tools.js';
 import type { Db } from './db.js';
+import type { Module } from '@habits-coach/shared';
 
 /**
  * `Db` is forty-odd methods and a tool handler touches one or two, so the
@@ -162,8 +163,8 @@ describe('set_task_status', () => {
   });
 });
 
-function findTool(name: string, db: Db) {
-  const tool = createTools(db, 'Europe/Paris').find((t) => t.name === name);
+function findTool(name: string, db: Db, disabledModules: Module[] = []) {
+  const tool = createTools(db, 'Europe/Paris', disabledModules).find((t) => t.name === name);
   if (!tool) throw new Error(`${name} is missing from the tool list`);
   return tool;
 }
@@ -211,5 +212,136 @@ describe('lists on the task tools', () => {
 
     await expect(tool.handler({ id: LIST_ID })).resolves.toBe(outcome);
     expect(z.object(tool.inputSchema).safeParse({ id: 'books' }).success).toBe(false);
+  });
+});
+
+describe('goals on the tool surface', () => {
+  const GOAL_ID = '33333333-3333-4333-8333-333333333333';
+
+  it('is registered only while the Goals module is on', () => {
+    const names = (disabled?: ['goals']) =>
+      createTools(stubDb({}), 'Europe/Paris', disabled).map((t) => t.name);
+
+    expect(names()).toEqual(
+      expect.arrayContaining(['list_goals', 'create_goal', 'update_goal', 'complete_goal', 'delete_goal'])
+    );
+    const off = names(['goals']);
+    expect(off).not.toContain('list_goals');
+    expect(off).not.toContain('create_goal');
+    // Everything without a module survives the switch.
+    expect(off).toContain('create_task');
+  });
+
+  it('create_task and update_task pass goalId through, and update_task lets null unlink', async () => {
+    const createTask = vi.fn().mockResolvedValue({ id: 'task-1' });
+    const updateTask = vi.fn().mockResolvedValue({ id: 'task-1' });
+    const db = stubDb({ createTask, updateTask });
+
+    await findTool('create_task', db).handler({ title: 'Long run', goalId: GOAL_ID });
+    await findTool('update_task', db).handler({ id: GOAL_ID, goalId: null });
+
+    expect(createTask).toHaveBeenCalledWith({ title: 'Long run', goalId: GOAL_ID });
+    expect(updateTask).toHaveBeenCalledWith(GOAL_ID, { goalId: null });
+  });
+
+  it('update_goal turns reviewed: true into a reviewedAt stamp and passes the rest as a patch', async () => {
+    const updateGoal = vi.fn().mockResolvedValue({ id: GOAL_ID });
+    const before = Date.now();
+
+    await findTool('update_goal', stubDb({ updateGoal } as Partial<Db>)).handler({
+      id: GOAL_ID,
+      targetDate: '2026-12-01',
+      reviewed: true,
+    });
+
+    const [id, patch] = updateGoal.mock.calls[0];
+    expect(id).toBe(GOAL_ID);
+    expect(patch.targetDate).toBe('2026-12-01');
+    expect('reviewed' in patch).toBe(false);
+    expect(Date.parse(patch.reviewedAt)).toBeGreaterThanOrEqual(before - 1000);
+  });
+
+  it('update_goal without reviewed stamps nothing', async () => {
+    const updateGoal = vi.fn().mockResolvedValue({ id: GOAL_ID });
+
+    await findTool('update_goal', stubDb({ updateGoal } as Partial<Db>)).handler({
+      id: GOAL_ID,
+      measure: 'Cross the line',
+    });
+
+    expect(updateGoal).toHaveBeenCalledWith(GOAL_ID, { measure: 'Cross the line' });
+  });
+
+  it('complete_goal stamps completedAt now', async () => {
+    const updateGoal = vi.fn().mockResolvedValue({ id: GOAL_ID });
+
+    await findTool('complete_goal', stubDb({ updateGoal } as Partial<Db>)).handler({ id: GOAL_ID });
+
+    expect(updateGoal.mock.calls[0][1]).toEqual({ completedAt: expect.any(String) });
+  });
+
+  it('create_goal requires all three of title, measure and a well-formed targetDate', () => {
+    const schema = z.object(findTool('create_goal', stubDb({})).inputSchema);
+    expect(schema.safeParse({ title: 'Run', measure: 'Finish', targetDate: '2027-03-01' }).success).toBe(true);
+    expect(schema.safeParse({ title: 'Run', targetDate: '2027-03-01' }).success).toBe(false);
+    expect(schema.safeParse({ title: 'Run', measure: 'Finish', targetDate: 'March' }).success).toBe(false);
+    expect(schema.safeParse({ title: 'Run', measure: 'Finish' }).success).toBe(false);
+  });
+
+  it('list_goals joins the tasks onto their goals', async () => {
+    const listGoals = vi.fn().mockResolvedValue([
+      { id: GOAL_ID, title: 'Run', measure: 'Finish', targetDate: '2027-03-01', createdAt: '', updatedAt: '' },
+    ]);
+    const listAllTasks = vi.fn().mockResolvedValue([
+      { id: 't1', title: 'Long run', status: 'open', goalId: GOAL_ID },
+      { id: 't2', title: 'Unrelated', status: 'open' },
+    ]);
+
+    const result = (await findTool('list_goals', stubDb({ listGoals, listAllTasks } as Partial<Db>)).handler(
+      {}
+    )) as { goals: Array<{ tasks: Array<{ id: string }> }> };
+
+    expect(result.goals[0].tasks.map((t) => t.id)).toEqual(['t1']);
+  });
+});
+
+describe('get_day_context and the Goals module', () => {
+  function packetDb(listGoals: Db['listGoals']) {
+    const empty = vi.fn().mockResolvedValue([]);
+    return stubDb({
+      listAllTasks: empty,
+      listHabits: empty,
+      listHabitLogs: empty,
+      getActivePlan: vi.fn().mockResolvedValue(null),
+      listRecentJournalEntries: empty,
+      listMemories: empty,
+      listPlans: empty,
+      listDesiredHabits: empty,
+      getDayReview: vi.fn().mockResolvedValue(null),
+      listGoals,
+    } as Partial<Db>);
+  }
+
+  it('carries the open goals while the module is on', async () => {
+    const listGoals = vi.fn().mockResolvedValue([
+      { id: 'g1', title: 'Run', measure: 'Finish', targetDate: '2026-09-04', createdAt: '', updatedAt: '' },
+    ]);
+
+    const packet = (await findTool('get_day_context', packetDb(listGoals)).handler({
+      date: '2026-09-02',
+    })) as { goals?: Array<{ id: string; daysLeft: number }> };
+
+    expect(packet.goals).toEqual([expect.objectContaining({ id: 'g1', daysLeft: 2 })]);
+  });
+
+  it('does not read goals at all while the module is off', async () => {
+    const listGoals = vi.fn();
+
+    const packet = (await findTool('get_day_context', packetDb(listGoals), ['goals']).handler({
+      date: '2026-09-02',
+    })) as { goals?: unknown };
+
+    expect('goals' in packet).toBe(false);
+    expect(listGoals).not.toHaveBeenCalled();
   });
 });

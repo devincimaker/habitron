@@ -76,7 +76,7 @@ await wipe(supabase, user.id);
 
 const day = today(timezone);
 const fixtures = buildFixtures(day);
-const habitron = createHabitron({
+const habitron = await createHabitron({
   supabaseUrl: env.supabaseUrl,
   serviceRoleKey: env.serviceRoleKey,
   userId: user.id,

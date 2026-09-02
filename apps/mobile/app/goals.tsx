@@ -5,13 +5,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Feather, Ionicons } from '@expo/vector-icons';
 import { GoalCard } from '../components/GoalCard';
 import { GoalSheet } from '../components/GoalSheet';
+import { RitualCard } from '../components/RitualCard';
 import { BodyMedium } from '../components/ui';
 import { useGoalsStore } from '../stores/useGoalsStore';
 import { useTodosStore } from '../stores/useTodosStore';
 import { BORDER_RADIUS, SPACING, TOUCH_TARGET, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 import { getTodayDate, type Goal } from '@habits-coach/shared';
-import { countGoalTasks, isGoalOpen } from '../utils/goals';
+import { countGoalTasks, goalReviewState, isGoalOpen } from '../utils/goals';
 
 const reportSaveFailure = () => Alert.alert('Could not save the goal', 'Please try again.');
 
@@ -41,6 +42,14 @@ export default function GoalsScreen() {
     (goal: Goal) => router.push({ pathname: '/goal/[id]', params: { id: goal.id } }),
     [router]
   );
+
+  // Find-or-create lives in the backend, like the daily rituals: tapping the
+  // card again today resumes the same review.
+  const openReview = useCallback(
+    () => router.push({ pathname: '/session', params: { ritual: 'review-goals', date: today } }),
+    [router, today]
+  );
+  const review = goalReviewState(goals, today);
 
   const renderGoal = (goal: Goal) => (
     <GoalCard
@@ -85,6 +94,16 @@ export default function GoalsScreen() {
           </View>
         ) : (
           <>
+            {open.length > 0 ? (
+              <RitualCard
+                icon="flag"
+                label="Review goals"
+                meta={review.label}
+                done={!review.due}
+                onPress={openReview}
+              />
+            ) : null}
+
             {open.length > 0 ? (
               <View style={styles.section}>
                 <Text style={styles.sectionLabel}>Open</Text>
