@@ -19,6 +19,8 @@ function todo(id: string, position: number, scheduledDate?: string, createdAt = 
   };
 }
 
+const inList = (item: Todo, listId: string): Todo => ({ ...item, listId });
+
 const ids = (todos: Todo[]) => todos.map((item) => item.id);
 
 describe('sortTodosByPosition', () => {
@@ -101,6 +103,35 @@ describe('redealTodoPositions', () => {
   it('is a no-op when the visible rows share one position', () => {
     // Only a direct writer can produce this; the migration and every insert keep positions unique.
     expect(redealTodoPositions([todo('a', 0), todo('b', 0)], 1, 0)).toEqual([]);
+  });
+
+  it('deals each list its own slots on a mixed-list view', () => {
+    // A Calendar day interleaving two lists: positions rank within a list, so
+    // a's slot set is {0, 2} and x's is {5, 8} — never traded across.
+    const visible = [
+      inList(todo('a', 0), 'list-a'),
+      inList(todo('x', 5), 'list-x'),
+      inList(todo('b', 2), 'list-a'),
+      inList(todo('y', 8), 'list-x'),
+    ];
+
+    const updates = redealTodoPositions(visible, 3, 0);
+
+    // New visual order: y x a b → list-x deals {5, 8} to [y, x], list-a keeps [a, b].
+    expect(updates).toEqual([
+      { id: 'y', position: 5 },
+      { id: 'x', position: 8 },
+    ]);
+  });
+
+  it('keeps a single-list view byte-identical to the flat redeal', () => {
+    const visible = [todo('a', 3), todo('b', 5), todo('c', 9)];
+
+    expect(redealTodoPositions(visible, 2, 0)).toEqual([
+      { id: 'c', position: 3 },
+      { id: 'a', position: 5 },
+      { id: 'b', position: 9 },
+    ]);
   });
 });
 

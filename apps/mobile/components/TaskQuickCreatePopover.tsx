@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { Priority, TodoTag } from '@habits-coach/shared';
+import type { Priority, TodoList, TodoTag } from '@habits-coach/shared';
 import { TodoTagPill } from './TodoTagPill';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -19,6 +19,12 @@ export type TaskQuickCreatePopoverContent =
       onSelect: (tagName: string) => void;
       /** Offers a "New category…" field. Quick-create types `#` instead. */
       onCreate?: (tagName: string) => void;
+    }
+  | {
+      kind: 'lists';
+      lists: TodoList[];
+      selectedId?: string;
+      onSelect: (listId: string) => void;
     };
 
 interface TaskQuickCreatePopoverProps {
@@ -140,6 +146,32 @@ export function TaskQuickCreatePopover({
               </Pressable>
             );
           })
+        ) : content.kind === 'lists' ? (
+          <ScrollView style={styles.listScroll} keyboardShouldPersistTaps="handled">
+            {content.lists.map((list) => {
+              const isSelected = content.selectedId === list.id;
+              return (
+                <Pressable
+                  key={list.id}
+                  style={styles.priorityRow}
+                  onPress={() => content.onSelect(list.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={`List ${list.name}`}
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  {list.isInbox ? (
+                    <Ionicons name="file-tray-outline" size={18} color={colors.textSecondary} />
+                  ) : (
+                    <View style={[styles.listDot, { backgroundColor: list.color ?? colors.textLight }]} />
+                  )}
+                  <Text style={styles.priorityLabel}>{list.name}</Text>
+                  {isSelected ? (
+                    <Ionicons name="checkmark" size={18} color={colors.primaryDark} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         ) : (
           <ScrollView
             style={styles.tagScroll}
@@ -239,6 +271,15 @@ const createStyles = (colors: Colors) =>
     },
     tagScroll: {
       maxHeight: 160,
+    },
+    listScroll: {
+      maxHeight: 220,
+    },
+    listDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      marginHorizontal: 3,
     },
     tagRow: {
       flexDirection: 'row',

@@ -11,6 +11,8 @@ jest.mock('../services/todos', () => ({
   removeTodo: jest.fn(),
   reorderTodos: jest.fn(),
   createTodoList: jest.fn(),
+  updateTodoList: jest.fn(),
+  deleteTodoList: jest.fn(),
   createTodoTag: jest.fn(),
 }));
 
@@ -393,6 +395,65 @@ describe('useTodosStore selectors', () => {
         ],
       }),
     ]);
+  });
+
+  it('appends an optimistic todo after its own list, not the global order', async () => {
+    const booksList: TodoList = {
+      id: 'list-books',
+      name: 'Books',
+      isInbox: false,
+      sortOrder: 1,
+      createdAt: 1,
+      updatedAt: 1,
+    };
+    useTodosStore.setState({
+      lists: [baseList, booksList],
+      todos: [
+        { ...baseTodo, id: 'inbox-task', position: 9 },
+        { ...baseTodo, id: 'book-task', listId: booksList.id, position: 2 },
+      ],
+    });
+    (todosService.addTodo as jest.Mock).mockImplementation(
+      () => new Promise<Todo>(() => undefined)
+    );
+
+    void useTodosStore.getState().addTodoOptimistic({
+      title: 'Dune',
+      listId: booksList.id,
+    });
+
+    expect(useTodosStore.getState().todos).toContainEqual(
+      expect.objectContaining({ title: 'Dune', listId: booksList.id, position: 3 })
+    );
+  });
+
+  it('deletes a list through the service and reloads what moved', async () => {
+    (todosService.deleteTodoList as jest.Mock).mockResolvedValue(undefined);
+    (todosService.getTodos as jest.Mock).mockResolvedValue([baseTodo]);
+    (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
+    (todosService.getTodoTags as jest.Mock).mockResolvedValue([]);
+
+    await useTodosStore.getState().deleteTodoList('list-books');
+
+    expect(todosService.deleteTodoList).toHaveBeenCalledWith('list-books');
+    expect(todosService.getTodos).toHaveBeenCalled();
+    expect(useTodosStore.getState().lists).toEqual([baseList]);
+  });
+
+  it('counts open todos per list', () => {
+    useTodosStore.setState({
+      todos: [
+        { ...baseTodo, id: 'a' },
+        { ...baseTodo, id: 'b', listId: 'list-books' },
+        { ...baseTodo, id: 'c', listId: 'list-books' },
+        { ...baseTodo, id: 'd', listId: 'list-books', status: 'completed' },
+      ],
+    });
+
+    expect(useTodosStore.getState().getOpenTodoCountsByList()).toEqual({
+      [baseList.id]: 1,
+      'list-books': 2,
+    });
   });
 
   it('ticks a checklist item optimistically and rolls back on failure', async () => {

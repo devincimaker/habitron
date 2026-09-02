@@ -20,7 +20,7 @@ import { useTodosStore } from '../../stores/useTodosStore';
 import { SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
-type Picker = 'priority' | 'tag' | 'dateActions' | 'datePicker' | 'time' | 'estimate' | null;
+type Picker = 'priority' | 'tag' | 'list' | 'dateActions' | 'datePicker' | 'time' | 'estimate' | null;
 
 /**
  * The checklist as a draft, so one item's edit can be sent as the whole list.
@@ -44,6 +44,7 @@ export default function TaskDetailSheet() {
 
   const todo = useTodosStore((state) => state.todos.find((item) => item.id === id) ?? null);
   const tags = useTodosStore((state) => state.tags);
+  const lists = useTodosStore((state) => state.lists);
   const createTodoTag = useTodosStore((state) => state.createTodoTag);
 
   const dismiss = useCallback(() => router.back(), [router]);
@@ -59,6 +60,7 @@ export default function TaskDetailSheet() {
   const sheetRef = useRef<View>(null);
   const flagRef = useRef<View>(null);
   const categoryRef = useRef<View>(null);
+  const listRef = useRef<View>(null);
 
   const checklist = useMemo(() => todo?.checklist ?? [], [todo?.checklist]);
   const hasChecklist = checklist.length > 0;
@@ -178,16 +180,20 @@ export default function TaskDetailSheet() {
 
           <TaskSheetChips
             todo={todo}
+            list={lists.find((list) => list.id === todo.listId)}
             onPressTag={() => setPicker('tag')}
+            onPressList={() => setPicker('list')}
             onPressEstimate={() => setPicker('estimate')}
           />
         </ScrollView>
 
         <View style={{ paddingBottom: insets.bottom || SPACING.sm }}>
           <TaskSheetBottomBar
-            ref={categoryRef}
+            categoryRef={categoryRef}
+            listRef={listRef}
             hasChecklist={hasChecklist}
             onPressCategory={() => setPicker('tag')}
+            onPressList={() => setPicker('list')}
             onPressEstimate={() => setPicker('estimate')}
             onPressChecklist={() => setShowChecklist(true)}
           />
@@ -205,6 +211,23 @@ export default function TaskDetailSheet() {
               onSelect: (priority: Priority | undefined) => {
                 closePicker();
                 save({ priority });
+              },
+            }}
+          />
+        ) : null}
+
+        {picker === 'list' ? (
+          <TaskQuickCreatePopover
+            anchorRef={listRef}
+            containerRef={sheetRef}
+            onClose={closePicker}
+            content={{
+              kind: 'lists',
+              lists,
+              selectedId: todo.listId,
+              onSelect: (listId) => {
+                closePicker();
+                if (listId !== todo.listId) save({ listId });
               },
             }}
           />

@@ -138,17 +138,21 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledDate: dateSchema.optional(),
         unscheduledOnly: z.boolean().optional(),
         overdueOnly: z.boolean().optional().describe('Open tasks with dueDate before today'),
+        listId: z.uuid().optional().describe('Only tasks in this list; see list_lists'),
+        listName: z.string().min(1).optional().describe('List by name, case-insensitive'),
         limit: z.int().min(1).max(200).optional(),
       },
       annotations: { readOnlyHint: true },
       handler: async (args) => {
         const current = now();
         const q = args.query?.trim().toLowerCase();
+        const listId = await db.resolveListId(args);
         const tasks = (await db.listAllTasks()).filter((t) => {
           if (args.status && t.status !== args.status) return false;
           if (args.scheduledDate && t.scheduledDate !== args.scheduledDate) return false;
           if (args.unscheduledOnly && t.scheduledDate) return false;
           if (args.overdueOnly && !(t.status === 'open' && t.dueDate && t.dueDate < current)) return false;
+          if (listId && t.listId !== listId) return false;
           if (q && !`${t.title} ${t.notes ?? ''}`.toLowerCase().includes(q)) return false;
           return true;
         });
@@ -252,6 +256,16 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
     }),
 
     defineTool({
+      name: 'list_lists',
+      title: 'List task lists',
+      description:
+        'The task lists (the Inbox plus user-made lists like Books or Errands). Every task lives in exactly one list; the inbox is the default. Call before assigning a list so existing ones are reused.',
+      inputSchema: {},
+      annotations: { readOnlyHint: true },
+      handler: () => db.listLists(),
+    }),
+
+    defineTool({
       name: 'list_memories',
       title: 'List memories',
       description: 'Durable facts the coach has learned about the user.',
@@ -266,7 +280,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'create_task',
       title: 'Create task',
       description:
-        'Create a task in the inbox. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
+        'Create a task in the inbox, or in a list via listId/listName. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -276,6 +290,12 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.optional(),
         estimateMinutes: z.int().positive().optional(),
         tagId: z.uuid().optional().describe('Category; see list_tags'),
+        listId: z.uuid().optional().describe('List; see list_lists. Defaults to the inbox'),
+        listName: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('List by name, case-insensitive; unknown names are rejected'),
         checklist: z
           .array(z.string().min(1))
           .optional()
@@ -301,7 +321,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'update_task',
       title: 'Update task',
       description:
-        'Edit, schedule, reschedule, unschedule, or re-categorise a task. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
+        'Edit, schedule, reschedule, unschedule, re-categorise, or move a task between lists. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
       inputSchema: {
         id: z.uuid(),
         title: z.string().min(1).optional(),
@@ -312,6 +332,12 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.nullable().optional(),
         estimateMinutes: z.int().positive().nullable().optional(),
         tagId: z.uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
+        listId: z.uuid().optional().describe('Move to this list; see list_lists'),
+        listName: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Move to this list by name, case-insensitive; unknown names are rejected'),
         checklist: z
           .array(z.string().min(1))
           .optional()
@@ -410,6 +436,48 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       },
       annotations: { destructiveHint: true },
       handler: ({ id, reassignToTagId }) => db.deleteTag(id, reassignToTagId),
+    }),
+
+    // ------------------------------------------------------------------ lists
+
+    defineTool({
+      name: 'create_list',
+      title: 'Create list',
+      description:
+        'Create a new task list. Prefer reusing an existing list from list_lists; names are unique per user (case-insensitive).',
+      inputSchema: {
+        name: z.string().min(1),
+        color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB').optional(),
+      },
+      handler: ({ name, color }) => db.createList(name, color),
+    }),
+
+    defineTool({
+      name: 'update_list',
+      title: 'Update list',
+      description:
+        'Rename or recolour an existing list. Every task keeps its link, so this is the safe way to fix a list whose name no longer fits. Names are unique per user (case-insensitive).',
+      inputSchema: {
+        id: z.uuid(),
+        name: z.string().min(1).optional(),
+        color: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/, 'Expected #RRGGBB')
+          .nullable()
+          .optional()
+          .describe('null clears the colour'),
+      },
+      handler: ({ id, name, color }) => db.updateList(id, { name, color }),
+    }),
+
+    defineTool({
+      name: 'delete_list',
+      title: 'Delete list',
+      description:
+        'Delete a list. Tasks are never deleted — they move to the inbox, keeping their order. The inbox itself cannot be deleted. Destructive: check list_lists and confirm with the user before calling. The result reports how many tasks moved.',
+      inputSchema: { id: z.uuid() },
+      annotations: { destructiveHint: true },
+      handler: ({ id }) => db.deleteList(id),
     }),
 
     // ----------------------------------------------------------------- habits

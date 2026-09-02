@@ -63,6 +63,23 @@ interface DbTag {
   color: string | null;
 }
 
+/** A list of tasks. Every task lives in exactly one; the inbox is the default. */
+export interface TaskList {
+  id: string;
+  name: string;
+  color?: string;
+  isInbox: boolean;
+  sortOrder: number;
+}
+
+interface DbTaskList {
+  id: string;
+  name: string;
+  color: string | null;
+  is_inbox: boolean;
+  sort_order: number;
+}
+
 /** One entry of a task's checklist (e.g. "milk" on a groceries task). */
 export interface ChecklistItem {
   id: string;
@@ -80,6 +97,8 @@ interface DbChecklistItem {
 
 export interface Task {
   id: string;
+  /** The list this task lives in; see listLists. */
+  listId: string;
   title: string;
   notes?: string;
   status: TodoStatus;
@@ -108,6 +127,10 @@ export interface TaskInput {
   scheduledTime?: string;
   estimateMinutes?: number;
   tagId?: string;
+  /** Target list by id; defaults to the inbox. */
+  listId?: string;
+  /** Target list by name, case-insensitive; unknown names are rejected. */
+  listName?: string;
   /** Checklist item titles in order. */
   checklist?: string[];
   /**
@@ -140,6 +163,10 @@ export interface TaskPatch {
   scheduledTime?: string | null;
   estimateMinutes?: number | null;
   tagId?: string | null;
+  /** Move to this list by id. Every task has a list, so this is never null. */
+  listId?: string;
+  /** Move to this list by name, case-insensitive; unknown names are rejected. */
+  listName?: string;
   /** Full replacement of the checklist; [] clears it. Done state survives for matching titles. */
   checklist?: string[];
 }
@@ -343,6 +370,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   function mapTodo(row: DbTodo): Task {
     return {
       id: row.id,
+      listId: row.list_id,
       title: row.title,
       notes: row.notes ?? undefined,
       status: row.status,
@@ -477,13 +505,14 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     }
   }
 
-  /** A new task appends to the user's manual order. */
-  async function nextTaskPosition(): Promise<number> {
+  /** A new task appends to its list's manual order. */
+  async function nextTaskPosition(listId: string): Promise<number> {
     const last = unwrap(
       await supabase
         .from('todos')
         .select('position')
         .eq('user_id', userId)
+        .eq('list_id', listId)
         .order('position', { ascending: false })
         .limit(1)
         .maybeSingle()
@@ -499,7 +528,8 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       );
     }
     if (input.tagId) await assertTagExists(input.tagId);
-    const [listId, position] = await Promise.all([inboxListId(), nextTaskPosition()]);
+    const listId = (await resolveListId(input)) ?? (await inboxListId());
+    const position = await nextTaskPosition(listId);
     const row = unwrap(
       await supabase
         .from('todos')
@@ -547,6 +577,16 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     if (patch.estimateMinutes !== undefined) update.estimate_minutes = patch.estimateMinutes;
     if (patch.tagId !== undefined) update.tag_id = patch.tagId;
     if (patch.scheduledDate === null) update.scheduled_time = null;
+
+    const targetListId = await resolveListId(patch);
+    if (targetListId !== undefined) {
+      const current = await getTask(id);
+      // Moving lists appends to the target; a same-list save must not move the task.
+      if (current.listId !== targetListId) {
+        update.list_id = targetListId;
+        update.position = await nextTaskPosition(targetListId);
+      }
+    }
 
     if (Object.keys(update).length === 0) {
       return getTask(id);
@@ -713,6 +753,144 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     unwrap(await supabase.from('todo_tags').delete().eq('user_id', userId).eq('id', id).select('id'));
 
     return { deleted: target, tasksAffected, reassignedTo };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lists
+  // ---------------------------------------------------------------------------
+
+  const LIST_COLUMNS = 'id, name, color, is_inbox, sort_order';
+
+  function mapList(row: DbTaskList): TaskList {
+    return {
+      id: row.id,
+      name: row.name,
+      color: row.color ?? undefined,
+      isInbox: row.is_inbox,
+      sortOrder: row.sort_order,
+    };
+  }
+
+  async function listLists(): Promise<TaskList[]> {
+    const rows = unwrap(
+      await supabase
+        .from('todo_lists')
+        .select(LIST_COLUMNS)
+        .eq('user_id', userId)
+        .order('is_inbox', { ascending: false })
+        .order('sort_order', { ascending: true })
+    ) as DbTaskList[];
+    return rows.map(mapList);
+  }
+
+  /**
+   * The list a task input names, or `undefined` when it names none. Unknown
+   * lists are rejected rather than created — reuse what list_lists shows.
+   */
+  async function resolveListId(input: { listId?: string; listName?: string }): Promise<string | undefined> {
+    if (input.listId === undefined && input.listName === undefined) return undefined;
+    const lists = await listLists();
+    if (input.listId !== undefined) {
+      const byId = lists.find((l) => l.id === input.listId);
+      if (!byId) {
+        throw new Error(`Unknown list: ${input.listId}. Call list_lists to see the available lists.`);
+      }
+      return byId.id;
+    }
+    const name = input.listName?.trim().toLowerCase();
+    const byName = lists.find((l) => l.name.toLowerCase() === name);
+    if (!byName) {
+      throw new Error(`Unknown list: ${input.listName}. Call list_lists to see the available lists.`);
+    }
+    return byName.id;
+  }
+
+  async function createList(name: string, color?: string): Promise<TaskList> {
+    const trimmed = name.trim();
+    const existing = (await listLists()).find((l) => l.name.toLowerCase() === trimmed.toLowerCase());
+    if (existing) {
+      throw new Error(`List "${existing.name}" already exists (${existing.id})`);
+    }
+    const row = unwrap(
+      await supabase
+        .from('todo_lists')
+        // Appends after every existing list; the app writes the same stamps.
+        .insert({ user_id: userId, name: trimmed, color: color ?? null, is_inbox: false, sort_order: Date.now() })
+        .select(LIST_COLUMNS)
+        .single()
+    ) as DbTaskList;
+    return mapList(row);
+  }
+
+  async function updateList(id: string, patch: { name?: string; color?: string | null }): Promise<TaskList> {
+    const lists = await listLists();
+    const current = lists.find((l) => l.id === id);
+    if (!current) {
+      throw new Error(`Unknown list: ${id}. Call list_lists to see the available lists.`);
+    }
+
+    const update: Record<string, unknown> = {};
+    if (patch.name !== undefined) {
+      const trimmed = patch.name.trim();
+      if (!trimmed) throw new Error('List name cannot be empty');
+      const clash = lists.find((l) => l.id !== id && l.name.toLowerCase() === trimmed.toLowerCase());
+      if (clash) throw new Error(`List "${clash.name}" already exists (${clash.id})`);
+      update.name = trimmed;
+    }
+    if (patch.color !== undefined) update.color = patch.color;
+    if (Object.keys(update).length === 0) return current;
+
+    const row = unwrap(
+      await supabase
+        .from('todo_lists')
+        .update(update)
+        .eq('user_id', userId)
+        .eq('id', id)
+        .select(LIST_COLUMNS)
+        .single()
+    ) as DbTaskList;
+    return mapList(row);
+  }
+
+  async function deleteList(
+    id: string
+  ): Promise<{ deleted: TaskList; tasksMoved: number; movedTo: TaskList }> {
+    const lists = await listLists();
+    const target = lists.find((l) => l.id === id);
+    if (!target) {
+      throw new Error(`Unknown list: ${id}. Call list_lists to see the available lists.`);
+    }
+    if (target.isInbox) {
+      throw new Error('The inbox cannot be deleted.');
+    }
+
+    const inboxId = await inboxListId();
+    const doomed = unwrap(
+      await supabase
+        .from('todos')
+        .select('id')
+        .eq('user_id', userId)
+        .eq('list_id', id)
+        .order('position', { ascending: true })
+    ) as Array<{ id: string }>;
+
+    // Append to the inbox in the old relative order. The RESTRICT FK on
+    // todos.list_id fails the delete loudly if any row is missed.
+    const base = await nextTaskPosition(inboxId);
+    for (const [index, todo] of doomed.entries()) {
+      unwrap(
+        await supabase
+          .from('todos')
+          .update({ list_id: inboxId, position: base + index })
+          .eq('user_id', userId)
+          .eq('id', todo.id)
+      );
+    }
+
+    unwrap(await supabase.from('todo_lists').delete().eq('user_id', userId).eq('id', id));
+
+    const movedTo = (await listLists()).find((l) => l.id === inboxId);
+    return { deleted: target, tasksMoved: doomed.length, movedTo: movedTo as TaskList };
   }
 
   // ---------------------------------------------------------------------------
@@ -1320,6 +1498,11 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     updateTag,
     countTasksWithTag,
     deleteTag,
+    listLists,
+    resolveListId,
+    createList,
+    updateList,
+    deleteList,
     listHabits,
     getHabitsByIds,
     createHabit,
