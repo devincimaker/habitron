@@ -42,7 +42,7 @@ async function upsertProfile(
   }
 }
 
-export const useProfileStore = create<ProfileState>((set) => ({
+export const useProfileStore = create<ProfileState>((set, get) => ({
   name: null,
   dailyReminderEnabled: true,
   loadStatus: 'idle',
@@ -91,9 +91,10 @@ export const useProfileStore = create<ProfileState>((set) => ({
     }
 
     const trimmedName = name.trim();
-    set({ isSaving: true });
+    const previous = get().name;
+    set({ name: trimmedName, isSaving: true });
     const error = await upsertProfile(userId, { name: trimmedName });
-    set(error ? { isSaving: false } : { name: trimmedName, isSaving: false });
+    set(error ? { name: previous, isSaving: false } : { isSaving: false });
     return { error };
   },
 
@@ -103,9 +104,12 @@ export const useProfileStore = create<ProfileState>((set) => ({
       return { error: new Error('Not authenticated') };
     }
 
+    // The switch flips at once; a failed write flips it back.
+    const previous = get().dailyReminderEnabled;
+    set({ dailyReminderEnabled: enabled });
     const error = await upsertProfile(userId, { daily_reminder_enabled: enabled });
-    if (!error) {
-      set({ dailyReminderEnabled: enabled });
+    if (error) {
+      set({ dailyReminderEnabled: previous });
     }
     return { error };
   },

@@ -45,7 +45,6 @@ export default function TaskDetailSheet() {
   const todo = useTodosStore((state) => state.todos.find((item) => item.id === id) ?? null);
   const tags = useTodosStore((state) => state.tags);
   const lists = useTodosStore((state) => state.lists);
-  const createTodoTag = useTodosStore((state) => state.createTodoTag);
 
   const dismiss = useCallback(() => router.back(), [router]);
   const { save, toggleStatus, setChecklistItemDone, remove } = useTaskSheetActions(todo, dismiss);
@@ -245,11 +244,10 @@ export default function TaskDetailSheet() {
                 closePicker();
                 save({ tagName: todo.tag?.name === tagName ? null : tagName });
               },
+              // A name the server has not seen is created by the update itself.
               onCreate: (tagName) => {
                 closePicker();
-                void createTodoTag(tagName)
-                  .then(() => save({ tagName }))
-                  .catch((error: unknown) => console.warn('Failed to create tag:', error));
+                save({ tagName });
               },
             }}
           />

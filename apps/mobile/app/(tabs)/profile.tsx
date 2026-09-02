@@ -16,7 +16,7 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { memories, loadMemories } = useMemoriesStore();
-  const { name, dailyReminderEnabled, updateName, updateDailyReminder, isSaving: isProfileSaving } = useProfileStore();
+  const { name, dailyReminderEnabled, updateName, updateDailyReminder } = useProfileStore();
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -50,12 +50,12 @@ export default function ProfileScreen() {
       Alert.alert('Error', trimmed ? 'Name must be at least 2 characters' : 'Please enter your name');
       return;
     }
+    // The store shows the new name at once and puts the old one back on failure.
+    setIsEditingName(false);
+    setEditingNameValue('');
     const { error } = await updateName(trimmed);
     if (error) {
       Alert.alert('Error', 'Failed to update name');
-    } else {
-      setIsEditingName(false);
-      setEditingNameValue('');
     }
   }, [editingNameValue, updateName]);
 
@@ -166,7 +166,6 @@ export default function ProfileScreen() {
               <Button
                 title="Save"
                 onPress={handleSaveName}
-                loading={isProfileSaving}
                 size="md"
               />
             </View>

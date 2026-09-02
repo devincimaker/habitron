@@ -359,6 +359,7 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
       reviewState.selected.has(i)
     );
 
+    exitSession();
     if (selectedMemories.length > 0) {
       try {
         await saveMemories(selectedMemories, sessionId || undefined);
@@ -366,8 +367,6 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         console.error('Failed to save memories:', error);
       }
     }
-
-    exitSession();
   }, [reviewState, saveMemories, sessionId, exitSession]);
 
   const handleSendMessage = useCallback(async () => {

@@ -47,8 +47,8 @@ export default function TasksScreen() {
     lists,
     isLoading,
     loadTodos,
-    addTodoOptimistic,
-    setTodoStatusOptimistic,
+    addTodo,
+    setTodoStatus,
     reorderTodos,
   } = useTodosStore();
   const activeListId = useTaskListsUiStore((state) => state.activeListId);
@@ -92,19 +92,19 @@ export default function TasksScreen() {
 
   const handleQuickCreate = useCallback(
     async (draft: TodoDraft) => {
-      void addTodoOptimistic(draft).catch((error) => {
+      void addTodo(draft).catch((error) => {
         console.warn('Failed to create todo:', error);
         Alert.alert('Could not create task', 'Please try again.');
       });
     },
-    [addTodoOptimistic]
+    [addTodo]
   );
 
   const handleToggleTodoStatus = useCallback(
     async (todo: Todo, options?: TaskStatusToggleOptions) => {
       try {
         const nextStatus: TodoStatus = todo.status === 'completed' ? 'open' : 'completed';
-        const updatedTodo = await setTodoStatusOptimistic(todo.id, nextStatus, options);
+        const updatedTodo = await setTodoStatus(todo.id, nextStatus, options);
 
         await syncTodoPlanOutcome(
           todo.scheduledDate,
@@ -116,7 +116,7 @@ export default function TasksScreen() {
         Alert.alert('Could not update task', 'Please try again.');
       }
     },
-    [setTodoStatusOptimistic, syncTodoPlanOutcome]
+    [setTodoStatus, syncTodoPlanOutcome]
   );
 
   const openTaskSheet = useCallback(

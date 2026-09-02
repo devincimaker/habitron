@@ -246,7 +246,20 @@ describe('useProfileStore', () => {
       expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
     });
 
-    it('should keep the old value on failure', async () => {
+    it('flips the switch before the write lands', async () => {
+      let settle: (result: { error: null }) => void = () => undefined;
+      mockUpsert.mockImplementation(
+        () => new Promise<{ error: null }>((resolve) => { settle = resolve; })
+      );
+
+      const pending = useProfileStore.getState().updateDailyReminder(false);
+      expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
+
+      settle({ error: null });
+      await pending;
+    });
+
+    it('should put the old value back on failure', async () => {
       mockUpsert.mockResolvedValue({
         error: { code: 'PGRST500', message: 'Database error' },
       });

@@ -22,7 +22,6 @@ interface HabitLogSheetProps {
 export function HabitLogSheet({ habit, onClose, onSaveAmount, onSetStatus }: HabitLogSheetProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const [amountText, setAmountText] = useState('0');
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (habit) setAmountText(formatAmount(habit.todayAmount));
@@ -35,14 +34,11 @@ export function HabitLogSheet({ habit, onClose, onSaveAmount, onSetStatus }: Hab
   const amount = Number(amountText.replace(',', '.'));
   const amountValid = Number.isFinite(amount) && amount >= 0;
 
-  const run = async (action: () => Promise<void>) => {
-    setIsSaving(true);
-    try {
-      await action();
-      onClose();
-    } finally {
-      setIsSaving(false);
-    }
+  // The store shows the log before the write, and the handler alerts if it
+  // fails, so the sheet has nothing to wait for.
+  const run = (action: () => Promise<void>) => {
+    onClose();
+    void action();
   };
 
   const adjust = (delta: number) => {
@@ -99,7 +95,6 @@ export function HabitLogSheet({ habit, onClose, onSaveAmount, onSetStatus }: Hab
                 title="Save"
                 onPress={() => void run(() => onSaveAmount(habit.id, amount))}
                 disabled={!amountValid}
-                loading={isSaving}
                 fullWidth
               />
             ) : null}

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type {
   DailyPlan,
+  DailyPlanItem,
   DailyPlanItemOutcome,
 } from '@habits-coach/shared';
 import * as dailyPlansService from '../services/dailyPlans';
@@ -9,11 +10,6 @@ interface DailyPlansState {
   plansByDate: Record<string, DailyPlan | null>;
   isLoading: boolean;
   loadPlan: (date: string) => Promise<DailyPlan | null>;
-  updateItemOutcome: (
-    date: string,
-    itemId: string,
-    outcome: DailyPlanItemOutcome
-  ) => Promise<void>;
   updateOutcomeForTodo: (
     date: string,
     todoId: string,
@@ -27,15 +23,15 @@ interface DailyPlansState {
   clearPlans: () => void;
 }
 
-function updatePlanItemOutcomeLocally(
+function withItemOutcome(
   plan: DailyPlan,
-  matcher: (item: DailyPlan['items'][number]) => boolean,
+  itemId: string,
   outcome: DailyPlanItemOutcome
 ): DailyPlan {
   return {
     ...plan,
     items: plan.items.map((item) =>
-      matcher(item)
+      item.id === itemId
         ? {
             ...item,
             outcome,
@@ -46,84 +42,57 @@ function updatePlanItemOutcomeLocally(
   };
 }
 
-export const useDailyPlansStore = create<DailyPlansState>((set, get) => ({
-  plansByDate: {},
-  isLoading: false,
+export const useDailyPlansStore = create<DailyPlansState>((set, get) => {
+  /** Optimistic: the outcome shows before the write, and the old plan comes back if it fails. */
+  async function resolveItem(
+    date: string,
+    matcher: (item: DailyPlanItem) => boolean,
+    outcome: DailyPlanItemOutcome
+  ): Promise<void> {
+    const plan = get().plansByDate[date];
+    const item = plan?.items.find(matcher);
+    if (!plan || !item) return;
 
-  loadPlan: async (date) => {
-    set({ isLoading: true });
+    set((state) => ({
+      plansByDate: { ...state.plansByDate, [date]: withItemOutcome(plan, item.id, outcome) },
+    }));
+
     try {
-      const plan = await dailyPlansService.getDailyPlan(date);
-      set((state) => ({
-        plansByDate: { ...state.plansByDate, [date]: plan },
-        isLoading: false,
-      }));
-      return plan;
+      await dailyPlansService.updateDailyPlanItemOutcome(item.id, outcome);
     } catch (error) {
-      console.error('Failed to load daily plan:', error);
-      set({ isLoading: false });
-      return null;
+      set((state) => ({ plansByDate: { ...state.plansByDate, [date]: plan } }));
+      throw error;
     }
-  },
+  }
 
-  updateItemOutcome: async (date, itemId, outcome) => {
-    const plan = get().plansByDate[date];
-    if (!plan) return;
+  return {
+    plansByDate: {},
+    isLoading: false,
 
-    await dailyPlansService.updateDailyPlanItemOutcome(itemId, outcome);
-    set((state) => ({
-      plansByDate: {
-        ...state.plansByDate,
-        [date]: updatePlanItemOutcomeLocally(
-          plan,
-          (item) => item.id === itemId,
-          outcome
-        ),
-      },
-    }));
-  },
+    loadPlan: async (date) => {
+      set({ isLoading: true });
+      try {
+        const plan = await dailyPlansService.getDailyPlan(date);
+        set((state) => ({
+          plansByDate: { ...state.plansByDate, [date]: plan },
+          isLoading: false,
+        }));
+        return plan;
+      } catch (error) {
+        console.error('Failed to load daily plan:', error);
+        set({ isLoading: false });
+        return null;
+      }
+    },
 
-  updateOutcomeForTodo: async (date, todoId, outcome) => {
-    const plan = get().plansByDate[date];
-    if (!plan) return;
+    updateOutcomeForTodo: (date, todoId, outcome) =>
+      resolveItem(date, (item) => item.todoId === todoId, outcome),
 
-    const item = plan.items.find((candidate) => candidate.todoId === todoId);
-    if (!item) return;
+    updateOutcomeForHabit: (date, habitId, outcome) =>
+      resolveItem(date, (item) => item.habitId === habitId, outcome),
 
-    await dailyPlansService.updateDailyPlanItemOutcome(item.id, outcome);
-    set((state) => ({
-      plansByDate: {
-        ...state.plansByDate,
-        [date]: updatePlanItemOutcomeLocally(
-          plan,
-          (candidate) => candidate.id === item.id,
-          outcome
-        ),
-      },
-    }));
-  },
-
-  updateOutcomeForHabit: async (date, habitId, outcome) => {
-    const plan = get().plansByDate[date];
-    if (!plan) return;
-
-    const item = plan.items.find((candidate) => candidate.habitId === habitId);
-    if (!item) return;
-
-    await dailyPlansService.updateDailyPlanItemOutcome(item.id, outcome);
-    set((state) => ({
-      plansByDate: {
-        ...state.plansByDate,
-        [date]: updatePlanItemOutcomeLocally(
-          plan,
-          (candidate) => candidate.id === item.id,
-          outcome
-        ),
-      },
-    }));
-  },
-
-  clearPlans: () => {
-    set({ plansByDate: {}, isLoading: false });
-  },
-}));
+    clearPlans: () => {
+      set({ plansByDate: {}, isLoading: false });
+    },
+  };
+});

@@ -32,13 +32,14 @@ export const useSessionsStore = create<SessionsState>((set, get) => ({
   },
 
   deleteSession: async (id: string) => {
+    const { sessions } = get();
+    set({ sessions: sessions.filter((s) => s.id !== id) });
+
     try {
       await sessionsService.deleteSession(id);
-      set((state) => ({
-        sessions: state.sessions.filter((s) => s.id !== id),
-      }));
     } catch (error) {
       console.warn('Failed to delete session:', error);
+      set({ sessions });
       throw error;
     }
   },

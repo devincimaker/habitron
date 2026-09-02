@@ -577,28 +577,6 @@ export async function getTodoTags(): Promise<TodoTag[]> {
   return (data as DbTodoTag[]).map(mapDbTodoTagToTodoTag);
 }
 
-export async function createTodoTag(name: string, color?: string): Promise<TodoTag> {
-  const userId = await getCurrentUserId();
-  const trimmedName = name.trim();
-
-  const { data, error } = await supabase
-    .from('todo_tags')
-    .insert({
-      user_id: userId,
-      name: trimmedName,
-      color: color ?? getTodoTagColor(trimmedName),
-    })
-    .select()
-    .single();
-
-  if (error) {
-    console.error('Error creating todo tag:', error);
-    throw error;
-  }
-
-  return mapDbTodoTagToTodoTag(data as DbTodoTag);
-}
-
 export async function getTodos(): Promise<Todo[]> {
   const { data, error } = await supabase
     .from('todos')
@@ -781,17 +759,5 @@ export async function reorderTodos(updates: TodoOrderUpdate[]): Promise<void> {
   if (failure?.error) {
     console.error('Error reordering todos:', failure.error);
     throw failure.error;
-  }
-}
-
-export async function removeTodo(todoId: string): Promise<void> {
-  const { error } = await supabase
-    .from('todos')
-    .delete()
-    .eq('id', todoId);
-
-  if (error) {
-    console.error('Error removing todo:', error);
-    throw error;
   }
 }

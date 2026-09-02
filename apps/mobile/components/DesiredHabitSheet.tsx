@@ -23,10 +23,11 @@ interface DesiredHabitSheetProps {
   /** The habit standing in for it, when there is one. */
   linkedHabit: Habit | null;
   onClose: () => void;
-  onSave: (draft: DesiredHabitDraft) => Promise<void>;
-  onRemove: () => Promise<void>;
-  onClearHabit: () => Promise<void>;
-  onStart: (draft: DesiredHabitDraft) => Promise<void>;
+  /** Each hands the draft over and returns; the store shows it before the write lands. */
+  onSave: (draft: DesiredHabitDraft) => void;
+  onRemove: () => void;
+  onClearHabit: () => void;
+  onStart: (draft: DesiredHabitDraft) => void;
 }
 
 /** Bottom sheet for writing down a habit you want, and seeing what stands in for it. */
@@ -43,7 +44,6 @@ export function DesiredHabitSheet({
   const [styles, colors] = useThemedStyles(createStyles);
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -59,19 +59,6 @@ export function DesiredHabitSheet({
     note: note.trim() || undefined,
   };
 
-  // Every caller is `void run(...)`, so a rejection here would surface as an
-  // unhandled one rather than anything the user can act on.
-  const run = async (action: () => Promise<void>) => {
-    setIsSaving(true);
-    try {
-      await action();
-    } catch (error) {
-      console.error('Desired habit action failed:', error);
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
   const confirmRemove = () => {
     Alert.alert(
       'Remove desired habit',
@@ -81,7 +68,7 @@ export function DesiredHabitSheet({
         {
           text: 'Remove',
           style: 'destructive',
-          onPress: () => void run(onRemove),
+          onPress: onRemove,
         },
       ]
     );
@@ -127,7 +114,7 @@ export function DesiredHabitSheet({
                   <Text style={styles.linkSchedule}>{describeHabitSchedule(linkedHabit)}</Text>
                 </View>
                 <Pressable
-                  onPress={() => void run(onClearHabit)}
+                  onPress={onClearHabit}
                   accessibilityRole="button"
                   accessibilityLabel={`Unlink ${linkedHabit.name}`}
                   hitSlop={SPACING.sm}
@@ -141,8 +128,8 @@ export function DesiredHabitSheet({
             // exist, and read as "pick something" — the one thing this asks for.
             <Pressable
               style={styles.startRow}
-              onPress={() => void run(() => onStart(draft))}
-              disabled={!trimmedTitle || isSaving}
+              onPress={() => onStart(draft)}
+              disabled={!trimmedTitle}
               accessibilityRole="button"
               accessibilityLabel="Start this habit"
             >
@@ -154,9 +141,8 @@ export function DesiredHabitSheet({
           <View style={styles.actions}>
             <Button
               title="Save"
-              onPress={() => void run(() => onSave(draft))}
+              onPress={() => onSave(draft)}
               disabled={!trimmedTitle}
-              loading={isSaving}
               fullWidth
             />
             {desired ? (

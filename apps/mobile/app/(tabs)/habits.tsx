@@ -68,6 +68,11 @@ const SWIPE_THRESHOLD = 25;
 
 type TransitionDirection = 'forward' | 'backward';
 
+function reportHabitFailure(error: unknown) {
+  console.warn('Habit write failed:', error);
+  Alert.alert('Could not update the habit', 'Please try again.');
+}
+
 export default function HabitsScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -217,19 +222,31 @@ export default function HabitsScreen() {
     [loadPlan, plansByDate, selectedDate, updateOutcomeForHabit]
   );
 
+  // The store shows every check-in before the write; a failure has already
+  // been rolled back by the time it gets here, so all that is left is to say so.
   const handleStatusChange = useCallback(
     async (habitId: string, status: HabitStatus) => {
-      await setHabitStatus(habitId, status);
-      await syncPlanOutcome(habitId, status);
+      try {
+        await setHabitStatus(habitId, status);
+        await syncPlanOutcome(habitId, status);
+      } catch (error) {
+        console.warn('Failed to log habit:', error);
+        Alert.alert('Could not save the check-in', 'Please try again.');
+      }
     },
     [setHabitStatus, syncPlanOutcome]
   );
 
   const handleAmountChange = useCallback(
     async (habitId: string, amount: number) => {
-      await setHabitAmount(habitId, amount);
-      const updated = useHabitsStore.getState().getHabitsWithStatus().find((h) => h.id === habitId);
-      await syncPlanOutcome(habitId, updated?.todayStatus ?? 'pending');
+      try {
+        await setHabitAmount(habitId, amount);
+        const updated = useHabitsStore.getState().getHabitsWithStatus().find((h) => h.id === habitId);
+        await syncPlanOutcome(habitId, updated?.todayStatus ?? 'pending');
+      } catch (error) {
+        console.warn('Failed to log habit:', error);
+        Alert.alert('Could not save the check-in', 'Please try again.');
+      }
     },
     [setHabitAmount, syncPlanOutcome]
   );
@@ -261,16 +278,23 @@ export default function HabitsScreen() {
   );
 
   const handleSaveHabit = useCallback(
-    async (draft: HabitDraft) => {
-      if (editingHabit) {
-        await updateHabit(editingHabit.id, draft);
-        return;
-      }
+    (draft: HabitDraft) => {
+      void (async () => {
+        try {
+          if (editingHabit) {
+            await updateHabit(editingHabit.id, draft);
+            return;
+          }
 
-      const created = await addHabit(draft);
-      if (startingDesired) {
-        await linkDesiredHabit(startingDesired.id, { habitId: created.id });
-      }
+          const created = await addHabit(draft);
+          if (startingDesired) {
+            await linkDesiredHabit(startingDesired.id, { habitId: created.id });
+          }
+        } catch (error) {
+          console.warn('Failed to save habit:', error);
+          Alert.alert('Could not save the habit', 'Please try again.');
+        }
+      })();
     },
     [addHabit, editingHabit, linkDesiredHabit, startingDesired, updateHabit]
   );
@@ -366,9 +390,7 @@ export default function HabitsScreen() {
           {
             text: 'Archive',
             style: 'destructive',
-            onPress: async () => {
-              await archiveHabit(habit.id);
-            },
+            onPress: () => void archiveHabit(habit.id).catch(reportHabitFailure),
           },
         ]
       );
@@ -384,9 +406,7 @@ export default function HabitsScreen() {
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Restore',
-            onPress: async () => {
-              await restoreHabit(habit.id);
-            },
+            onPress: () => void restoreHabit(habit.id).catch(reportHabitFailure),
           },
         ]
       );
@@ -403,9 +423,7 @@ export default function HabitsScreen() {
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: async () => {
-              await removeHabit(habit.id);
-            },
+            onPress: () => void removeHabit(habit.id).catch(reportHabitFailure),
           },
         ]
       );

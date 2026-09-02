@@ -9,7 +9,7 @@ import { getTodoPlanOutcomeForStatus } from '../utils/todoPlanOutcome';
 
 export function useUndoableTodoRemoval() {
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
-  const setTodoStatusOptimistic = useTodosStore((state) => state.setTodoStatusOptimistic);
+  const setTodoStatus = useTodosStore((state) => state.setTodoStatus);
   const removedTodo = useTodoRemovalStore((state) => state.removedTodo);
   const setRemovedTodo = useTodoRemovalStore((state) => state.setRemovedTodo);
   const clearIfSame = useTodoRemovalStore((state) => state.clearIfSame);
@@ -21,7 +21,7 @@ export function useUndoableTodoRemoval() {
 
       void (async () => {
         try {
-          await setTodoStatusOptimistic(todo.id, 'canceled');
+          await setTodoStatus(todo.id, 'canceled');
           await syncTodoPlanOutcome(todo.scheduledDate, todo.id, 'canceled');
         } catch (error) {
           console.warn('Failed to remove todo:', error);
@@ -30,7 +30,7 @@ export function useUndoableTodoRemoval() {
         }
       })();
     },
-    [clearIfSame, setRemovedTodo, setTodoStatusOptimistic, syncTodoPlanOutcome]
+    [clearIfSame, setRemovedTodo, setTodoStatus, syncTodoPlanOutcome]
   );
 
   const undoRemoveTodo = useCallback(() => {
@@ -41,7 +41,7 @@ export function useUndoableTodoRemoval() {
 
     void (async () => {
       try {
-        await setTodoStatusOptimistic(removedTodo.id, previousStatus);
+        await setTodoStatus(removedTodo.id, previousStatus);
         await syncTodoPlanOutcome(
           removedTodo.scheduledDate,
           removedTodo.id,
@@ -52,7 +52,7 @@ export function useUndoableTodoRemoval() {
         Alert.alert('Could not restore task', 'Please try again.');
       }
     })();
-  }, [removedTodo, setRemovedTodo, setTodoStatusOptimistic, syncTodoPlanOutcome]);
+  }, [removedTodo, setRemovedTodo, setTodoStatus, syncTodoPlanOutcome]);
 
   const dismissRemovedTodo = useCallback(() => {
     setRemovedTodo(null);

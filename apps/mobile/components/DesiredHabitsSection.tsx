@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { DesiredHabit, DesiredHabitDraft } from '@habits-coach/shared';
 import {
@@ -24,6 +24,11 @@ interface DesiredHabitsSectionProps {
    * with its title prefilled and links whatever gets created.
    */
   onStartHabit: (desired: DesiredHabit) => void;
+}
+
+function reportFailure(error: unknown) {
+  console.warn('Desired habit write failed:', error);
+  Alert.alert('Could not save the desired habit', 'Please try again.');
 }
 
 /** Habits decided on but not started, at the foot of the Habits tab. */
@@ -58,12 +63,14 @@ export function DesiredHabitsSection({ onStartHabit }: DesiredHabitsSectionProps
     setEditingId(null);
   }, []);
 
-  /** Creating and editing share one sheet, so saving has to cover both. */
+  // The store shows every write before it lands and rolls it back if it fails,
+  // so the sheet closes at once and a failure is only ever reported.
   const persist = useCallback(
-    async (draft: DesiredHabitDraft): Promise<DesiredHabit> => {
+    (draft: DesiredHabitDraft): Promise<DesiredHabit> => {
       if (editing) {
-        await updateDesiredHabit(editing.id, { title: draft.title, note: draft.note ?? '' });
-        return { ...editing, title: draft.title, note: draft.note };
+        return updateDesiredHabit(editing.id, { title: draft.title, note: draft.note ?? '' }).then(
+          () => ({ ...editing, title: draft.title, note: draft.note })
+        );
       }
       return addDesiredHabit(draft);
     },
@@ -71,30 +78,35 @@ export function DesiredHabitsSection({ onStartHabit }: DesiredHabitsSectionProps
   );
 
   const handleSave = useCallback(
-    async (draft: DesiredHabitDraft) => {
-      await persist(draft);
+    (draft: DesiredHabitDraft) => {
       closeSheet();
+      void persist(draft).catch(reportFailure);
     },
     [closeSheet, persist]
   );
 
   const handleStart = useCallback(
-    async (draft: DesiredHabitDraft) => {
-      // Save first: the editor's own save needs a row to write the habit id to.
-      const saved = await persist(draft);
+    (draft: DesiredHabitDraft) => {
       closeSheet();
-      onStartHabit(saved);
+      if (editing) {
+        // The row exists, so the editor can open on it while the rename lands.
+        void persist(draft).catch(reportFailure);
+        onStartHabit({ ...editing, title: draft.title, note: draft.note });
+        return;
+      }
+      // A new one has to land first: the editor's save writes the habit id to its row.
+      void persist(draft).then(onStartHabit).catch(reportFailure);
     },
-    [closeSheet, onStartHabit, persist]
+    [closeSheet, editing, onStartHabit, persist]
   );
 
-  const handleRemove = useCallback(async () => {
-    if (editing) await removeDesiredHabit(editing.id);
+  const handleRemove = useCallback(() => {
     closeSheet();
+    if (editing) void removeDesiredHabit(editing.id).catch(reportFailure);
   }, [closeSheet, editing, removeDesiredHabit]);
 
-  const handleClearHabit = useCallback(async () => {
-    if (editing) await updateDesiredHabit(editing.id, { habitId: null });
+  const handleClearHabit = useCallback(() => {
+    if (editing) void updateDesiredHabit(editing.id, { habitId: null }).catch(reportFailure);
   }, [editing, updateDesiredHabit]);
 
   return (

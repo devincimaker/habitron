@@ -15,23 +15,19 @@ interface TodosState {
   tags: TodoTag[];
   isLoading: boolean;
   loadTodos: () => Promise<void>;
+  /**
+   * Every write is optimistic: the change shows immediately, the server row
+   * replaces it, a failure rolls it back and rejects so the caller can say so.
+   */
   addTodo: (todo: TodoDraft) => Promise<Todo>;
-  addTodoOptimistic: (todo: TodoDraft) => Promise<Todo>;
-  /** Optimistic: the edit shows immediately, the server row replaces it, a failure rolls it back. */
   updateTodo: (todoId: string, changes: Partial<TodoDraft>) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: TodoStatus, options?: TodoStatusOptions) => Promise<Todo>;
-  setTodoStatusOptimistic: (
-    todoId: string,
-    status: TodoStatus,
-    options?: TodoStatusOptions
-  ) => Promise<Todo>;
   setChecklistItemDone: (todoId: string, itemId: string, done: boolean) => Promise<void>;
-  removeTodo: (todoId: string) => Promise<void>;
   reorderTodos: (updates: TodoOrderUpdate[]) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   updateTodoList: (listId: string, changes: { name?: string; color?: string }) => Promise<TodoList>;
+  /** Its tasks move to the Inbox, appended in their old order — the same shape the server writes. */
   deleteTodoList: (listId: string) => Promise<void>;
-  createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
   getTodosForDate: (date: string) => Todo[];
   getOverdueTodos: (date: string) => Todo[];
   getOpenTodoCountsByList: () => Record<string, number>;
@@ -54,6 +50,20 @@ async function reloadMetadata() {
  */
 function changesCanCreateMetadata(changes: Partial<TodoDraft>): boolean {
   return Boolean(changes.listName?.trim()) || Boolean(changes.tagName?.trim());
+}
+
+function sortLists(lists: TodoList[]): TodoList[] {
+  return [...lists].sort(
+    (a, b) => Number(b.isInbox) - Number(a.isInbox) || a.sortOrder - b.sortOrder
+  );
+}
+
+/** The doomed list's tasks append to the target in their old relative order. */
+function moveTodosToList(todos: Todo[], fromListId: string, toListId: string): Todo[] {
+  let position = nextTodoPosition(todos.filter((todo) => todo.listId === toListId));
+  return todos.map((todo) =>
+    todo.listId === fromListId ? { ...todo, listId: toListId, position: position++ } : todo
+  );
 }
 
 function createOptimisticTodoId() {
@@ -273,16 +283,6 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   addTodo: async (todo) => {
-    const createdTodo = await todosService.addTodo(todo);
-    const metadata = changesCanCreateMetadata(todo) ? await reloadMetadata() : undefined;
-    set((state) => ({
-      todos: [...state.todos, createdTodo],
-      ...metadata,
-    }));
-    return createdTodo;
-  },
-
-  addTodoOptimistic: async (todo) => {
     const optimisticTodo = buildOptimisticTodo(get(), todo);
 
     set((state) => ({
@@ -340,25 +340,14 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   setTodoStatus: async (todoId, status, options = {}) => {
-    const updatedTodo = await todosService.setTodoStatus(todoId, status, options);
-    set((state) => ({
-      todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
-    }));
-    return updatedTodo;
-  },
-
-  setTodoStatusOptimistic: async (todoId, status, options = {}) => {
     const existingTodo = get().todos.find((todo) => todo.id === todoId);
 
-    if (!existingTodo) {
-      return get().setTodoStatus(todoId, status, options);
+    if (existingTodo) {
+      const optimisticTodo = applyOptimisticTodoStatus(existingTodo, status, options);
+      set((state) => ({
+        todos: state.todos.map((todo) => (todo.id === todoId ? optimisticTodo : todo)),
+      }));
     }
-
-    const optimisticTodo = applyOptimisticTodoStatus(existingTodo, status, options);
-
-    set((state) => ({
-      todos: state.todos.map((todo) => (todo.id === todoId ? optimisticTodo : todo)),
-    }));
 
     try {
       const updatedTodo = await todosService.setTodoStatus(todoId, status, options);
@@ -367,9 +356,11 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       }));
       return updatedTodo;
     } catch (error) {
-      set((state) => ({
-        todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
-      }));
+      if (existingTodo) {
+        set((state) => ({
+          todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
+        }));
+      }
       throw error;
     }
   },
@@ -395,13 +386,6 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     }
   },
 
-  removeTodo: async (todoId) => {
-    await todosService.removeTodo(todoId);
-    set((state) => ({
-      todos: state.todos.filter((todo) => todo.id !== todoId),
-    }));
-  },
-
   reorderTodos: async (updates) => {
     if (!updates.length) return;
     // Optimistic: the list has already shown the drop, so the order it shows
@@ -417,33 +401,74 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   createTodoList: async (name, color) => {
-    const createdList = await todosService.createTodoList(name, color);
-    set((state) => ({
-      lists: [...state.lists, createdList].sort((a, b) => Number(b.isInbox) - Number(a.isInbox) || a.sortOrder - b.sortOrder),
-    }));
-    return createdList;
+    const now = Date.now();
+    const optimisticList: TodoList = {
+      id: `optimistic-list-${now}`,
+      name: name.trim(),
+      color,
+      isInbox: false,
+      sortOrder: get().lists.reduce((max, list) => Math.max(max, list.sortOrder + 1), 0),
+      createdAt: now,
+      updatedAt: now,
+    };
+    set((state) => ({ lists: sortLists([...state.lists, optimisticList]) }));
+
+    try {
+      const createdList = await todosService.createTodoList(name, color);
+      set((state) => ({
+        lists: sortLists(
+          state.lists.map((list) => (list.id === optimisticList.id ? createdList : list))
+        ),
+      }));
+      return createdList;
+    } catch (error) {
+      set((state) => ({ lists: state.lists.filter((list) => list.id !== optimisticList.id) }));
+      throw error;
+    }
   },
 
   updateTodoList: async (listId, changes) => {
-    const updatedList = await todosService.updateTodoList(listId, changes);
-    set((state) => ({
-      lists: state.lists.map((list) => (list.id === listId ? updatedList : list)),
-    }));
-    return updatedList;
+    const existingList = get().lists.find((list) => list.id === listId);
+    if (existingList) {
+      set((state) => ({
+        lists: state.lists.map((list) =>
+          list.id === listId ? { ...list, ...changes, updatedAt: Date.now() } : list
+        ),
+      }));
+    }
+
+    try {
+      const updatedList = await todosService.updateTodoList(listId, changes);
+      set((state) => ({
+        lists: state.lists.map((list) => (list.id === listId ? updatedList : list)),
+      }));
+      return updatedList;
+    } catch (error) {
+      if (existingList) {
+        set((state) => ({
+          lists: state.lists.map((list) => (list.id === listId ? existingList : list)),
+        }));
+      }
+      throw error;
+    }
   },
 
   deleteTodoList: async (listId) => {
-    await todosService.deleteTodoList(listId);
-    // Tasks changed list and position on the server; a reload is the simple truth.
-    await get().loadTodos();
-  },
+    const { lists, todos } = get();
+    const inboxId = lists.find((list) => list.isInbox)?.id;
+    if (inboxId) {
+      set({
+        lists: lists.filter((list) => list.id !== listId),
+        todos: sortTodosByPosition(moveTodosToList(todos, listId, inboxId)),
+      });
+    }
 
-  createTodoTag: async (name, color) => {
-    const createdTag = await todosService.createTodoTag(name, color);
-    set((state) => ({
-      tags: [...state.tags, createdTag].sort((a, b) => a.name.localeCompare(b.name)),
-    }));
-    return createdTag;
+    try {
+      await todosService.deleteTodoList(listId);
+    } catch (error) {
+      set({ lists, todos });
+      throw error;
+    }
   },
 
   getTodosForDate: (date) => {

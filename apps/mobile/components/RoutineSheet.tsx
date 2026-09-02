@@ -58,7 +58,6 @@ export function RoutineSheet({
   const [selected, setSelected] = useState<HabitWeekday[]>([]);
   const [authorizationDenied, setAuthorizationDenied] = useState(false);
   const [pickingTime, setPickingTime] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!visible || !section) return;
@@ -115,22 +114,19 @@ export function RoutineSheet({
     setPickingTime(false);
   };
 
-  const saveDisabled = isSaving || Boolean(nameError) || !name.trim();
+  const saveDisabled = Boolean(nameError) || !name.trim();
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (saveDisabled || !section) return;
-    setIsSaving(true);
-    try {
-      await onSave(section.id, { name: name.trim(), alarmEnabled, alarmByDay });
-      onClose();
-    } catch (error) {
-      // The sheet stays open holding the week, because the write may have got
-      // as far as clearing the old rows: closing here would look like a save.
-      console.warn('Failed to save the routine:', error);
-      Alert.alert('Could not save the routine', 'Please try again.');
-    } finally {
-      setIsSaving(false);
-    }
+    // The store shows the week at once and, if the write fails partway, reloads
+    // what the server actually kept — so the sheet has nothing to hold open.
+    onClose();
+    void onSave(section.id, { name: name.trim(), alarmEnabled, alarmByDay }).catch(
+      (error: unknown) => {
+        console.warn('Failed to save the routine:', error);
+        Alert.alert('Could not save the routine', 'Please try again.');
+      }
+    );
   };
 
   const selectedTime = selected.map((weekday) => alarmByDay[weekday]).find(Boolean);

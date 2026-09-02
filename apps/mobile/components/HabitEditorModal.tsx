@@ -40,7 +40,8 @@ interface HabitEditorModalProps {
   /** All habits, used to surface previously created custom units. */
   allHabits: Habit[];
   onClose: () => void;
-  onSave: (draft: HabitDraft) => Promise<void>;
+  /** The sheet closes as the draft is handed over; the store shows it before the write lands. */
+  onSave: (draft: HabitDraft) => void;
   onAddSection: (name: string) => Promise<HabitSection>;
   onRemoveSection: (sectionId: string) => Promise<void>;
 }
@@ -77,7 +78,6 @@ export function HabitEditorModal({
   /** The icon the user picked by hand; until then the name suggests one. */
   const [customIcon, setCustomIcon] = useState<HabitIconName | null>(null);
   const [scheduleError, setScheduleError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
 
   const selectedIcon = useMemo(
     () => customIcon ?? getSuggestedHabitIcon(name),
@@ -142,7 +142,7 @@ export function HabitEditorModal({
     onClose();
   };
 
-  const handleSave = async () => {
+  const handleSave = () => {
     if (!name.trim()) return;
     const error = scheduleErrorFor(details);
     if (error) {
@@ -151,13 +151,8 @@ export function HabitEditorModal({
       return;
     }
 
-    setIsSaving(true);
-    try {
-      await onSave(buildHabitDraft({ name, reason, icon: selectedIcon, ...details }));
-      onClose();
-    } finally {
-      setIsSaving(false);
-    }
+    onClose();
+    onSave(buildHabitDraft({ name, reason, icon: selectedIcon, ...details }));
   };
 
   const headerTitle = isEditing
@@ -233,8 +228,8 @@ export function HabitEditorModal({
         </ScrollView>
 
         <HabitComposerFooter
-          title={isSaving ? 'Saving...' : action.title}
-          disabled={!name.trim() || isSaving}
+          title={action.title}
+          disabled={!name.trim()}
           onPress={action.onPress}
           bottomInset={bottomInset}
         />
