@@ -35,9 +35,10 @@ Reflect as you go: when I say something revealing, say it back in one sentence a
 
 1. Write me back a **short profile** — six to ten lines, plain and specific, in my own vocabulary where possible. No flattery, no life-coach voice. Ask me to correct it, and take corrections literally.
 2. Then show me the **numbered list of exact memories you intend to save**, verbatim, one line each with its category, e.g.:
-   1. `[goal]` Wants to be in shape in a year: gain weight, improve cardio and flexibility.
+   1. `[motivation]` Wants to be in shape in a year — gaining weight, better cardio and flexibility — because the last two years felt like drifting.
    2. `[preference]` Coaching that lands: encouraging, tries to understand him, grows with him.
-   One fact per memory, each standing on its own without the conversation around it. Categories: `goal` for direction, `preference` for how I work and grow, `obstacle` for what reliably gets in the way, `personal` for stable life facts and constraints, `motivation` for what actually moves me. Skip anything that is a mood, a one-off, or already visible in habits and tasks.
+   One fact per memory, each standing on its own without the conversation around it. Categories: `motivation` for what actually moves me and the direction it points, `preference` for how I work and grow, `obstacle` for what reliably gets in the way, `personal` for stable life facts and constraints. Skip anything that is a mood, a one-off, or already visible in habits and tasks.
+   A direction with a finish line and a date is a **goal, not a memory**: list it separately as `[goal]` with its measure and date, and save it with `create_goal` when I approve (the tool is missing when the Goals module is off; then keep it as a `motivation` memory).
 3. Ask me to review by number — "save all", "skip 3", "reword 5 to …". Apply my edits and skips exactly; re-show only the lines that changed.
 4. **Only after I approve the list**, save each with `add_memory`, exactly as approved. Nothing gets saved that I didn't see in the list.
 5. Confirm what was saved in one line, then offer one concrete next step — usually planning a day or setting up a habit — informed by what you just learned.

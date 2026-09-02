@@ -29,7 +29,7 @@ export function createServer(tools: AnyHabitronTool[]): McpServer {
   return server;
 }
 
-const habitron = createHabitron({
+const habitron = await createHabitron({
   supabaseUrl: config.supabase.url,
   serviceRoleKey: config.supabase.serviceRoleKey,
   userId: config.userId,

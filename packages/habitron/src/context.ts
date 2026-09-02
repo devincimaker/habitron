@@ -1,6 +1,7 @@
-import type { DailyPlanItemOutcome, HabitStatus } from '@habits-coach/shared';
+import type { DailyPlanItemOutcome, HabitStatus, Module } from '@habits-coach/shared';
 import { buildScorecard } from './scorecard.js';
 import type { Db, DesiredHabitRecord, Habit, Task } from './db.js';
+import { goalsForDay } from './goals.js';
 import { addDays, localDateOf, localNow, weekRange, weekdayOf } from './time.js';
 
 export type DayContext = Awaited<ReturnType<typeof buildDayContext>>;
@@ -97,13 +98,22 @@ function sortByPriorityThenTime(tasks: Task[]): Task[] {
   });
 }
 
-/** Compact planning packet: everything a planner needs for one day, nothing more. */
-export async function buildDayContext(db: Db, timezone: string, date: string) {
+/**
+ * Compact planning packet: everything a planner needs for one day, nothing
+ * more. `disabledModules` is what Profile has switched off: such a module is
+ * not read at all, so it is out of the coach's context and not merely empty.
+ */
+export async function buildDayContext(
+  db: Db,
+  timezone: string,
+  date: string,
+  disabledModules: readonly Module[]
+) {
   const now = localNow(timezone);
   const week = weekRange(date);
   const lookbackStart = addDays(date, -14);
 
-  const [tasks, allHabits, logs, plan, journal, memories, recentPlans, desired, review] =
+  const [tasks, allHabits, logs, plan, journal, memories, recentPlans, desired, review, goals] =
     await Promise.all([
       db.listAllTasks(),
       // Archived habits included, so a desired habit's abandoned attempt still
@@ -116,6 +126,7 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
       db.listPlans(lookbackStart, addDays(date, -1)),
       db.listDesiredHabits(),
       db.getDayReview(date),
+      disabledModules.includes('goals') ? null : db.listGoals(),
     ]);
 
   const open = tasks.filter((t) => t.status === 'open');
@@ -211,6 +222,9 @@ export async function buildDayContext(db: Db, timezone: string, date: string) {
     },
     habits: activeHabits,
     desiredHabits: resolveDesiredHabits(desired, habitsForDay),
+    // The destination the day is planned toward. Absent, not empty, when the
+    // Goals module is off.
+    ...(goals ? { goals: goalsForDay(goals, tasks, date) } : {}),
     // The day in numbers, so a review opens with the facts instead of asking for
     // them. Recomputed every call — nothing here is stored on `day_reviews`.
     scorecard: buildScorecard({

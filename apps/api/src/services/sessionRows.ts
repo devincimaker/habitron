@@ -36,7 +36,7 @@ export interface DbMemory {
 }
 
 /** The openers the column's CHECK accepts; anything else is a 400, not a 500. */
-export const SESSION_OPENERS: SessionOpener[] = ['coach', 'plan-day', 'review-day'];
+export const SESSION_OPENERS: SessionOpener[] = ['coach', 'plan-day', 'review-day', 'review-goals'];
 
 export function toSessionDetail(s: DbSession, memories: DbMemory[]): CoachingSessionDetail {
   return {

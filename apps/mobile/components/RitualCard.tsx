@@ -1,51 +1,43 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import type { RitualDefinition } from '../constants/rituals';
-import type { RitualState } from '../stores/useRitualsStore';
+import type { ComponentProps } from 'react';
 import { BORDER_RADIUS, SPACING, TOUCH_TARGET, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
 
 interface RitualCardProps {
-  ritual: RitualDefinition;
-  state: RitualState;
-  onPress: (ritual: RitualDefinition) => void;
+  icon: ComponentProps<typeof Feather>['name'];
+  label: string;
+  /** The one line under the label: done or not, and how big the ask is. */
+  meta: string;
+  /** Whether the ritual's own record exists — a filled check, not a hollow nudge. */
+  done: boolean;
+  onPress: () => void;
 }
 
-export function RitualCard({ ritual, state, onPress }: RitualCardProps) {
+/** A coach practice as a tappable row: the hub's two daily rituals, and the goals review. */
+export function RitualCard({ icon, label, meta, done, onPress }: RitualCardProps) {
   const [styles, colors] = useThemedStyles(createStyles);
-  const { doneOnDate, streak } = state;
-
-  const meta = [
-    doneOnDate ? 'Done' : `Not yet · ${ritual.notYetHint}`,
-    streak.current > 0 ? `${streak.current} day streak` : null,
-  ]
-    .filter(Boolean)
-    .join(' · ');
 
   return (
     <Pressable
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
-      onPress={() => onPress(ritual)}
+      onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`${ritual.label}. ${meta}`}
+      accessibilityLabel={`${label}. ${meta}`}
     >
-      <View style={[styles.iconWrap, doneOnDate && styles.iconWrapDone]}>
-        <Feather
-          name={ritual.icon}
-          size={18}
-          color={doneOnDate ? colors.white : colors.textSecondary}
-        />
+      <View style={[styles.iconWrap, done && styles.iconWrapDone]}>
+        <Feather name={icon} size={18} color={done ? colors.white : colors.textSecondary} />
       </View>
 
       <View style={styles.copy}>
-        <Text style={styles.label}>{ritual.label}</Text>
+        <Text style={styles.label}>{label}</Text>
         <Text style={styles.meta}>{meta}</Text>
       </View>
 
-      {/* Filled when the day's record exists, hollow when it does not — the
-          hollow circle is the nudge, so it has to read as unfinished. */}
-      <View style={[styles.status, doneOnDate ? styles.statusDone : styles.statusPending]}>
-        {doneOnDate && <Feather name="check" size={14} color={colors.white} />}
+      {/* Filled when the record exists, hollow when it does not — the hollow
+          circle is the nudge, so it has to read as unfinished. */}
+      <View style={[styles.status, done ? styles.statusDone : styles.statusPending]}>
+        {done && <Feather name="check" size={14} color={colors.white} />}
       </View>
     </Pressable>
   );

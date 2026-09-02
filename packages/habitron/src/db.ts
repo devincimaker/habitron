@@ -13,11 +13,14 @@ import type {
   JournalMood,
   Memory,
   MemoryCategory,
+  Module,
   Priority,
   TodoStatus,
 } from '@habits-coach/shared';
 import { reviewPatch } from './dayReview.js';
+import { createGoalsDb } from './goals.js';
 import { habitRowFromInput, type HabitFields } from './habitInput.js';
+import { unwrap } from './supabaseResult.js';
 import { today } from './time.js';
 
 /** A habit write: the pure fields, plus the two that need the database. */
@@ -46,6 +49,7 @@ interface DbTodo {
   created_at: string;
   updated_at: string;
   tag_id: string | null;
+  goal_id: string | null;
   todo_tags: DbTag | null;
   todo_checklist_items: DbChecklistItem[];
 }
@@ -112,6 +116,8 @@ export interface Task {
   canceledAt?: string;
   /** Category (at most one per task). */
   tag?: Tag;
+  /** The goal this task moves, if it serves one; see listGoals. */
+  goalId?: string;
   /** Ordered checklist; present iff the task has at least one item. */
   checklist?: ChecklistItem[];
   createdAt: string;
@@ -127,6 +133,8 @@ export interface TaskInput {
   scheduledTime?: string;
   estimateMinutes?: number;
   tagId?: string;
+  /** The goal this task serves; unknown ids are rejected. */
+  goalId?: string;
   /** Target list by id; defaults to the inbox. */
   listId?: string;
   /** Target list by name, case-insensitive; unknown names are rejected. */
@@ -163,6 +171,8 @@ export interface TaskPatch {
   scheduledTime?: string | null;
   estimateMinutes?: number | null;
   tagId?: string | null;
+  /** The goal this task serves; null unlinks it. */
+  goalId?: string | null;
   /** Move to this list by id. Every task has a list, so this is never null. */
   listId?: string;
   /** Move to this list by name, case-insensitive; unknown names are rejected. */
@@ -338,19 +348,14 @@ export interface PlanItemInput {
 
 /** All Supabase reads and writes for one user. */
 export function createDb(supabase: SupabaseClient, userId: string) {
-  function unwrap<T>(result: { data: T | null; error: { message: string } | null }): T {
-    if (result.error) {
-      throw new Error(result.error.message);
-    }
-    return result.data as T;
-  }
+  const goals = createGoalsDb(supabase, userId);
 
   // ---------------------------------------------------------------------------
   // Tasks
   // ---------------------------------------------------------------------------
 
   const TODO_COLUMNS =
-    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, position, created_at, updated_at, tag_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
+    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, position, created_at, updated_at, tag_id, goal_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
 
 
 
@@ -383,6 +388,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       completedAt: row.completed_at ?? undefined,
       canceledAt: row.canceled_at ?? undefined,
       tag: row.todo_tags ? mapTag(row.todo_tags) : undefined,
+      goalId: row.goal_id ?? undefined,
       checklist: mapChecklist(row.todo_checklist_items),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -528,6 +534,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       );
     }
     if (input.tagId) await assertTagExists(input.tagId);
+    if (input.goalId) await goals.assertGoalExists(input.goalId);
     const listId = (await resolveListId(input)) ?? (await inboxListId());
     const position = await nextTaskPosition(listId);
     const row = unwrap(
@@ -544,6 +551,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
           scheduled_time: input.scheduledTime ?? null,
           estimate_minutes: input.estimateMinutes ?? null,
           tag_id: input.tagId ?? null,
+          goal_id: input.goalId ?? null,
           position,
           status: input.completedAt ? 'completed' : 'open',
           completed_at: input.completedAt ?? null,
@@ -562,6 +570,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
 
   async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
     if (patch.tagId) await assertTagExists(patch.tagId);
+    if (patch.goalId) await goals.assertGoalExists(patch.goalId);
     if (patch.checklist !== undefined) {
       // Ensure the task exists (and belongs to the user) before touching items.
       await getTask(id);
@@ -576,6 +585,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     if (patch.scheduledTime !== undefined) update.scheduled_time = patch.scheduledTime;
     if (patch.estimateMinutes !== undefined) update.estimate_minutes = patch.estimateMinutes;
     if (patch.tagId !== undefined) update.tag_id = patch.tagId;
+    if (patch.goalId !== undefined) update.goal_id = patch.goalId;
     if (patch.scheduledDate === null) update.scheduled_time = null;
 
     const targetListId = await resolveListId(patch);
@@ -1312,6 +1322,18 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   }
 
   // ---------------------------------------------------------------------------
+  // Modules
+  // ---------------------------------------------------------------------------
+
+  /** The modules switched off in Profile. No profile row yet reads as everything on. */
+  async function listDisabledModules(): Promise<Module[]> {
+    const row = unwrap(
+      await supabase.from('user_profiles').select('disabled_modules').eq('user_id', userId).maybeSingle()
+    ) as { disabled_modules: Module[] } | null;
+    return row?.disabled_modules ?? [];
+  }
+
+  // ---------------------------------------------------------------------------
   // Daily plans
   // ---------------------------------------------------------------------------
 
@@ -1522,6 +1544,8 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     listMemories,
     addMemory,
     deleteMemory,
+    listDisabledModules,
+    ...goals,
     getActivePlan,
     listPlans,
     saveAcceptedPlan,

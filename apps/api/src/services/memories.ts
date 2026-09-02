@@ -13,8 +13,9 @@ Extract memories that fall into these categories:
 - obstacle: Challenges they face, patterns that hold them back
 - preference: How they like to do things, scheduling preferences, communication style
 - personal: Life circumstances, job, family, health context
-- goal: Specific goals they want to achieve
 - general: Other noteworthy information
+
+A goal with a finish line and a date is not a memory: it lives in the goals list, which the coach manages with its own tools. Skip those.
 
 Guidelines:
 - Only extract information explicitly stated by the user
@@ -39,7 +40,7 @@ Respond with JSON only, no prose around it:
 
 If no NEW meaningful memories can be extracted, return: { "memories": [] }`;
 
-const MEMORY_CATEGORIES: MemoryCategory[] = ['motivation', 'obstacle', 'preference', 'personal', 'goal', 'general'];
+const MEMORY_CATEGORIES: MemoryCategory[] = ['motivation', 'obstacle', 'preference', 'personal', 'general'];
 
 export async function extractMemories(
   messages: ExtractMemoriesRequest['messages'],

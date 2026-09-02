@@ -1,7 +1,9 @@
 /* eslint-disable max-lines -- HAB-89: split pending */
 import { z } from 'zod';
+import type { Module } from '@habits-coach/shared';
 import { buildDayContext } from './context.js';
 import type { Db, PlanItemInput } from './db.js';
+import { goalsWithTasks } from './goals.js';
 import {
   buildDayReviewHistory,
   buildHabitHistory,
@@ -21,6 +23,8 @@ export interface HabitronTool<Shape extends z.ZodRawShape = z.ZodRawShape> {
   description: string;
   inputSchema: Shape;
   annotations?: { readOnlyHint?: boolean; destructiveHint?: boolean };
+  /** The module this tool belongs to; off in Profile means the tool is not registered. */
+  module?: Module;
   handler: (args: z.infer<z.ZodObject<Shape>>) => Promise<unknown>;
 }
 
@@ -94,14 +98,7 @@ const prioritySchema = z
 const todoStatusSchema = z.enum(['open', 'completed', 'canceled']);
 const habitStatusSchema = z.enum(['pending', 'completed', 'skipped']);
 const moodSchema = z.enum(['great', 'good', 'neutral', 'bad', 'terrible']);
-const memoryCategorySchema = z.enum([
-  'motivation',
-  'obstacle',
-  'preference',
-  'personal',
-  'goal',
-  'general',
-]);
+const memoryCategorySchema = z.enum(['motivation', 'obstacle', 'preference', 'personal', 'general']);
 const outcomeSchema = z.enum([
   'planned',
   'completed_as_planned',
@@ -112,20 +109,25 @@ const outcomeSchema = z.enum([
   'not_done',
 ]);
 
-export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
+/** The tool list, less the tools of any module Profile has switched off. */
+export function createTools(
+  db: Db,
+  timezone: string,
+  disabledModules: readonly Module[] = []
+): AnyHabitronTool[] {
   const now = () => today(timezone);
 
-  return [
+  const tools: AnyHabitronTool[] = [
     // ------------------------------------------------------------------ reads
 
     defineTool({
       name: 'get_day_context',
       title: 'Get day context',
       description:
-        'The planning packet for one day: local now, tasks (scheduled for the date, overdue, due soon, unscheduled), active habits with completion signal, the active accepted plan, desired habits with their stand-in resolved, recent journal entries, memories, and a summary of how the last 14 days of plans went. It also carries `scorecard` — the day already counted, so never recompute plan adherence, habit counts or minutes yourself — and `review`, the day\'s rating row if one exists. Call this first before planning, replanning, or reviewing a day.',
+        'The planning packet for one day: local now, tasks (scheduled for the date, overdue, due soon, unscheduled), active habits with completion signal, the active accepted plan, desired habits with their stand-in resolved, the open goals with days left and task progress, recent journal entries, memories, and a summary of how the last 14 days of plans went. It also carries `scorecard` — the day already counted, so never recompute plan adherence, habit counts or minutes yourself — and `review`, the day\'s rating row if one exists. Call this first before planning, replanning, or reviewing a day.',
       inputSchema: { date: dateSchema.optional().describe('Defaults to today') },
       annotations: { readOnlyHint: true },
-      handler: ({ date }) => buildDayContext(db, timezone, date ?? now()),
+      handler: ({ date }) => buildDayContext(db, timezone, date ?? now(), disabledModules),
     }),
 
     defineTool({
@@ -280,7 +282,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'create_task',
       title: 'Create task',
       description:
-        'Create a task in the inbox, or in a list via listId/listName. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
+        'Create a task in the inbox, or in a list via listId/listName. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category, and a goalId when it moves a goal; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -290,6 +292,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.optional(),
         estimateMinutes: z.int().positive().optional(),
         tagId: z.uuid().optional().describe('Category; see list_tags'),
+        goalId: z.uuid().optional().describe('The goal this task moves; see list_goals'),
         listId: z.uuid().optional().describe('List; see list_lists. Defaults to the inbox'),
         listName: z
           .string()
@@ -321,7 +324,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       name: 'update_task',
       title: 'Update task',
       description:
-        'Edit, schedule, reschedule, unschedule, re-categorise, or move a task between lists. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
+        'Edit, schedule, reschedule, unschedule, re-categorise, link to a goal, or move a task between lists. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
       inputSchema: {
         id: z.uuid(),
         title: z.string().min(1).optional(),
@@ -332,6 +335,7 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
         scheduledTime: timeSchema.nullable().optional(),
         estimateMinutes: z.int().positive().nullable().optional(),
         tagId: z.uuid().nullable().optional().describe('Category; see list_tags. null clears it'),
+        goalId: z.uuid().nullable().optional().describe('The goal this task moves; see list_goals. null unlinks it'),
         listId: z.uuid().optional().describe('Move to this list; see list_lists'),
         listName: z
           .string()
@@ -587,6 +591,76 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       },
     }),
 
+    // ------------------------------------------------------------------ goals
+
+    defineTool({
+      name: 'list_goals',
+      title: 'List goals',
+      description:
+        'Every open goal — what it is, how the user will know it is done (measure), the target date with daysLeft, when it was last reviewed — with the tasks pointing at it. get_day_context already carries the open goals with task counts; call this for the task list itself, or with includeDone for the finished ones.',
+      inputSchema: { includeDone: z.boolean().optional().describe('Also the goals already done') },
+      annotations: { readOnlyHint: true },
+      module: 'goals',
+      handler: async ({ includeDone }) => {
+        const [goals, tasks] = await Promise.all([db.listGoals(), db.listAllTasks()]);
+        return { goals: goalsWithTasks(goals, tasks, now(), includeDone ?? false) };
+      },
+    }),
+
+    defineTool({
+      name: 'create_goal',
+      title: 'Create goal',
+      description:
+        'Set a goal: an outcome that ends. title is what, measure is how the user will know it is done, targetDate is by when — all three are required, and a goal without a date is a wish that belongs in conversation, not here. Ask before creating one the user did not state.',
+      inputSchema: {
+        title: z.string().min(1),
+        measure: z.string().min(1).describe("How they'll know it's done"),
+        targetDate: dateSchema,
+      },
+      module: 'goals',
+      handler: (input) => db.createGoal(input),
+    }),
+
+    defineTool({
+      name: 'update_goal',
+      title: 'Update goal',
+      description:
+        'Reword a goal, change its measure or move its date. Only the fields you pass are written. reviewed: true stamps the goal as reviewed now — call it once per goal at the end of its turn in a goals review, and only for goals actually discussed.',
+      inputSchema: {
+        id: z.uuid(),
+        title: z.string().min(1).optional(),
+        measure: z.string().min(1).optional(),
+        targetDate: dateSchema.optional(),
+        reviewed: z.literal(true).optional().describe('Stamp reviewedAt to now'),
+      },
+      module: 'goals',
+      handler: ({ id, reviewed, ...patch }) =>
+        db.updateGoal(id, { ...patch, ...(reviewed ? { reviewedAt: new Date().toISOString() } : {}) }),
+    }),
+
+    defineTool({
+      name: 'complete_goal',
+      title: 'Complete goal',
+      description: 'Mark a goal done, now. Its tasks are untouched. Reopening happens in the app.',
+      inputSchema: { id: z.uuid() },
+      module: 'goals',
+      handler: ({ id }) => db.updateGoal(id, { completedAt: new Date().toISOString() }),
+    }),
+
+    defineTool({
+      name: 'delete_goal',
+      title: 'Delete goal',
+      description:
+        'Delete a goal the user no longer wants. Its tasks stay, unlinked. Destructive: confirm with the user before calling.',
+      inputSchema: { id: z.uuid() },
+      annotations: { destructiveHint: true },
+      module: 'goals',
+      handler: async ({ id }) => {
+        await db.deleteGoal(id);
+        return { deleted: id };
+      },
+    }),
+
     // ------------------------------------------------------------------ plans
 
     defineTool({
@@ -723,4 +797,6 @@ export function createTools(db: Db, timezone: string): AnyHabitronTool[] {
       },
     }),
   ];
+
+  return tools.filter((tool) => !tool.module || !disabledModules.includes(tool.module));
 }

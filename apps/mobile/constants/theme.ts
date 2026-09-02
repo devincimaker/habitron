@@ -134,7 +134,6 @@ export const CATEGORY_COLORS: Record<string, string> = {
   obstacle: "#F44336",
   preference: "#2196F3",
   personal: "#9C27B0",
-  goal: "#FF9800",
   general: "#607D8B",
 };
 
@@ -143,7 +142,6 @@ export const CATEGORY_LABELS: Record<string, string> = {
   obstacle: "Obstacle",
   preference: "Preference",
   personal: "Personal",
-  goal: "Goal",
   general: "General",
 };
 

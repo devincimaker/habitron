@@ -19,6 +19,7 @@ Once I answer, pick the lane and follow that skill's rules (read its `SKILL.md`;
 - plan / replan / prioritise the day → `plan-day`
 - close out / what happened today → `review-day`
 - how am I doing / patterns / what to change → `review-habits`
+- a goal: how it's going, whether to keep it, what's next for it → `review-goals`
 - task triage ("20 tasks, don't know where to start") → `list_tasks`, then help me clean and prioritise: merge duplicates (`delete_task`), cancel what's dead (`set_task_status`), categorise untagged tasks (`update_task` with `tagId`), schedule the few that matter (`update_task`). Confirm before anything destructive.
 - who am I / what should I be aiming at / "you don't know me well enough" → `first-session` (if the profile was never built) — otherwise just update memories in conversation
 - just talking → listen, reflect back, ask one more question. Offer a lane only when it would actually help.
