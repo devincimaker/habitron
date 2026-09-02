@@ -283,17 +283,28 @@ Org `thrive-aq` (EU region, `https://de.sentry.io`), project id
   "https://de.sentry.io/api/0/organizations/thrive-aq/issues/?query=stage:chat_generation&statsPeriod=24h"`
   then `/api/0/issues/<id>/events/latest/` for the exception and breadcrumbs.
 
-## 15. Conductor
+## 15. Conductor and Orca
 
-Conductor stores repo settings in its own database, not in a repo-level config
-file. Configure once in the Conductor app (Repo settings → Scripts):
+Both drive worktrees through the same two scripts `wt:*` calls, so their
+workspaces and a `pnpm wt:new` worktree are the same thing and appear together
+in `pnpm wt:list`. Only where the wiring lives differs.
+
+**Conductor** stores repo settings in its own database, not in a repo file.
+Configure once in the app (Repo settings → Scripts):
 
 - **Setup script:** `./scripts/setup-worktree.sh`
 - **Archive script:** `./scripts/teardown-worktree.sh`
 - **Run script:** `pnpm dev`
 
-Both scripts are the same ones `wt:*` calls, so a Conductor workspace and a
-`pnpm wt:new` worktree are the same thing and appear together in `pnpm wt:list`.
+**Orca** reads `orca.yaml` at the repo root — it is checked in, so there is
+nothing to configure per machine. It runs `setup` on create and `archive` on
+delete, and holds the agent until setup finishes. Setup takes no flags, so an
+Orca workspace lands on the shared database with a simulator; change it in
+place with `pnpm wt:setup --db` or `--no-sim` (§6, §7) rather than recreating
+the workspace. There is no run script: start the app with `pnpm dev` in a
+terminal tab. `orca.yaml` also accepts `defaultTabs` (tabs whose command runs
+automatically on open), `issueCommand` and `worktree.sharedDirectories`; none
+is used here.
 
 ## 16. Unattended work: hunt and autopilot
 

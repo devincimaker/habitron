@@ -1,0 +1,20 @@
+# Orca reads this file; Conductor reads its own database (AGENTS.md §15). Both
+# call the same two scripts, so an Orca workspace and a `pnpm wt:new` worktree
+# are the same thing and appear together in `pnpm wt:list`.
+
+# Setup provisions ports, .env files, a branch DB and a simulator — minutes of
+# work the agent must not run typecheck in front of.
+setupAgentStartupPolicy: wait-for-setup
+
+scripts:
+  # No flags: shared database, simulator built. That is the safe default (§6);
+  # a worktree that needs its own DB or none of the simulator is one idempotent
+  # `pnpm wt:setup --db` / `--no-sim` away, in place.
+  setup: |
+    cd "${ORCA_WORKTREE_PATH:-$PWD}"
+    ./scripts/setup-worktree.sh
+  # Releases the branch database, ports and simulator this worktree claimed.
+  # Must run from inside it — the script refuses the main checkout.
+  archive: |
+    cd "${ORCA_WORKTREE_PATH:-$PWD}"
+    ./scripts/teardown-worktree.sh
