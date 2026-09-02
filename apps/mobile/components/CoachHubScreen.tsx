@@ -36,6 +36,8 @@ import { buildMemoryWarning, sortSessions } from '../utils/coachSessions';
 
 const NEW_SESSION_PILL_HEIGHT = 48;
 
+const reportDeleteFailure = () => Alert.alert('Could not delete the session', 'Please try again.');
+
 export function CoachHubScreen() {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -90,7 +92,7 @@ export function CoachHubScreen() {
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => void deleteSession(session.id),
+          onPress: () => void deleteSession(session.id).catch(reportDeleteFailure),
         },
       ]
     );

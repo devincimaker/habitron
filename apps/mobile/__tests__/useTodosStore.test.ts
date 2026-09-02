@@ -8,12 +8,10 @@ jest.mock('../services/todos', () => ({
   updateTodo: jest.fn(),
   setTodoStatus: jest.fn(),
   setChecklistItemDone: jest.fn(),
-  removeTodo: jest.fn(),
   reorderTodos: jest.fn(),
   createTodoList: jest.fn(),
   updateTodoList: jest.fn(),
   deleteTodoList: jest.fn(),
-  createTodoTag: jest.fn(),
 }));
 
 import * as todosService from '../services/todos';
@@ -182,7 +180,7 @@ describe('useTodosStore selectors', () => {
     (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
     (todosService.getTodoTags as jest.Mock).mockResolvedValue([]);
 
-    const pendingAdd = useTodosStore.getState().addTodoOptimistic({
+    const pendingAdd = useTodosStore.getState().addTodo({
       title: 'Optimistic task',
     });
 
@@ -221,7 +219,7 @@ describe('useTodosStore selectors', () => {
   it('rolls back an optimistic todo if creation fails', async () => {
     (todosService.addTodo as jest.Mock).mockRejectedValue(new Error('network failed'));
 
-    const pendingAdd = useTodosStore.getState().addTodoOptimistic({
+    const pendingAdd = useTodosStore.getState().addTodo({
       title: 'Broken task',
     });
 
@@ -260,7 +258,7 @@ describe('useTodosStore selectors', () => {
       },
     ]);
 
-    const pendingAdd = useTodosStore.getState().addTodoOptimistic({
+    const pendingAdd = useTodosStore.getState().addTodo({
       title: 'Optimistic tagged task',
       tagName: 'girls',
     });
@@ -316,7 +314,7 @@ describe('useTodosStore selectors', () => {
         })
     );
 
-    const pendingStatusUpdate = useTodosStore.getState().setTodoStatusOptimistic(
+    const pendingStatusUpdate = useTodosStore.getState().setTodoStatus(
       baseTodo.id,
       'completed'
     );
@@ -439,7 +437,7 @@ describe('useTodosStore selectors', () => {
 
     (todosService.setTodoStatus as jest.Mock).mockRejectedValue(new Error('status failed'));
 
-    const pendingStatusUpdate = useTodosStore.getState().setTodoStatusOptimistic(
+    const pendingStatusUpdate = useTodosStore.getState().setTodoStatus(
       baseTodo.id,
       'completed'
     );
@@ -460,7 +458,7 @@ describe('useTodosStore selectors', () => {
       () => new Promise<Todo>(() => undefined)
     );
 
-    void useTodosStore.getState().addTodoOptimistic({
+    void useTodosStore.getState().addTodo({
       title: 'Groceries',
       checklist: ['milk', ' eggs ', ''],
     });
@@ -496,7 +494,7 @@ describe('useTodosStore selectors', () => {
       () => new Promise<Todo>(() => undefined)
     );
 
-    void useTodosStore.getState().addTodoOptimistic({
+    void useTodosStore.getState().addTodo({
       title: 'Dune',
       listId: booksList.id,
     });
@@ -506,17 +504,85 @@ describe('useTodosStore selectors', () => {
     );
   });
 
-  it('deletes a list through the service and reloads what moved', async () => {
-    (todosService.deleteTodoList as jest.Mock).mockResolvedValue(undefined);
-    (todosService.getTodos as jest.Mock).mockResolvedValue([baseTodo]);
-    (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
-    (todosService.getTodoTags as jest.Mock).mockResolvedValue([]);
+  it('moves a deleted list\'s tasks to the Inbox before the service answers', async () => {
+    useTodosStore.setState({
+      lists: [baseList, { ...baseList, id: 'list-books', name: 'Books', isInbox: false, sortOrder: 1 }],
+      todos: [
+        { ...baseTodo, id: 'inbox-task', position: 4 },
+        { ...baseTodo, id: 'book-a', listId: 'list-books', position: 0 },
+        { ...baseTodo, id: 'book-b', listId: 'list-books', position: 1 },
+      ],
+    });
+    let settle: () => void = () => undefined;
+    (todosService.deleteTodoList as jest.Mock).mockImplementation(
+      () => new Promise<void>((resolve) => { settle = resolve; })
+    );
 
-    await useTodosStore.getState().deleteTodoList('list-books');
+    const pending = useTodosStore.getState().deleteTodoList('list-books');
 
-    expect(todosService.deleteTodoList).toHaveBeenCalledWith('list-books');
-    expect(todosService.getTodos).toHaveBeenCalled();
     expect(useTodosStore.getState().lists).toEqual([baseList]);
+    expect(useTodosStore.getState().todos.map((todo) => [todo.id, todo.listId, todo.position])).toEqual([
+      ['inbox-task', baseList.id, 4],
+      ['book-a', baseList.id, 5],
+      ['book-b', baseList.id, 6],
+    ]);
+
+    settle();
+    await pending;
+    expect(todosService.getTodos).not.toHaveBeenCalled();
+  });
+
+  it('puts a deleted list back when the service fails', async () => {
+    const books: TodoList = { ...baseList, id: 'list-books', name: 'Books', isInbox: false, sortOrder: 1 };
+    useTodosStore.setState({
+      lists: [baseList, books],
+      todos: [{ ...baseTodo, id: 'book-a', listId: 'list-books' }],
+    });
+    (todosService.deleteTodoList as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    await expect(useTodosStore.getState().deleteTodoList('list-books')).rejects.toThrow('offline');
+
+    expect(useTodosStore.getState().lists).toEqual([baseList, books]);
+    expect(useTodosStore.getState().todos[0].listId).toBe('list-books');
+  });
+
+  it('shows a new list at once and swaps in the server row', async () => {
+    let settle: (list: TodoList) => void = () => undefined;
+    (todosService.createTodoList as jest.Mock).mockImplementation(
+      () => new Promise<TodoList>((resolve) => { settle = resolve; })
+    );
+
+    const pending = useTodosStore.getState().createTodoList('Books', '#123456');
+
+    expect(useTodosStore.getState().lists).toEqual([
+      baseList,
+      expect.objectContaining({ name: 'Books', color: '#123456', isInbox: false, sortOrder: 1 }),
+    ]);
+
+    const created: TodoList = { ...baseList, id: 'list-books', name: 'Books', isInbox: false, sortOrder: 1 };
+    settle(created);
+    await expect(pending).resolves.toEqual(created);
+    expect(useTodosStore.getState().lists).toEqual([baseList, created]);
+  });
+
+  it('drops a new list when the service fails', async () => {
+    (todosService.createTodoList as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    await expect(useTodosStore.getState().createTodoList('Books')).rejects.toThrow('offline');
+
+    expect(useTodosStore.getState().lists).toEqual([baseList]);
+  });
+
+  it('renames a list optimistically and restores the old name on failure', async () => {
+    const books: TodoList = { ...baseList, id: 'list-books', name: 'Books', isInbox: false, sortOrder: 1 };
+    useTodosStore.setState({ lists: [baseList, books] });
+    (todosService.updateTodoList as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    const pending = useTodosStore.getState().updateTodoList('list-books', { name: 'Reading' });
+    expect(useTodosStore.getState().lists[1]).toMatchObject({ name: 'Reading' });
+
+    await expect(pending).rejects.toThrow('offline');
+    expect(useTodosStore.getState().lists[1]).toEqual(books);
   });
 
   it('counts open todos per list', () => {

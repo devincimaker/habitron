@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -76,20 +76,31 @@ export default function JournalScreen() {
   const railReviews = useMemo(() => recentReviews(reviews, today), [reviews, today]);
   const dayGroups = useMemo(() => groupByDay(filteredEntries, today), [filteredEntries, today]);
 
+  const highlightEntry = useCallback((entryId: string) => {
+    setLastSavedEntryId(entryId);
+    if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
+    highlightTimerRef.current = setTimeout(() => {
+      setLastSavedEntryId(null);
+      highlightTimerRef.current = null;
+    }, 2000);
+  }, []);
+
+  // The store shows the entry before the write; the flash follows the server
+  // row, whose id is the one the card carries once it lands.
   const handleSaveEntry = useCallback(
-    async (draft: JournalEntryDraft) => {
-      const savedEntry = composer.entry
-        ? await updateEntry(composer.entry.id, draft)
-        : await addEntry(draft);
+    (draft: JournalEntryDraft) => {
       void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      setLastSavedEntryId(savedEntry.id);
-      if (highlightTimerRef.current) clearTimeout(highlightTimerRef.current);
-      highlightTimerRef.current = setTimeout(() => {
-        setLastSavedEntryId(null);
-        highlightTimerRef.current = null;
-      }, 2000);
+      const write = composer.entry
+        ? updateEntry(composer.entry.id, draft)
+        : addEntry(draft);
+      write
+        .then((savedEntry) => highlightEntry(savedEntry.id))
+        .catch((error: unknown) => {
+          console.warn('Failed to save journal entry:', error);
+          Alert.alert('Could not save the entry', 'Please try again.');
+        });
     },
-    [addEntry, composer.entry, updateEntry]
+    [addEntry, composer.entry, highlightEntry, updateEntry]
   );
 
   const handleOpenDay = useCallback(

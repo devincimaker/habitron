@@ -17,6 +17,14 @@ import { notifyFirstSkip } from '../services/api';
 import { syncHabitSchedules } from '../services/habitSchedules';
 import { syncHabitReminders } from '../services/habitReminders';
 import { getLast7Days } from '../utils/dateUtils';
+import {
+  applyHabitDraft,
+  buildOptimisticHabit,
+  buildOptimisticSection,
+  withLog,
+  withoutHabitLogs,
+  type DateLogs,
+} from '../utils/habitOptimistic';
 import { applyHabitOrder } from '../utils/habitOrder';
 import {
   isHabitDueOnDate,
@@ -24,11 +32,16 @@ import {
   resolveLogForStatus,
 } from '../utils/habitSchedule';
 
+/**
+ * Every write here is optimistic: the store shows the change before the
+ * network call, swaps the server row in when it lands, and puts the old state
+ * back if it fails. Callers alert on the rejection; the store never does.
+ */
 interface HabitsState {
   habits: Habit[];
   sections: HabitSection[];
   selectedDate: string; // YYYY-MM-DD format
-  dateLogs: Map<string, Map<string, HabitLogEntry>>; // date -> (habitId -> log)
+  dateLogs: DateLogs; // date -> (habitId -> log)
   isLoading: boolean;
 
   // Actions
@@ -61,6 +74,10 @@ function syncSchedules(get: () => HabitsState): Promise<void> {
   return syncHabitSchedules(habits, sections, dateLogs.get(getTodayDate()) ?? new Map());
 }
 
+function replaceHabit(habits: Habit[], habitId: string, next: Habit): Habit[] {
+  return habits.map((habit) => (habit.id === habitId ? next : habit));
+}
+
 export const useHabitsStore = create<HabitsState>((set, get) => ({
   habits: [],
   sections: [],
@@ -80,7 +97,7 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
         ...dates.map((date) => habitsService.getLogsForDate(date)),
       ]);
 
-      const dateLogs = new Map<string, Map<string, HabitLogEntry>>();
+      const dateLogs: DateLogs = new Map();
       dates.forEach((date, index) => {
         dateLogs.set(date, logsResults[index]);
       });
@@ -115,13 +132,18 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   },
 
   addHabit: async (draft) => {
+    const optimistic = buildOptimisticHabit(get().habits, draft);
+    set((state) => ({ habits: [...state.habits, optimistic] }));
+    void syncSchedules(get);
+
     try {
       const habit = await habitsService.addHabit(draft);
-      set((state) => ({ habits: [...state.habits, habit] }));
+      set((state) => ({ habits: replaceHabit(state.habits, optimistic.id, habit) }));
       void syncSchedules(get);
       return habit;
     } catch (error) {
-      console.error('Failed to add habit:', error);
+      set((state) => ({ habits: state.habits.filter((habit) => habit.id !== optimistic.id) }));
+      void syncSchedules(get);
       throw error;
     }
   },
@@ -142,109 +164,112 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   },
 
   removeHabit: async (habitId) => {
+    const { habits, dateLogs } = get();
+    set({
+      habits: habits.filter((habit) => habit.id !== habitId),
+      dateLogs: withoutHabitLogs(dateLogs, habitId),
+    });
+    void syncSchedules(get);
+
     try {
       await habitsService.removeHabit(habitId);
-      set((state) => {
-        // Remove from all cached date logs
-        const newDateLogs = new Map(state.dateLogs);
-        for (const [date, logs] of newDateLogs) {
-          if (logs.has(habitId)) {
-            const newLogs = new Map(logs);
-            newLogs.delete(habitId);
-            newDateLogs.set(date, newLogs);
-          }
-        }
-        return {
-          habits: state.habits.filter((h) => h.id !== habitId),
-          dateLogs: newDateLogs,
-        };
-      });
-      void syncSchedules(get);
     } catch (error) {
-      console.error('Failed to remove habit:', error);
+      set({ habits, dateLogs });
+      void syncSchedules(get);
       throw error;
     }
   },
 
   updateHabit: async (habitId, changes) => {
-    try {
-      const current = get().habits.find((habit) => habit.id === habitId);
-      if (!current) {
-        throw new Error(`Habit ${habitId} not found`);
-      }
+    const current = get().habits.find((habit) => habit.id === habitId);
+    if (!current) {
+      throw new Error(`Habit ${habitId} not found`);
+    }
 
-      const draft = withHabitDraftDefaults({ ...habitToDraft(current), ...changes });
-      const updatedHabit = await habitsService.updateHabit(habitId, draft);
-      set((state) => ({
-        habits: state.habits.map((h) =>
-          h.id === habitId ? updatedHabit : h
-        ),
-      }));
+    const draft = { ...habitToDraft(current), ...changes };
+    set((state) => ({ habits: replaceHabit(state.habits, habitId, applyHabitDraft(current, draft)) }));
+    void syncSchedules(get);
+
+    try {
+      const updatedHabit = await habitsService.updateHabit(habitId, withHabitDraftDefaults(draft));
+      set((state) => ({ habits: replaceHabit(state.habits, habitId, updatedHabit) }));
       void syncSchedules(get);
       return updatedHabit;
     } catch (error) {
-      console.error('Failed to update habit:', error);
+      set((state) => ({ habits: replaceHabit(state.habits, habitId, current) }));
+      void syncSchedules(get);
       throw error;
     }
   },
 
-  archiveHabit: async (habitId) => {
-    try {
-      const archivedHabit = await habitsService.archiveHabit(habitId);
-      set((state) => ({
-        habits: state.habits.map((habit) =>
-          habit.id === habitId ? archivedHabit : habit
-        ),
-      }));
-      void syncSchedules(get);
-      return archivedHabit;
-    } catch (error) {
-      console.error('Failed to archive habit:', error);
-      throw error;
-    }
-  },
+  archiveHabit: (habitId) => setActive(set, get, habitId, false),
 
-  restoreHabit: async (habitId) => {
-    try {
-      const restoredHabit = await habitsService.restoreHabit(habitId);
-      set((state) => ({
-        habits: state.habits.map((habit) =>
-          habit.id === habitId ? restoredHabit : habit
-        ),
-      }));
-      void syncSchedules(get);
-      return restoredHabit;
-    } catch (error) {
-      console.error('Failed to restore habit:', error);
-      throw error;
-    }
-  },
+  restoreHabit: (habitId) => setActive(set, get, habitId, true),
 
   addSection: async (name) => {
-    const { sections } = get();
-    const section = await habitsService.addSection(name, sections.length);
-    set({ sections: [...sections, section] });
-    return section;
+    const optimistic = buildOptimisticSection(get().sections, name);
+    set((state) => ({ sections: [...state.sections, optimistic] }));
+
+    try {
+      const section = await habitsService.addSection(name, optimistic.sortOrder);
+      set((state) => ({
+        sections: state.sections.map((current) =>
+          current.id === optimistic.id ? section : current
+        ),
+      }));
+      return section;
+    } catch (error) {
+      set((state) => ({
+        sections: state.sections.filter((current) => current.id !== optimistic.id),
+      }));
+      throw error;
+    }
   },
 
   removeSection: async (sectionId) => {
-    await habitsService.removeSection(sectionId);
-    set((state) => ({
-      sections: state.sections.filter((section) => section.id !== sectionId),
-      habits: state.habits.map((habit) =>
+    const { sections, habits } = get();
+    set({
+      sections: sections.filter((section) => section.id !== sectionId),
+      habits: habits.map((habit) =>
         habit.sectionId === sectionId ? { ...habit, sectionId: undefined } : habit
       ),
-    }));
+    });
     void syncSchedules(get);
+
+    try {
+      await habitsService.removeSection(sectionId);
+    } catch (error) {
+      set({ sections, habits });
+      void syncSchedules(get);
+      throw error;
+    }
   },
 
   updateSection: async (sectionId, draft) => {
-    const section = await habitsService.updateSection(sectionId, draft);
+    const current = get().sections.find((section) => section.id === sectionId);
+    if (!current) {
+      throw new Error(`Section ${sectionId} not found`);
+    }
+
+    const optimistic: HabitSection = { ...current, ...draft, name: draft.name.trim() };
     set((state) => ({
-      sections: state.sections.map((current) => (current.id === sectionId ? section : current)),
+      sections: state.sections.map((section) => (section.id === sectionId ? optimistic : section)),
     }));
     void syncSchedules(get);
-    return section;
+
+    try {
+      const section = await habitsService.updateSection(sectionId, draft);
+      set((state) => ({
+        sections: state.sections.map((item) => (item.id === sectionId ? section : item)),
+      }));
+      void syncSchedules(get);
+      return section;
+    } catch (error) {
+      // The write may have got as far as clearing the old alarm rows, so the
+      // server is the only honest source of what the week is now.
+      await get().loadHabits();
+      throw error;
+    }
   },
 
   setHabitStatus: async (habitId, status) => {
@@ -275,18 +300,44 @@ export const useHabitsStore = create<HabitsState>((set, get) => ({
   },
 }));
 
+type Set = (partial: Partial<HabitsState> | ((state: HabitsState) => Partial<HabitsState>)) => void;
+
+/** Archive and restore are the same write with the flag flipped. */
+async function setActive(
+  set: Set,
+  get: () => HabitsState,
+  habitId: string,
+  active: boolean
+): Promise<Habit> {
+  const current = get().habits.find((habit) => habit.id === habitId);
+  if (!current) {
+    throw new Error(`Habit ${habitId} not found`);
+  }
+
+  set((state) => ({ habits: replaceHabit(state.habits, habitId, { ...current, active }) }));
+  void syncSchedules(get);
+
+  try {
+    const habit = active
+      ? await habitsService.restoreHabit(habitId)
+      : await habitsService.archiveHabit(habitId);
+    set((state) => ({ habits: replaceHabit(state.habits, habitId, habit) }));
+    void syncSchedules(get);
+    return habit;
+  } catch (error) {
+    set((state) => ({ habits: replaceHabit(state.habits, habitId, current) }));
+    void syncSchedules(get);
+    throw error;
+  }
+}
+
 async function writeLog(habitId: string, entry: HabitLogEntry): Promise<void> {
-  const { selectedDate } = useHabitsStore.getState();
+  const { selectedDate, dateLogs } = useHabitsStore.getState();
+  const previous = dateLogs.get(selectedDate)?.get(habitId);
+  useHabitsStore.setState({ dateLogs: withLog(dateLogs, selectedDate, habitId, entry) });
+
   try {
     await habitsService.setHabitLog(habitId, selectedDate, entry);
-    useHabitsStore.setState((state) => {
-      const newDateLogs = new Map(state.dateLogs);
-      const currentLogs = newDateLogs.get(selectedDate) || new Map<string, HabitLogEntry>();
-      const updatedLogs = new Map(currentLogs);
-      updatedLogs.set(habitId, entry);
-      newDateLogs.set(selectedDate, updatedLogs);
-      return { dateLogs: newDateLogs };
-    });
 
     const today = getTodayDate();
     if (selectedDate === today) {
@@ -297,12 +348,15 @@ async function writeLog(habitId: string, entry: HabitLogEntry): Promise<void> {
       // notifications for that habit. It cannot change the alarm plan, which is
       // read from the routines' weeks alone — re-planning here would cancel and
       // re-schedule every AlarmKit alarm on every tap.
-      const { habits, dateLogs } = useHabitsStore.getState();
-      void syncHabitReminders(habits, dateLogs.get(today) ?? new Map());
+      const { habits, dateLogs: current } = useHabitsStore.getState();
+      void syncHabitReminders(habits, current.get(today) ?? new Map());
     }
   } catch (error) {
     console.error('Failed to set habit log:', error);
     Sentry.captureException(error, { tags: { feature: 'habits' } });
+    useHabitsStore.setState((state) => ({
+      dateLogs: withLog(state.dateLogs, selectedDate, habitId, previous),
+    }));
     throw error;
   }
 }

@@ -32,15 +32,14 @@ export default function MemoriesScreen() {
     setEditContent(memory.content);
   }, []);
 
-  const handleSaveEdit = useCallback(async () => {
+  const handleSaveEdit = useCallback(() => {
     if (!editingMemory || !editContent.trim()) return;
-    try {
-      await updateMemory(editingMemory.id, { content: editContent.trim() });
-      setEditingMemory(null);
-      setEditContent('');
-    } catch (error) {
+    const content = editContent.trim();
+    setEditingMemory(null);
+    setEditContent('');
+    void updateMemory(editingMemory.id, { content }).catch(() => {
       Alert.alert('Error', 'Failed to update memory');
-    }
+    });
   }, [editingMemory, editContent, updateMemory]);
 
   const handleCancelEdit = useCallback(() => {
@@ -58,7 +57,10 @@ export default function MemoriesScreen() {
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: () => deleteMemory(memory.id),
+            onPress: () =>
+              void deleteMemory(memory.id).catch(() => {
+                Alert.alert('Error', 'Failed to delete memory');
+              }),
           },
         ]
       );

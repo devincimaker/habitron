@@ -30,7 +30,8 @@ interface JournalEntryModalProps {
   prompt?: string | null;
   autoStartVoice?: boolean;
   onClose: () => void;
-  onSave: (draft: JournalEntryDraft) => Promise<void>;
+  /** The sheet closes as the draft is handed over; the store shows it before the write lands. */
+  onSave: (draft: JournalEntryDraft) => void;
 }
 
 function formatSheetDate(entry?: JournalEntry | null): string {
@@ -57,7 +58,6 @@ export function JournalEntryModal({
   const { keyboardHeight, bottomInset } = useSheetKeyboard();
   const [content, setContent] = useState('');
   const [mood, setMood] = useState<JournalMood | undefined>();
-  const [isSaving, setIsSaving] = useState(false);
   const [placeholderPrompt, setPlaceholderPrompt] = useState(JOURNAL_PROMPTS[0]);
   const allowTranscriptionRef = useRef(true);
   const hasAutoStartedVoiceRef = useRef(false);
@@ -163,17 +163,12 @@ export function JournalEntryModal({
   const handleSave = async () => {
     if (!content.trim()) return;
 
-    setIsSaving(true);
-    try {
-      await onSave({
-        content: content.trim(),
-        mood,
-        source: 'manual',
-      });
-      await forceClose();
-    } finally {
-      setIsSaving(false);
-    }
+    onSave({
+      content: content.trim(),
+      mood,
+      source: 'manual',
+    });
+    await forceClose();
   };
 
   return (
@@ -228,8 +223,7 @@ export function JournalEntryModal({
         <JournalComposerBar
           mood={mood}
           onMoodChange={setMood}
-          canSave={Boolean(content.trim()) && !isSaving}
-          isSaving={isSaving}
+          canSave={Boolean(content.trim())}
           onSave={() => void handleSave()}
           voice={{
             ...voiceInputProps,

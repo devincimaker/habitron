@@ -28,7 +28,7 @@ export interface TaskSheetActions {
 export function useTaskSheetActions(todo: Todo | null, onRemoved: () => void): TaskSheetActions {
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const updateTodo = useTodosStore((state) => state.updateTodo);
-  const setTodoStatusOptimistic = useTodosStore((state) => state.setTodoStatusOptimistic);
+  const setTodoStatus = useTodosStore((state) => state.setTodoStatus);
   const setItemDone = useTodosStore((state) => state.setChecklistItemDone);
   const { removeTodo } = useUndoableTodoRemoval();
   const queue = useRef<Promise<void>>(Promise.resolve());
@@ -76,7 +76,7 @@ export function useTaskSheetActions(todo: Todo | null, onRemoved: () => void): T
 
     void (async () => {
       try {
-        const updated = await setTodoStatusOptimistic(todo.id, nextStatus, options);
+        const updated = await setTodoStatus(todo.id, nextStatus, options);
         await syncTodoPlanOutcome(
           todo.scheduledDate,
           updated.id,
@@ -88,7 +88,7 @@ export function useTaskSheetActions(todo: Todo | null, onRemoved: () => void): T
       }
     })();
     },
-    [setTodoStatusOptimistic, syncTodoPlanOutcome, todo]
+    [setTodoStatus, syncTodoPlanOutcome, todo]
   );
 
   const setChecklistItemDone = useCallback(

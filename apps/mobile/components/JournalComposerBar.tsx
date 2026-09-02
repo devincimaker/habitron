@@ -22,7 +22,6 @@ interface JournalComposerBarProps {
   mood?: JournalMood;
   onMoodChange: (mood: JournalMood | undefined) => void;
   canSave: boolean;
-  isSaving: boolean;
   onSave: () => void;
   voice: VoiceSessionState & {
     onMicPress: () => void;
@@ -38,7 +37,6 @@ export function JournalComposerBar({
   mood,
   onMoodChange,
   canSave,
-  isSaving,
   onSave,
   voice,
   bottomInset,
@@ -86,7 +84,7 @@ export function JournalComposerBar({
             <MicButton onPress={onMicPress} />
 
             <FlatActionButton
-              title={isSaving ? 'Saving...' : 'Save'}
+              title="Save"
               onPress={onSave}
               disabled={!canSave}
               height={CHIP_SIZE}

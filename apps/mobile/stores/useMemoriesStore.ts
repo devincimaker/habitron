@@ -60,27 +60,29 @@ export const useMemoriesStore = create<MemoriesState>((set, get) => ({
   },
 
   updateMemory: async (id, updates) => {
+    const { memories } = get();
+    set({
+      memories: memories.map((m) => (m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m)),
+    });
+
     try {
       await memoriesService.updateMemory(id, updates);
-      set((state) => ({
-        memories: state.memories.map((m) =>
-          m.id === id ? { ...m, ...updates, updatedAt: Date.now() } : m
-        ),
-      }));
     } catch (error) {
       console.error('Failed to update memory:', error);
+      set({ memories });
       throw error;
     }
   },
 
   deleteMemory: async (id) => {
+    const { memories } = get();
+    set({ memories: memories.filter((m) => m.id !== id) });
+
     try {
       await memoriesService.deleteMemory(id);
-      set((state) => ({
-        memories: state.memories.filter((m) => m.id !== id),
-      }));
     } catch (error) {
       console.error('Failed to delete memory:', error);
+      set({ memories });
       throw error;
     }
   },

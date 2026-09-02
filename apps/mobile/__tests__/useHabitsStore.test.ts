@@ -3,10 +3,17 @@ import { useHabitsStore } from '../stores/useHabitsStore';
 import * as habitsService from '../services/habits';
 
 jest.mock('../services/habits', () => ({
+  addHabit: jest.fn(),
   archiveHabit: jest.fn(),
   restoreHabit: jest.fn(),
+  removeHabit: jest.fn(),
   updateHabit: jest.fn(),
+  addSection: jest.fn(),
   setHabitLog: jest.fn(),
+}));
+
+jest.mock('../services/habitSchedules', () => ({
+  syncHabitSchedules: jest.fn().mockResolvedValue(undefined),
 }));
 
 jest.mock('../services/api', () => ({
@@ -183,5 +190,135 @@ describe('useHabitsStore', () => {
         reminderTimes: [],
       })
     );
+  });
+
+  it('shows a check-in before the log is written', async () => {
+    let settle: () => void = () => undefined;
+    (habitsService.setHabitLog as jest.Mock).mockImplementation(
+      () => new Promise<void>((resolve) => { settle = resolve; })
+    );
+
+    const pending = useHabitsStore.getState().setHabitStatus(dueDailyHabit.id, 'completed');
+
+    expect(useHabitsStore.getState().dateLogs.get(today)?.get(dueDailyHabit.id)).toEqual({
+      status: 'completed',
+      amount: 0,
+    });
+
+    settle();
+    await pending;
+  });
+
+  it('puts the old log back when the write fails', async () => {
+    (habitsService.setHabitLog as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    await expect(
+      useHabitsStore.getState().setHabitAmount(waterHabit.id, 8)
+    ).rejects.toThrow('offline');
+
+    expect(useHabitsStore.getState().dateLogs.get(today)?.get(waterHabit.id)).toEqual({
+      status: 'pending',
+      amount: 4,
+    });
+  });
+
+  it('removes a never-logged habit\'s failed check-in rather than leaving a blank', async () => {
+    (habitsService.setHabitLog as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    await expect(
+      useHabitsStore.getState().setHabitStatus(offDayDailyHabit.id, 'completed')
+    ).rejects.toThrow('offline');
+
+    expect(useHabitsStore.getState().dateLogs.get(today)?.has(offDayDailyHabit.id)).toBe(false);
+  });
+
+  it('archives at once and restores the habit if the write fails', async () => {
+    (habitsService.archiveHabit as jest.Mock).mockRejectedValue(new Error('offline'));
+
+    const pending = useHabitsStore.getState().archiveHabit(activeHabit.id);
+    expect(useHabitsStore.getState().habits[0]).toMatchObject({ active: false });
+
+    await expect(pending).rejects.toThrow('offline');
+    expect(useHabitsStore.getState().habits[0]).toEqual(activeHabit);
+  });
+
+  it('shows a new habit at the bottom of its routine and swaps in the server row', async () => {
+    useHabitsStore.setState({ habits: [{ ...activeHabit, sectionId: 'morning', position: 3 }] });
+    let settle: (habit: Habit) => void = () => undefined;
+    (habitsService.addHabit as jest.Mock).mockImplementation(
+      () => new Promise<Habit>((resolve) => { settle = resolve; })
+    );
+
+    const pending = useHabitsStore.getState().addHabit({
+      name: 'Stretch',
+      frequency: 'daily',
+      startDate: today,
+      goalType: 'boolean',
+      checkInMode: 'auto',
+      sectionId: 'morning',
+      reminderTimes: [],
+      constantReminder: false,
+    });
+
+    expect(useHabitsStore.getState().habits[1]).toMatchObject({
+      name: 'Stretch',
+      sectionId: 'morning',
+      position: 4,
+      active: true,
+    });
+
+    const created: Habit = { ...baseHabit, id: 'habit-stretch', name: 'Stretch', sectionId: 'morning', position: 4 };
+    settle(created);
+    await expect(pending).resolves.toEqual(created);
+    expect(useHabitsStore.getState().habits[1]).toEqual(created);
+  });
+
+  it('drops a new habit when the write fails', async () => {
+    (habitsService.addHabit as jest.Mock).mockRejectedValue(new Error('offline'));
+    const before = useHabitsStore.getState().habits;
+
+    await expect(
+      useHabitsStore.getState().addHabit({
+        name: 'Stretch',
+        frequency: 'daily',
+        startDate: today,
+        goalType: 'boolean',
+        checkInMode: 'auto',
+        reminderTimes: [],
+        constantReminder: false,
+      })
+    ).rejects.toThrow('offline');
+
+    expect(useHabitsStore.getState().habits).toEqual(before);
+  });
+
+  it('brings a deleted habit and its logs back when the delete fails', async () => {
+    (habitsService.removeHabit as jest.Mock).mockRejectedValue(new Error('offline'));
+    const before = useHabitsStore.getState();
+
+    const pending = useHabitsStore.getState().removeHabit(activeHabit.id);
+    expect(useHabitsStore.getState().habits.some((habit) => habit.id === activeHabit.id)).toBe(false);
+    expect(useHabitsStore.getState().dateLogs.get(today)?.has(activeHabit.id)).toBe(false);
+
+    await expect(pending).rejects.toThrow('offline');
+    expect(useHabitsStore.getState().habits).toEqual(before.habits);
+    expect(useHabitsStore.getState().dateLogs.get(today)?.get(activeHabit.id)).toEqual(completed);
+  });
+
+  it('shows a new section at once and swaps in the server row', async () => {
+    const created = { id: 'section-evening', name: 'Evening', sortOrder: 0, alarmEnabled: false, alarmByDay: {} };
+    let settle: (section: typeof created) => void = () => undefined;
+    (habitsService.addSection as jest.Mock).mockImplementation(
+      () => new Promise<typeof created>((resolve) => { settle = resolve; })
+    );
+
+    const pending = useHabitsStore.getState().addSection('Evening');
+    expect(useHabitsStore.getState().sections).toEqual([
+      expect.objectContaining({ name: 'Evening', sortOrder: 0 }),
+    ]);
+
+    settle(created);
+    await expect(pending).resolves.toEqual(created);
+    expect(useHabitsStore.getState().sections).toEqual([created]);
   });
 });

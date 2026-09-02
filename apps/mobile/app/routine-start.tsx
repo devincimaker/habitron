@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +19,11 @@ import { formatReminderTime } from '../utils/habitTime';
 /** The splash ink. The takeover is the alarm's screen, not the app's. */
 const INK = '#1C1A17';
 const DONE_DISC = 168;
+
+function reportFailure(error: unknown) {
+  console.warn('Failed to log habit:', error);
+  Alert.alert('Could not save the check-in', 'Please try again.');
+}
 
 /**
  * Where the alarm's **Start** lands: one habit at a time, with a target big
@@ -109,7 +114,7 @@ export default function RoutineStartScreen() {
       <View style={styles.actions}>
         <Pressable
           style={styles.done}
-          onPress={() => void setHabitStatus(current.id, 'completed')}
+          onPress={() => void setHabitStatus(current.id, 'completed').catch(reportFailure)}
           accessibilityRole="button"
           accessibilityLabel={`Mark ${current.name} done`}
         >
@@ -118,7 +123,7 @@ export default function RoutineStartScreen() {
         <Text style={styles.doneCaption}>{`Take your time. Tap when ${current.name} is done.`}</Text>
 
         <Pressable
-          onPress={() => void setHabitStatus(current.id, 'skipped')}
+          onPress={() => void setHabitStatus(current.id, 'skipped').catch(reportFailure)}
           accessibilityRole="button"
           accessibilityLabel={`Skip ${current.name} today`}
           hitSlop={SPACING.sm}
