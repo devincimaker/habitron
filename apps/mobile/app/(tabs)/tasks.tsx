@@ -21,7 +21,7 @@ import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow'
 import { TaskSectionCard } from '../../components/TaskSectionCard';
 import { UndoSnackbar } from '../../components/UndoSnackbar';
 import { BodyMedium, Card } from '../../components/ui';
-import { SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
+import { HEADER, SHADOWS, SPACING, TAB_BAR, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 import { useTaskListDrag } from '../../hooks/useTaskListDrag';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
@@ -131,11 +131,13 @@ export default function TasksScreen() {
           title: 'Tasks',
           headerTitle: activeList?.name ?? 'Inbox',
           headerLeft: () => (
-            <HeaderIconButton
-              name="menu-outline"
-              accessibilityLabel="Open lists"
-              onPress={openDrawer}
-            />
+            <View style={styles.headerLeft}>
+              <HeaderIconButton
+                name="menu-outline"
+                accessibilityLabel="Open lists"
+                onPress={openDrawer}
+              />
+            </View>
           ),
         }}
       />
@@ -256,6 +258,11 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.background,
+  },
+  // The mirror of ProfileHeaderButton's marginRight: a custom headerLeft gets
+  // no inset from the navigator, so without this the control touches the bezel.
+  headerLeft: {
+    marginLeft: HEADER.edgeMargin,
   },
   scroll: {
     flex: 1,
