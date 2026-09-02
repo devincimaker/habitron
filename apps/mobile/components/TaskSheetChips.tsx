@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import type { Todo, TodoList } from '@habits-coach/shared';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import type { Goal, Todo, TodoList } from '@habits-coach/shared';
 import { TodoTagPill } from './TodoTagPill';
 import { Caption } from './ui';
 import {
@@ -15,7 +15,10 @@ interface TaskSheetChipsProps {
   todo: Todo;
   /** The task's list; the chip shows only for a list that is not the Inbox. */
   list?: TodoList;
+  /** The goal the task serves, when it serves one and the module is on. */
+  goal?: Goal;
   onPressTag: () => void;
+  onPressGoal?: () => void;
   onPressList: () => void;
   onPressEstimate: () => void;
 }
@@ -28,7 +31,9 @@ interface TaskSheetChipsProps {
 export function TaskSheetChips({
   todo,
   list,
+  goal,
   onPressTag,
+  onPressGoal,
   onPressList,
   onPressEstimate,
 }: TaskSheetChipsProps) {
@@ -36,7 +41,7 @@ export function TaskSheetChips({
 
   const shownList = list && !list.isInbox ? list : undefined;
   const { estimateMinutes, actualMinutes } = todo;
-  if (!todo.tag && !shownList && estimateMinutes === undefined) return null;
+  if (!todo.tag && !shownList && !goal && estimateMinutes === undefined) return null;
 
   // A finished task reads its actual against the estimate, in the row's colours.
   const delta =
@@ -61,6 +66,20 @@ export function TaskSheetChips({
         >
           <View style={[styles.listDot, { backgroundColor: shownList.color ?? colors.textLight }]} />
           <Caption color={colors.textSecondary}>{shownList.name}</Caption>
+        </Pressable>
+      ) : null}
+
+      {goal ? (
+        <Pressable
+          style={styles.listChip}
+          onPress={onPressGoal}
+          accessibilityRole="button"
+          accessibilityLabel={`Goal ${goal.title}. Change it`}
+        >
+          <Feather name="target" size={12} color={colors.primary} />
+          <Caption color={colors.textSecondary} numberOfLines={1}>
+            {goal.title}
+          </Caption>
         </Pressable>
       ) : null}
 
@@ -89,6 +108,7 @@ const createStyles = (colors: Colors) =>
   StyleSheet.create({
     row: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       alignItems: 'center',
       gap: SPACING.sm,
     },

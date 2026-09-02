@@ -3,9 +3,6 @@ import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 're
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ChecklistItem, ChecklistItemDraft, Priority } from '@habits-coach/shared';
-import { DatePickerModal } from '../../components/DatePickerModal';
-import { TaskDateActionsPopup } from '../../components/TaskDateActionsPopup';
-import { TaskEstimateDialog } from '../../components/TaskEstimateDialog';
 import { TaskQuickCreatePopover } from '../../components/TaskQuickCreatePopover';
 import { TaskSheetBottomBar } from '../../components/TaskSheetBottomBar';
 import { TaskSheetChecklist } from '../../components/TaskSheetChecklist';
@@ -13,14 +10,20 @@ import { TaskSheetActualAsk } from '../../components/TaskSheetActualAsk';
 import { TaskSheetChips } from '../../components/TaskSheetChips';
 import { TaskSheetDateLine } from '../../components/TaskSheetDateLine';
 import { TaskSheetHeader } from '../../components/TaskSheetHeader';
+import { TaskSheetModals, type TaskSheetModal } from '../../components/TaskSheetModals';
 import { TaskSheetTextField } from '../../components/TaskSheetTextField';
-import { TimePickerModal } from '../../components/TimePickerModal';
 import { useTaskSheetActions } from '../../hooks/useTaskSheetActions';
+import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
+import { useModuleEnabled } from '../../hooks/useModuleEnabled';
+import { isGoalOpen } from '../../utils/goals';
 import { SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
-type Picker = 'priority' | 'tag' | 'list' | 'dateActions' | 'datePicker' | 'time' | 'estimate' | null;
+type Picker = 'priority' | 'tag' | 'list' | 'goal' | TaskSheetModal | null;
+
+const MODALS: readonly Picker[] = ['dateActions', 'datePicker', 'time', 'estimate'];
+const isModal = (picker: Picker): picker is TaskSheetModal => MODALS.includes(picker);
 
 /**
  * The checklist as a draft, so one item's edit can be sent as the whole list.
@@ -45,6 +48,8 @@ export default function TaskDetailSheet() {
   const todo = useTodosStore((state) => state.todos.find((item) => item.id === id) ?? null);
   const tags = useTodosStore((state) => state.tags);
   const lists = useTodosStore((state) => state.lists);
+  const goalsEnabled = useModuleEnabled('goals');
+  const goals = useGoalsStore((state) => state.goals);
 
   const dismiss = useCallback(() => router.back(), [router]);
   const { save, toggleStatus, setChecklistItemDone, remove } = useTaskSheetActions(todo, dismiss);
@@ -60,6 +65,7 @@ export default function TaskDetailSheet() {
   const flagRef = useRef<View>(null);
   const categoryRef = useRef<View>(null);
   const listRef = useRef<View>(null);
+  const goalRef = useRef<View>(null);
 
   const checklist = useMemo(() => todo?.checklist ?? [], [todo?.checklist]);
   const hasChecklist = checklist.length > 0;
@@ -180,7 +186,9 @@ export default function TaskDetailSheet() {
           <TaskSheetChips
             todo={todo}
             list={lists.find((list) => list.id === todo.listId)}
+            goal={goalsEnabled ? goals.find((goal) => goal.id === todo.goalId) : undefined}
             onPressTag={() => setPicker('tag')}
+            onPressGoal={() => setPicker('goal')}
             onPressList={() => setPicker('list')}
             onPressEstimate={() => setPicker('estimate')}
           />
@@ -190,9 +198,11 @@ export default function TaskDetailSheet() {
           <TaskSheetBottomBar
             categoryRef={categoryRef}
             listRef={listRef}
+            goalRef={goalRef}
             hasChecklist={hasChecklist}
             onPressCategory={() => setPicker('tag')}
             onPressList={() => setPicker('list')}
+            onPressGoal={goalsEnabled ? () => setPicker('goal') : undefined}
             onPressEstimate={() => setPicker('estimate')}
             onPressChecklist={() => setShowChecklist(true)}
           />
@@ -232,6 +242,25 @@ export default function TaskDetailSheet() {
           />
         ) : null}
 
+        {picker === 'goal' ? (
+          <TaskQuickCreatePopover
+            anchorRef={goalRef}
+            containerRef={sheetRef}
+            onClose={closePicker}
+            content={{
+              kind: 'goals',
+              // A done goal takes no new tasks; the one this task already
+              // serves stays offered so the tick has something to sit on.
+              goals: goals.filter((goal) => isGoalOpen(goal) || goal.id === todo.goalId),
+              selectedId: todo.goalId,
+              onSelect: (goalId) => {
+                closePicker();
+                if (goalId !== todo.goalId) save({ goalId });
+              },
+            }}
+          />
+        ) : null}
+
         {picker === 'tag' ? (
           <TaskQuickCreatePopover
             anchorRef={categoryRef}
@@ -254,59 +283,13 @@ export default function TaskDetailSheet() {
         ) : null}
       </View>
 
-      <TaskDateActionsPopup
-        visible={picker === 'dateActions'}
-        selectedDate={todo.scheduledDate}
-        onSelectDate={(scheduledDate) => {
-          closePicker();
-          saveSchedule({ scheduledDate, scheduledTime: todo.scheduledTime });
-        }}
-        onPickDate={() => setPicker('datePicker')}
-        onClear={() => {
-          closePicker();
-          saveSchedule({});
-        }}
+      <TaskSheetModals
+        todo={todo}
+        open={picker && isModal(picker) ? picker : null}
+        onOpen={setPicker}
         onClose={closePicker}
-      />
-
-      <DatePickerModal
-        visible={picker === 'datePicker'}
-        title="Schedule"
-        value={todo.scheduledDate}
-        showQuickOptions
-        onCancel={closePicker}
-        onDone={(scheduledDate) => {
-          closePicker();
-          saveSchedule({ scheduledDate, scheduledTime: todo.scheduledTime });
-        }}
-      />
-
-      <TimePickerModal
-        visible={picker === 'time'}
-        value={todo.scheduledTime}
-        onCancel={closePicker}
-        onDone={(scheduledTime) => {
-          closePicker();
-          saveSchedule({ scheduledDate: todo.scheduledDate, scheduledTime });
-        }}
-        onClear={
-          todo.scheduledTime
-            ? () => {
-                closePicker();
-                saveSchedule({ scheduledDate: todo.scheduledDate });
-              }
-            : undefined
-        }
-      />
-
-      <TaskEstimateDialog
-        visible={picker === 'estimate'}
-        minutes={todo.estimateMinutes}
-        onCancel={closePicker}
-        onDone={(estimateMinutes) => {
-          closePicker();
-          save({ estimateMinutes });
-        }}
+        onSaveSchedule={saveSchedule}
+        onSaveEstimate={(estimateMinutes) => save({ estimateMinutes })}
       />
     </KeyboardAvoidingView>
   );

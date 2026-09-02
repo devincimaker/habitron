@@ -1,26 +1,32 @@
 import { supabase } from './supabase';
-import type { Goal, GoalDraft, GoalStatus, Priority } from '@habits-coach/shared';
+import type { Goal, GoalDraft } from '@habits-coach/shared';
 
 interface DbGoal {
   id: string;
   user_id: string;
   title: string;
-  description: string | null;
-  status: GoalStatus;
-  priority: Priority | null;
-  target_date: string | null;
+  measure: string;
+  target_date: string;
+  completed_at: string | null;
+  reviewed_at: string | null;
   created_at: string;
   updated_at: string;
+}
+
+/** Everything the app writes: the draft, plus done, which the sheet toggles. */
+export interface GoalChanges extends Partial<GoalDraft> {
+  /** `null` reopens the goal. */
+  completedAt?: number | null;
 }
 
 function mapDbGoalToGoal(dbGoal: DbGoal): Goal {
   return {
     id: dbGoal.id,
     title: dbGoal.title,
-    description: dbGoal.description ?? undefined,
-    status: dbGoal.status,
-    priority: dbGoal.priority ?? undefined,
-    targetDate: dbGoal.target_date ?? undefined,
+    measure: dbGoal.measure,
+    targetDate: dbGoal.target_date,
+    completedAt: dbGoal.completed_at ? new Date(dbGoal.completed_at).getTime() : undefined,
+    reviewedAt: dbGoal.reviewed_at ? new Date(dbGoal.reviewed_at).getTime() : undefined,
     createdAt: new Date(dbGoal.created_at).getTime(),
     updatedAt: new Date(dbGoal.updated_at).getTime(),
   };
@@ -42,7 +48,7 @@ export async function getGoals(): Promise<Goal[]> {
   const { data, error } = await supabase
     .from('goals')
     .select('*')
-    .order('created_at', { ascending: true });
+    .order('target_date', { ascending: true });
 
   if (error) {
     console.error('Error fetching goals:', error);
@@ -60,10 +66,8 @@ export async function addGoal(goal: GoalDraft): Promise<Goal> {
     .insert({
       user_id: userId,
       title: goal.title,
-      description: goal.description ?? null,
-      status: goal.status ?? 'active',
-      priority: goal.priority ?? null,
-      target_date: goal.targetDate ?? null,
+      measure: goal.measure,
+      target_date: goal.targetDate,
     })
     .select()
     .single();
@@ -76,22 +80,15 @@ export async function addGoal(goal: GoalDraft): Promise<Goal> {
   return mapDbGoalToGoal(data as DbGoal);
 }
 
-export async function updateGoal(
-  goalId: string,
-  changes: Partial<GoalDraft>
-): Promise<Goal> {
+export async function updateGoal(goalId: string, changes: GoalChanges): Promise<Goal> {
   const updateData: Partial<DbGoal> = {};
 
   if (changes.title !== undefined) updateData.title = changes.title;
-  if (changes.description !== undefined) {
-    updateData.description = changes.description ?? null;
-  }
-  if (changes.status !== undefined) updateData.status = changes.status;
-  if (changes.priority !== undefined) {
-    updateData.priority = changes.priority ?? null;
-  }
-  if (changes.targetDate !== undefined) {
-    updateData.target_date = changes.targetDate ?? null;
+  if (changes.measure !== undefined) updateData.measure = changes.measure;
+  if (changes.targetDate !== undefined) updateData.target_date = changes.targetDate;
+  if (changes.completedAt !== undefined) {
+    updateData.completed_at =
+      changes.completedAt === null ? null : new Date(changes.completedAt).toISOString();
   }
 
   const { data, error } = await supabase
@@ -109,6 +106,11 @@ export async function updateGoal(
   return mapDbGoalToGoal(data as DbGoal);
 }
 
-export async function archiveGoal(goalId: string): Promise<Goal> {
-  return updateGoal(goalId, { status: 'archived' });
+export async function deleteGoal(goalId: string): Promise<void> {
+  const { error } = await supabase.from('goals').delete().eq('id', goalId);
+
+  if (error) {
+    console.error('Error deleting goal:', error);
+    throw error;
+  }
 }

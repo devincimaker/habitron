@@ -6,6 +6,8 @@ import { Feather } from '@expo/vector-icons';
 import { useAuthStore } from '../../stores/useAuthStore';
 import { useMemoriesStore } from '../../stores/useMemoriesStore';
 import { useProfileStore } from '../../stores/useProfileStore';
+import { useGoalsStore } from '../../stores/useGoalsStore';
+import { isGoalOpen } from '../../utils/goals';
 import { Button, Input, Avatar, HeadingLarge, BodyMedium, Caption } from '../../components/ui';
 import { SPACING, BORDER_RADIUS, TYPOGRAPHY, TAB_BAR, TOUCH_TARGET, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
@@ -16,7 +18,10 @@ export default function ProfileScreen() {
   const insets = useSafeAreaInsets();
   const { user, signOut } = useAuthStore();
   const { memories, loadMemories } = useMemoriesStore();
-  const { name, dailyReminderEnabled, updateName, updateDailyReminder } = useProfileStore();
+  const { name, dailyReminderEnabled, disabledModules, updateName, updateDailyReminder, setModuleEnabled } =
+    useProfileStore();
+  const openGoalCount = useGoalsStore((state) => state.goals.filter(isGoalOpen).length);
+  const goalsEnabled = !disabledModules.includes('goals');
 
   const [isEditingName, setIsEditingName] = useState(false);
   const [editingNameValue, setEditingNameValue] = useState('');
@@ -75,6 +80,15 @@ export default function ProfileScreen() {
     }
   }, [updateDailyReminder]);
 
+  // Off hides the goals screens, chips and coach context; the goals themselves stay.
+  const handleToggleGoals = useCallback(
+    async (enabled: boolean) => {
+      const { error } = await setModuleEnabled('goals', enabled);
+      if (error) Alert.alert('Error', 'Failed to update modules');
+    },
+    [setModuleEnabled]
+  );
+
   return (
     <View style={styles.container}>
       <View style={[styles.content, { paddingBottom: TAB_BAR.height + insets.bottom + SPACING.lg }]}>
@@ -116,6 +130,28 @@ export default function ProfileScreen() {
               value={dailyReminderEnabled}
               onValueChange={handleToggleReminder}
               trackColor={{ false: colors.border, true: colors.primary }}
+            />
+          </View>
+
+          <View style={[styles.menuRow, { marginTop: SPACING.sm }]}>
+            <View style={styles.menuRowLeft}>
+              <Feather name="target" size={20} color={colors.text} style={styles.menuIcon} />
+              <View>
+                <BodyMedium>Goals</BodyMedium>
+                <Caption style={styles.menuHint}>
+                  {goalsEnabled
+                    ? openGoalCount > 0
+                      ? `${openGoalCount} open · the coach plans toward them`
+                      : 'The coach plans toward them'
+                    : 'Off. Hidden, and out of the coach’s context'}
+                </Caption>
+              </View>
+            </View>
+            <Switch
+              value={goalsEnabled}
+              onValueChange={(enabled) => void handleToggleGoals(enabled)}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              accessibilityLabel="Goals module"
             />
           </View>
 
@@ -235,6 +271,10 @@ const createStyles = (colors: Colors) => StyleSheet.create({
   menuCount: {
     color: colors.textSecondary,
     marginRight: SPACING.xs,
+  },
+  menuHint: {
+    color: colors.textSecondary,
+    marginTop: 2,
   },
   // Actions
   actions: {

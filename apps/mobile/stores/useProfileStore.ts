@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { Module } from '@habits-coach/shared';
 import * as Sentry from '@sentry/react-native';
 import { supabase } from '../services/supabase';
 import { useAuthStore } from './useAuthStore';
@@ -13,6 +14,8 @@ export type ProfileLoadStatus = 'idle' | 'loading' | 'ready' | 'error';
 interface ProfileState {
   name: string | null;
   dailyReminderEnabled: boolean;
+  /** Modules switched off in Profile. Off hides the feature; its data stays. */
+  disabledModules: Module[];
   loadStatus: ProfileLoadStatus;
   isSaving: boolean;
 
@@ -20,6 +23,7 @@ interface ProfileState {
   loadProfile: () => Promise<void>;
   updateName: (name: string) => Promise<{ error: Error | null }>;
   updateDailyReminder: (enabled: boolean) => Promise<{ error: Error | null }>;
+  setModuleEnabled: (module: Module, enabled: boolean) => Promise<{ error: Error | null }>;
   reset: () => void;
 }
 
@@ -30,7 +34,7 @@ function sessionUserId(): string | null {
 
 async function upsertProfile(
   userId: string,
-  fields: { name?: string; daily_reminder_enabled?: boolean }
+  fields: { name?: string; daily_reminder_enabled?: boolean; disabled_modules?: Module[] }
 ): Promise<Error | null> {
   try {
     const { error } = await supabase
@@ -45,6 +49,7 @@ async function upsertProfile(
 export const useProfileStore = create<ProfileState>((set, get) => ({
   name: null,
   dailyReminderEnabled: true,
+  disabledModules: [],
   loadStatus: 'idle',
   isSaving: false,
 
@@ -55,7 +60,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       const userId = sessionUserId();
       if (!userId) {
         // Signed out: routing sends this to login, not onboarding.
-        set({ name: null, dailyReminderEnabled: true, loadStatus: 'ready' });
+        set({ name: null, dailyReminderEnabled: true, disabledModules: [], loadStatus: 'ready' });
         return;
       }
 
@@ -63,7 +68,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       // so any error here is a real failure.
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('name, daily_reminder_enabled')
+        .select('name, daily_reminder_enabled, disabled_modules')
         .eq('user_id', userId)
         .maybeSingle();
 
@@ -74,6 +79,7 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
       set({
         name: data?.name ?? null,
         dailyReminderEnabled: data?.daily_reminder_enabled ?? true,
+        disabledModules: data?.disabled_modules ?? [],
         loadStatus: 'ready',
       });
     } catch (error) {
@@ -114,7 +120,34 @@ export const useProfileStore = create<ProfileState>((set, get) => ({
     return { error };
   },
 
+  setModuleEnabled: async (module, enabled) => {
+    const userId = sessionUserId();
+    if (!userId) {
+      return { error: new Error('Not authenticated') };
+    }
+
+    const current = get().disabledModules;
+    const disabledModules = enabled
+      ? current.filter((entry) => entry !== module)
+      : current.includes(module)
+        ? current
+        : [...current, module];
+    // The switch flips at once; a failed write flips it back.
+    set({ disabledModules });
+    const error = await upsertProfile(userId, { disabled_modules: disabledModules });
+    if (error) {
+      set({ disabledModules: current });
+    }
+    return { error };
+  },
+
   reset: () => {
-    set({ name: null, dailyReminderEnabled: true, loadStatus: 'idle', isSaving: false });
+    set({
+      name: null,
+      dailyReminderEnabled: true,
+      disabledModules: [],
+      loadStatus: 'idle',
+      isSaving: false,
+    });
   },
 }));

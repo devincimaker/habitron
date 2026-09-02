@@ -27,6 +27,7 @@ loadEnv({ override: true });
 const FIXTURE_TABLES = [
   'todo_checklist_items',
   'todos',
+  'goals',
   'todo_tags',
   'todo_lists',
   'habit_logs',
@@ -89,6 +90,23 @@ for (const tag of fixtures.tags) {
   tagId.set(tag.name, created.id);
 }
 
+step(`Writing ${fixtures.goals.length} goals`);
+const { data: goalRows, error: goalError } = await supabase
+  .from('goals')
+  .insert(
+    fixtures.goals.map((goal) => ({
+      user_id: user.id,
+      title: goal.title,
+      measure: goal.measure,
+      target_date: goal.targetDate,
+      completed_at: goal.completedAt ?? null,
+      reviewed_at: goal.reviewedAt ?? null,
+    }))
+  )
+  .select('id, title');
+if (goalError) throw new Error(`Failed to write goals: ${goalError.message}`);
+const goalId = new Map((goalRows ?? []).map((row) => [row.title as string, row.id as string]));
+
 step(`Writing ${fixtures.tasks.length} tasks around ${day}`);
 for (const task of fixtures.tasks) {
   const created = await habitron.db.createTask({
@@ -102,6 +120,12 @@ for (const task of fixtures.tasks) {
   });
   if (task.status === 'completed') {
     await habitron.db.setTaskStatus(created.id, 'completed', { completedAt: task.completedAt });
+  }
+  if (task.goal) {
+    const id = goalId.get(task.goal);
+    if (!id) throw new Error(`No goal named ${task.goal} to link to`);
+    const { error } = await supabase.from('todos').update({ goal_id: id }).eq('id', created.id);
+    if (error) throw new Error(`Failed to link ${task.title} to its goal: ${error.message}`);
   }
 }
 
@@ -169,7 +193,10 @@ for (const entry of fixtures.journal) {
 step('Writing the profile');
 const { error: profileError } = await supabase
   .from('user_profiles')
-  .upsert({ user_id: user.id, name: fixtures.profile.name }, { onConflict: 'user_id' });
+  .upsert(
+    { user_id: user.id, name: fixtures.profile.name, disabled_modules: [] },
+    { onConflict: 'user_id' }
+  );
 if (profileError) throw new Error(`Failed to write the profile: ${profileError.message}`);
 
 step('Reading it back');

@@ -20,6 +20,16 @@ interface SeedTask {
   checklist?: string[];
   /** Names a tag in `tags`; the chip on a compact row is drawn from its colour. */
   tag?: string;
+  /** Names a goal in `goals` the task serves; most tasks serve none. */
+  goal?: string;
+}
+
+interface SeedGoal {
+  title: string;
+  measure: string;
+  targetDate: string;
+  completedAt?: string;
+  reviewedAt?: string;
 }
 
 interface SeedTag {
@@ -59,6 +69,7 @@ interface SeedJournalEntry {
 }
 
 export interface SeedFixtures {
+  goals: SeedGoal[];
   tasks: SeedTask[];
   tags: SeedTag[];
   sections: { name: string; sortOrder: number }[];
@@ -90,19 +101,43 @@ export function buildFixtures(today: string): SeedFixtures {
     { name: 'errands', color: '#26A69A' },
   ];
 
+  // One open goal reviewed this week, one whose review is overdue, one done —
+  // so the list, the review card and the detail screen each have a state to show.
+  const goals: SeedGoal[] = [
+    {
+      title: 'Ship the app to the App Store',
+      measure: 'Listed on the store, and a stranger can install it',
+      targetDate: day(60),
+      reviewedAt: at(day(-10), '18:00'),
+    },
+    {
+      title: 'Run a half marathon',
+      measure: 'Cross the finish line of a 21 km race, any time',
+      targetDate: day(180),
+      reviewedAt: at(day(-3), '18:00'),
+    },
+    {
+      title: 'Pass the driving theory test',
+      measure: 'The certificate in hand',
+      targetDate: day(-30),
+      completedAt: at(day(-12), '14:00'),
+      reviewedAt: at(day(-14), '18:00'),
+    },
+  ];
+
   const tasks: SeedTask[] = [
     // Overdue: open, due in the past, and scheduled — all three are what the
     // Calendar tab's overdue partition requires.
     { title: 'Renew car insurance', dueDate: day(-2), scheduledDate: day(-2), status: 'open', priority: 1, tag: 'admin' },
     { title: 'Call the dentist', dueDate: day(-1), scheduledDate: day(-1), status: 'open', tag: 'health' },
     // Today, open
-    { title: 'Write weekly review', dueDate: today, scheduledDate: today, status: 'open', estimateMinutes: 30, tag: 'work' },
+    { title: 'Write weekly review', dueDate: today, scheduledDate: today, status: 'open', estimateMinutes: 30, tag: 'work', goal: 'Ship the app to the App Store' },
     { title: 'Buy oat milk', dueDate: today, scheduledDate: today, status: 'open', checklist: ['oat milk', 'bananas'], tag: 'errands' },
     // Today, completed
     { title: 'Pay electricity bill', dueDate: today, scheduledDate: today, status: 'completed', completedAt: at(today, '09:10') },
-    { title: 'Book flights', dueDate: today, scheduledDate: today, status: 'completed', completedAt: at(today, '11:40') },
+    { title: 'Book flights', dueDate: today, scheduledDate: today, status: 'completed', completedAt: at(today, '11:40'), goal: 'Run a half marathon' },
     // Tomorrow
-    { title: 'Plan next sprint', dueDate: day(1), scheduledDate: day(1), status: 'open' },
+    { title: 'Plan next sprint', dueDate: day(1), scheduledDate: day(1), status: 'open', goal: 'Ship the app to the App Store' },
     // Undated: only the Tasks tab shows these
     { title: 'Groceries', dueDate: null, scheduledDate: null, status: 'open' },
     { title: 'Read 20 pages', dueDate: null, scheduledDate: null, status: 'completed', completedAt: at(day(-3), '20:00') },
@@ -134,6 +169,7 @@ export function buildFixtures(today: string): SeedFixtures {
   ];
 
   return {
+    goals,
     tasks,
     tags,
     sections: [
