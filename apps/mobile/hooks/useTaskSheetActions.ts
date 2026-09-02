@@ -38,12 +38,13 @@ export function useTaskSheetActions(todo: Todo | null, onRemoved: () => void): T
       if (!todo) return;
       const todoId = todo.id;
 
-      // Saves run one at a time. Each one writes a whole field, and the store
-      // only holds the new value once the round trip returns — so two in flight
-      // together let the older response overwrite the newer one, and two
-      // checklist edits, which each send the entire list, lose whichever item
-      // the other just added. Queueing is also what makes the function form of
-      // `changes` reliable: it reads the task after the previous write landed.
+      // Saves run one at a time. The store shows each edit optimistically, but
+      // every write still ends by swapping the server's row in — so two in
+      // flight together let the older response overwrite the newer edit, and
+      // two checklist edits, which each send the entire list, lose whichever
+      // item the other just added. Queueing is also what makes the function
+      // form of `changes` reliable: it reads the task after the previous write
+      // landed.
       queue.current = queue.current.then(async () => {
         const previousScheduledDate = useTodosStore
           .getState()
