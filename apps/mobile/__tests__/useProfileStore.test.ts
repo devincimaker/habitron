@@ -77,7 +77,7 @@ describe('useProfileStore', () => {
 
       await useProfileStore.getState().loadProfile();
 
-      expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled');
+      expect(mockSelect).toHaveBeenCalledWith('name, daily_reminder_enabled, disabled_modules');
       expect(mockEq).toHaveBeenCalledWith('user_id', mockUserId);
       expect(useProfileStore.getState().name).toBe('John');
       expect(useProfileStore.getState().dailyReminderEnabled).toBe(false);
@@ -268,6 +268,45 @@ describe('useProfileStore', () => {
 
       expect(result.error).toBeInstanceOf(Error);
       expect(useProfileStore.getState().dailyReminderEnabled).toBe(true);
+    });
+  });
+
+  describe('setModuleEnabled', () => {
+    it('should add the module to disabled_modules when switched off', async () => {
+      mockUpsert.mockResolvedValue({ error: null });
+
+      const result = await useProfileStore.getState().setModuleEnabled('goals', false);
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        { user_id: mockUserId, disabled_modules: ['goals'] },
+        { onConflict: 'user_id' }
+      );
+      expect(result.error).toBeNull();
+      expect(useProfileStore.getState().disabledModules).toEqual(['goals']);
+    });
+
+    it('should remove the module when switched back on', async () => {
+      useProfileStore.setState({ disabledModules: ['goals'] });
+      mockUpsert.mockResolvedValue({ error: null });
+
+      await useProfileStore.getState().setModuleEnabled('goals', true);
+
+      expect(mockUpsert).toHaveBeenCalledWith(
+        { user_id: mockUserId, disabled_modules: [] },
+        { onConflict: 'user_id' }
+      );
+      expect(useProfileStore.getState().disabledModules).toEqual([]);
+    });
+
+    it('should keep the old value on failure', async () => {
+      mockUpsert.mockResolvedValue({
+        error: { code: 'PGRST500', message: 'Database error' },
+      });
+
+      const result = await useProfileStore.getState().setModuleEnabled('goals', false);
+
+      expect(result.error).toBeInstanceOf(Error);
+      expect(useProfileStore.getState().disabledModules).toEqual([]);
     });
   });
 

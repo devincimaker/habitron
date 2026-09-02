@@ -21,7 +21,7 @@ Three facts from the audit make the rewrite cheap relative to what it buys:
 |---|---|
 | Supabase auth, login/signup screens, JWT middleware | Nothing. Identity is the device; server uses a static bearer token. |
 | `user_id` columns, RLS policies, `user_profiles`, `push_tokens`, `user_notification_flags` | Local settings (name, reminder toggle) in `UserDefaults`/SwiftData. |
-| **Goals** (store, service, `GoalEditorModal`, coach actions, `todos.goal_id`) | Removed entirely — the v1 planning doc already descoped them; no screen ever listed them. |
+| ~~**Goals**~~ | Superseded by HAB-126 (2026-09): goals came back as SMART goals under the Coach hub, with `todos.goal_id` linking tasks. A rewrite carries them. |
 | 3 edge functions + pg_cron + `scheduled_notifications` + Expo Push API | Local `UNUserNotificationCenter` scheduling. All timezone hackery disappears. |
 | `/api/transcribe` + whisper-1 + multer upload | On-device `SFSpeechRecognizer` (or `SpeechAnalyzer` on iOS 26). |
 | `apps/web` (one-page landing) | Nothing. |

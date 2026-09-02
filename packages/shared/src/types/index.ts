@@ -43,26 +43,36 @@ export const HABIT_WEEKDAYS = [
 export type HabitWeekday = (typeof HABIT_WEEKDAYS)[number];
 
 // Goal types
-export type GoalStatus = 'active' | 'paused' | 'completed' | 'archived';
 
+/**
+ * An outcome that ends. SMART as data: the title is the specific, `measure`
+ * is how you will know it is done, `targetDate` is by when. Open or done is
+ * read from `completedAt`; `reviewedAt` is what the goals review stamps.
+ */
 export interface Goal {
   id: string;
   title: string;
-  description?: string;
-  status: GoalStatus;
-  priority?: Priority;
-  targetDate?: string;
+  measure: string;
+  /** YYYY-MM-DD. Required: a goal without a date is a wish. */
+  targetDate: string;
+  completedAt?: number;
+  reviewedAt?: number;
   createdAt: number;
   updatedAt: number;
 }
 
 export interface GoalDraft {
   title: string;
-  description?: string;
-  status?: GoalStatus;
-  priority?: Priority;
-  targetDate?: string;
+  measure: string;
+  targetDate: string;
 }
+
+/**
+ * Features the app runs without. Off hides the module's screens and takes it
+ * out of the coach's context; its rows stay.
+ */
+export const MODULES = ['goals'] as const;
+export type Module = (typeof MODULES)[number];
 
 // Habit types
 export interface HabitSection {

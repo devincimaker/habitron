@@ -176,6 +176,8 @@ export default Sentry.wrap(function RootLayout() {
               headerShown: false,
             }}
           />
+          <Stack.Screen name="goals" />
+          <Stack.Screen name="goal/[id]" />
           <Stack.Screen
             name="session"
             options={{

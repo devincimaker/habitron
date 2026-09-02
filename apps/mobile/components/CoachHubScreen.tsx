@@ -18,7 +18,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useInstructLogStore } from '../stores/useInstructLogStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
 import { useMemoriesStore } from '../stores/useMemoriesStore';
+import { useGoalsStore } from '../stores/useGoalsStore';
 import { useRitualsStore } from '../stores/useRitualsStore';
+import { CoachHubLink } from './CoachHubLink';
 import { SessionListItem } from './SessionListItem';
 import { RitualCard } from './RitualCard';
 import { RITUALS, type RitualDefinition } from '../constants/rituals';
@@ -32,6 +34,8 @@ import {
   type Colors,
 } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
+import { useModuleEnabled } from '../hooks/useModuleEnabled';
+import { isGoalOpen } from '../utils/goals';
 import { buildMemoryWarning, sortSessions } from '../utils/coachSessions';
 
 const NEW_SESSION_PILL_HEIGHT = 48;
@@ -44,6 +48,8 @@ export function CoachHubScreen() {
   const router = useRouter();
   const { sessions, isLoading, loadSessions, deleteSession } = useSessionsStore();
   const { memories, loadMemories } = useMemoriesStore();
+  const goalsEnabled = useModuleEnabled('goals');
+  const openGoalCount = useGoalsStore((s) => s.goals.filter(isGoalOpen).length);
   const { load: loadRituals, ritualState, reviewFor } = useRitualsStore();
   const activityCount = useInstructLogStore((s) => s.actions.length);
   const refreshActivity = useInstructLogStore((s) => s.refresh);
@@ -112,6 +118,10 @@ export function CoachHubScreen() {
     router.push('/memories');
   }, [router]);
 
+  const handleOpenGoals = useCallback(() => {
+    router.push('/goals');
+  }, [router]);
+
   const handleOpenActivity = useCallback(() => {
     void refreshActivity();
     setActivitySheetOpen(true);
@@ -178,37 +188,28 @@ export function CoachHubScreen() {
           ))
         )}
 
-        <Pressable
-          style={styles.memoriesRow}
+        <CoachHubLink
+          icon="database"
+          label="What Habitron remembers"
+          count={memories.length > 0 ? String(memories.length) : undefined}
           onPress={handleOpenMemories}
-          accessibilityRole="button"
-          accessibilityLabel="What Habitron remembers"
-        >
-          <View style={styles.memoriesIcon}>
-            <Feather name="database" size={18} color={colors.textSecondary} />
-          </View>
-          <Text style={styles.memoriesLabel}>What Habitron remembers</Text>
-          {memories.length > 0 && (
-            <Text style={styles.memoriesCount}>{memories.length}</Text>
-          )}
-          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-        </Pressable>
+        />
 
-        <Pressable
-          style={styles.memoriesRow}
+        {goalsEnabled ? (
+          <CoachHubLink
+            icon="target"
+            label="Goals"
+            count={openGoalCount > 0 ? `${openGoalCount} open` : undefined}
+            onPress={handleOpenGoals}
+          />
+        ) : null}
+
+        <CoachHubLink
+          icon="activity"
+          label="Coach activity"
+          count={activityCount > 0 ? `${activityCount} today` : undefined}
           onPress={handleOpenActivity}
-          accessibilityRole="button"
-          accessibilityLabel="Coach activity"
-        >
-          <View style={styles.memoriesIcon}>
-            <Feather name="activity" size={18} color={colors.textSecondary} />
-          </View>
-          <Text style={styles.memoriesLabel}>Coach activity</Text>
-          {activityCount > 0 && (
-            <Text style={styles.memoriesCount}>{`${activityCount} today`}</Text>
-          )}
-          <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
-        </Pressable>
+        />
       </ScrollView>
 
       <Pressable
@@ -269,35 +270,6 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     textAlign: 'center',
     lineHeight: 22,
     maxWidth: 280,
-  },
-  memoriesRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: SPACING.md,
-    paddingVertical: SPACING.sm + 2,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.hairline,
-  },
-  memoriesIcon: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.controlFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-  },
-  memoriesLabel: {
-    flex: 1,
-    ...TYPOGRAPHY.bodyMedium,
-    color: colors.text,
-  },
-  memoriesCount: {
-    ...TYPOGRAPHY.caption,
-    color: colors.textSecondary,
-    marginRight: SPACING.xs,
   },
   newSessionPill: {
     position: 'absolute',

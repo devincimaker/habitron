@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, type RefObject } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import type { Priority, TodoList, TodoTag } from '@habits-coach/shared';
+import { useEffect, useState, type RefObject } from 'react';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Feather, Ionicons } from '@expo/vector-icons';
+import type { Goal, Priority, TodoList, TodoTag } from '@habits-coach/shared';
+import { TaskNewTagRow } from './TaskNewTagRow';
 import { TodoTagPill } from './TodoTagPill';
 import { BORDER_RADIUS, SHADOWS, SPACING, TYPOGRAPHY, type Colors } from '../constants/theme';
 import { useThemedStyles } from '../hooks/useColors';
@@ -25,6 +26,13 @@ export type TaskQuickCreatePopoverContent =
       lists: TodoList[];
       selectedId?: string;
       onSelect: (listId: string) => void;
+    }
+  | {
+      kind: 'goals';
+      goals: Goal[];
+      selectedId?: string;
+      /** `undefined` unlinks: not every task serves a goal. */
+      onSelect: (goalId: string | undefined) => void;
     };
 
 interface TaskQuickCreatePopoverProps {
@@ -146,6 +154,34 @@ export function TaskQuickCreatePopover({
               </Pressable>
             );
           })
+        ) : content.kind === 'goals' ? (
+          <ScrollView style={styles.listScroll} keyboardShouldPersistTaps="handled">
+            {[...content.goals, undefined].map((goal) => {
+              const isSelected = content.selectedId === goal?.id;
+              return (
+                <Pressable
+                  key={goal?.id ?? 'none'}
+                  style={styles.priorityRow}
+                  onPress={() => content.onSelect(goal?.id)}
+                  accessibilityRole="button"
+                  accessibilityLabel={goal ? `Goal ${goal.title}` : 'No goal'}
+                  accessibilityState={{ selected: isSelected }}
+                >
+                  <Feather
+                    name="target"
+                    size={18}
+                    color={goal ? colors.primary : colors.textSecondary}
+                  />
+                  <Text style={styles.priorityLabel} numberOfLines={1}>
+                    {goal?.title ?? 'No goal'}
+                  </Text>
+                  {isSelected ? (
+                    <Ionicons name="checkmark" size={18} color={colors.primaryDark} />
+                  ) : null}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
         ) : content.kind === 'lists' ? (
           <ScrollView style={styles.listScroll} keyboardShouldPersistTaps="handled">
             {content.lists.map((list) => {
@@ -186,61 +222,11 @@ export function TaskQuickCreatePopover({
                 onPress={() => content.onSelect(tag.name)}
               />
             ))}
-            {content.onCreate ? <NewTagRow onCreate={content.onCreate} /> : null}
+            {content.onCreate ? <TaskNewTagRow onCreate={content.onCreate} /> : null}
           </ScrollView>
         )}
       </View>
     </>
-  );
-}
-
-/** The last row of the tag picker: a pill that becomes a field when tapped. */
-function NewTagRow({ onCreate }: { onCreate: (tagName: string) => void }) {
-  const [styles, colors] = useThemedStyles(createStyles);
-  const [isTyping, setIsTyping] = useState(false);
-  const [name, setName] = useState('');
-  const committed = useRef(false);
-
-  if (!isTyping) {
-    return (
-      <Pressable
-        style={styles.newTag}
-        onPress={() => {
-          committed.current = false;
-          setIsTyping(true);
-        }}
-        accessibilityRole="button"
-        accessibilityLabel="New category"
-      >
-        <Text style={styles.newTagLabel}>New category…</Text>
-      </Pressable>
-    );
-  }
-
-  // Submitting also blurs, so the ref keeps one name from creating two tags.
-  const commit = () => {
-    const next = name.trim();
-    setIsTyping(false);
-    setName('');
-    if (next && !committed.current) {
-      committed.current = true;
-      onCreate(next);
-    }
-  };
-
-  return (
-    <TextInput
-      style={[styles.newTag, styles.newTagInput]}
-      value={name}
-      onChangeText={setName}
-      placeholder="Category name"
-      placeholderTextColor={colors.textLight}
-      autoFocus
-      returnKeyType="done"
-      onSubmitEditing={commit}
-      onBlur={commit}
-      accessibilityLabel="New category name"
-    />
   );
 }
 
@@ -286,22 +272,5 @@ const createStyles = (colors: Colors) =>
       flexWrap: 'wrap',
       gap: SPACING.xs,
       padding: SPACING.xs,
-    },
-    newTag: {
-      borderRadius: BORDER_RADIUS.full,
-      borderWidth: 1,
-      borderStyle: 'dashed',
-      borderColor: colors.border,
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-    },
-    newTagLabel: {
-      ...TYPOGRAPHY.caption,
-      color: colors.textSecondary,
-    },
-    newTagInput: {
-      ...TYPOGRAPHY.caption,
-      minWidth: 120,
-      color: colors.text,
     },
   });
