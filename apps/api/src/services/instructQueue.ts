@@ -43,6 +43,21 @@ export function stripWorkingLine(text: string, workingLine: string | null): stri
   return trimmed.slice(workingLine.length).trim();
 }
 
+/**
+ * What a turn that wrote nothing gets recorded as. A question and a `NOTHING:`
+ * line are honest outcomes and read as themselves; anything else is the coach
+ * describing work it did not do, and the row has to lead with the only thing
+ * the user needs from it — that nothing changed — before quoting the claim.
+ */
+export function noWriteError(text: string): string {
+  const trimmed = text.trim();
+  if (!trimmed) return 'The coach made no changes.';
+  const nothing = /^NOTHING:\s*/i.exec(trimmed);
+  if (nothing) return trimmed.slice(nothing[0].length).trim() || 'Nothing to do.';
+  if (trimmed.endsWith('?')) return trimmed;
+  return `Nothing changed — the coach described work it did not do:\n${trimmed}`;
+}
+
 function rewindPrompt(row: InstructActionRecord, direction: 'undo' | 'redo'): string {
   const calls = JSON.stringify(row.tool_calls ?? [], null, 2);
   const verb =
@@ -149,10 +164,11 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
           finished_at: now(),
         });
       } else {
-        // Nothing was written: the reply is the coach's question or reason.
+        // Nothing was written: the reply is the coach's question, its reason,
+        // or — never to be passed on as if it were true — a claim to have acted.
         await db.transition(row.id, ['working'], {
           status: 'failed',
-          error: text || 'The coach made no changes.',
+          error: noWriteError(text),
           finished_at: now(),
         });
       }
