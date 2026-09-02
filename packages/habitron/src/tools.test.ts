@@ -161,3 +161,55 @@ describe('set_task_status', () => {
     });
   });
 });
+
+function findTool(name: string, db: Db) {
+  const tool = createTools(db, 'Europe/Paris').find((t) => t.name === name);
+  if (!tool) throw new Error(`${name} is missing from the tool list`);
+  return tool;
+}
+
+describe('lists on the task tools', () => {
+  const LIST_ID = '22222222-2222-4222-8222-222222222222';
+
+  it('create_task passes listId and listName through', async () => {
+    const createTask = vi.fn().mockResolvedValue({ id: 'task-1' });
+    const tool = findTool('create_task', stubDb({ createTask }));
+
+    await tool.handler({ title: 'Dune', listName: 'Books' });
+
+    expect(createTask).toHaveBeenCalledWith({ title: 'Dune', listName: 'Books' });
+  });
+
+  it('create_task rejects an empty listName', () => {
+    const schema = z.object(findTool('create_task', stubDb({})).inputSchema);
+    expect(schema.safeParse({ title: 'x', listName: '' }).success).toBe(false);
+    expect(schema.safeParse({ title: 'x', listId: 'not-a-uuid' }).success).toBe(false);
+  });
+
+  it('list_tasks filters to the resolved list', async () => {
+    const resolveListId = vi.fn().mockResolvedValue(LIST_ID);
+    const listAllTasks = vi.fn().mockResolvedValue([
+      { id: 't1', title: 'Dune', status: 'open', listId: LIST_ID },
+      { id: 't2', title: 'Dishes', status: 'open', listId: 'other-list' },
+    ]);
+    const tool = findTool('list_tasks', stubDb({ resolveListId, listAllTasks } as Partial<Db>));
+
+    const result = (await tool.handler({ listName: 'Books' })) as {
+      tasks: Array<{ id: string }>;
+      total: number;
+    };
+
+    expect(resolveListId).toHaveBeenCalledWith({ listName: 'Books' });
+    expect(result.tasks.map((t) => t.id)).toEqual(['t1']);
+    expect(result.total).toBe(1);
+  });
+
+  it('delete_list returns the db result verbatim and rejects a non-uuid id', async () => {
+    const outcome = { deleted: { id: LIST_ID }, tasksMoved: 3, movedTo: { id: 'inbox' } };
+    const deleteList = vi.fn().mockResolvedValue(outcome);
+    const tool = findTool('delete_list', stubDb({ deleteList } as Partial<Db>));
+
+    await expect(tool.handler({ id: LIST_ID })).resolves.toBe(outcome);
+    expect(z.object(tool.inputSchema).safeParse({ id: 'books' }).success).toBe(false);
+  });
+});

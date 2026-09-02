@@ -11,8 +11,10 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import type { Todo, TodoDraft, TodoStatus } from '@habits-coach/shared';
+import { HeaderIconButton } from '../../components/HeaderIconButton';
 import { TaskDragList } from '../../components/TaskDragList';
 import { TaskDragOverlay } from '../../components/TaskDragOverlay';
+import { TaskListsDrawerEdgeSwipe } from '../../components/TaskListsDrawerEdgeSwipe';
 import { TaskQuickCreateSheet } from '../../components/TaskQuickCreateSheet';
 import { TaskRescheduleModal } from '../../components/TaskRescheduleModal';
 import { TaskRow, type TaskStatusToggleOptions } from '../../components/TaskRow';
@@ -24,6 +26,7 @@ import { useThemedStyles } from '../../hooks/useColors';
 import { useTaskListDrag } from '../../hooks/useTaskListDrag';
 import { useUndoableTodoRemoval } from '../../hooks/useUndoableTodoRemoval';
 import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
+import { useTaskListsUiStore } from '../../stores/useTaskListsUiStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
 
@@ -41,20 +44,38 @@ export default function TasksScreen() {
   const syncTodoPlanOutcome = useTodoPlanOutcomeSync();
   const {
     todos,
+    lists,
     isLoading,
     loadTodos,
     addTodoOptimistic,
     setTodoStatusOptimistic,
     reorderTodos,
   } = useTodosStore();
+  const activeListId = useTaskListsUiStore((state) => state.activeListId);
+  const openDrawer = useTaskListsUiStore((state) => state.openDrawer);
 
   const [reschedulingTodo, setReschedulingTodo] = useState<Todo | null>(null);
   const [showQuickCreate, setShowQuickCreate] = useState(false);
   const { removedTodo, removeTodo, undoRemoveTodo, dismissRemovedTodo } = useUndoableTodoRemoval();
-  const openTodos = useMemo(() => todos.filter((todo) => todo.status === 'open'), [todos]);
+  const activeList = useMemo(
+    () => lists.find((list) => list.id === activeListId) ?? lists.find((list) => list.isInbox),
+    [lists, activeListId]
+  );
+  const openTodos = useMemo(
+    () =>
+      todos.filter(
+        (todo) => todo.status === 'open' && (!activeList || todo.listId === activeList.id)
+      ),
+    [todos, activeList]
+  );
   const completedTodos = useMemo(
-    () => todos.filter((todo) => todo.status === 'completed').sort(compareCompletedTodos),
-    [todos]
+    () =>
+      todos
+        .filter(
+          (todo) => todo.status === 'completed' && (!activeList || todo.listId === activeList.id)
+        )
+        .sort(compareCompletedTodos),
+    [todos, activeList]
   );
   const { rootRef, onRootLayout, dragState, start, move, end, list } = useTaskListDrag({
     items: openTodos,
@@ -108,10 +129,18 @@ export default function TasksScreen() {
       <Tabs.Screen
         options={{
           title: 'Tasks',
-          headerTitle: 'Inbox',
+          headerTitle: activeList?.name ?? 'Inbox',
+          headerLeft: () => (
+            <HeaderIconButton
+              name="menu-outline"
+              accessibilityLabel="Open lists"
+              onPress={openDrawer}
+            />
+          ),
         }}
       />
 
+      <TaskListsDrawerEdgeSwipe>
       <View ref={rootRef} onLayout={onRootLayout} style={styles.container}>
         <ScrollView
           style={styles.scroll}
@@ -200,6 +229,7 @@ export default function TasksScreen() {
           visible={showQuickCreate}
           onClose={() => setShowQuickCreate(false)}
           onSave={handleQuickCreate}
+          defaultListId={activeList?.id}
         />
 
         <TaskRescheduleModal
@@ -217,6 +247,7 @@ export default function TasksScreen() {
 
         <TaskDragOverlay dragState={dragState} />
       </View>
+      </TaskListsDrawerEdgeSwipe>
     </>
   );
 }

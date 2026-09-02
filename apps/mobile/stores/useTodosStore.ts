@@ -28,10 +28,12 @@ interface TodosState {
   removeTodo: (todoId: string) => Promise<void>;
   reorderTodos: (updates: TodoOrderUpdate[]) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
+  updateTodoList: (listId: string, changes: { name?: string; color?: string }) => Promise<TodoList>;
+  deleteTodoList: (listId: string) => Promise<void>;
   createTodoTag: (name: string, color?: string) => Promise<TodoTag>;
   getTodosForDate: (date: string) => Todo[];
   getOverdueTodos: (date: string) => Todo[];
-  getInboxTodos: () => Todo[];
+  getOpenTodoCountsByList: () => Record<string, number>;
   clearTodos: () => void;
 }
 
@@ -104,6 +106,8 @@ function buildOptimisticTodo(state: Pick<TodosState, 'todos' | 'lists' | 'tags'>
     throw new Error('Invalid scheduled time');
   }
 
+  const listId = resolveOptimisticListId(state.lists, draft);
+
   return {
     id: createOptimisticTodoId(),
     title: draft.title.trim(),
@@ -114,8 +118,8 @@ function buildOptimisticTodo(state: Pick<TodosState, 'todos' | 'lists' | 'tags'>
     scheduledDate: schedule.scheduledDate,
     scheduledTime: schedule.scheduledTime,
     estimateMinutes: draft.estimateMinutes,
-    position: nextTodoPosition(state.todos),
-    listId: resolveOptimisticListId(state.lists, draft),
+    position: nextTodoPosition(state.todos.filter((todo) => todo.listId === listId)),
+    listId,
     goalId: draft.goalId,
     tag: resolveOptimisticTag(state.tags, draft),
     checklist: buildOptimisticChecklist(draft),
@@ -325,6 +329,20 @@ export const useTodosStore = create<TodosState>((set, get) => ({
     return createdList;
   },
 
+  updateTodoList: async (listId, changes) => {
+    const updatedList = await todosService.updateTodoList(listId, changes);
+    set((state) => ({
+      lists: state.lists.map((list) => (list.id === listId ? updatedList : list)),
+    }));
+    return updatedList;
+  },
+
+  deleteTodoList: async (listId) => {
+    await todosService.deleteTodoList(listId);
+    // Tasks changed list and position on the server; a reload is the simple truth.
+    await get().loadTodos();
+  },
+
   createTodoTag: async (name, color) => {
     const createdTag = await todosService.createTodoTag(name, color);
     set((state) => ({
@@ -344,13 +362,13 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       .sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
   },
 
-  getInboxTodos: () => {
-    const inboxId = get().lists.find((list) => list.isInbox)?.id;
-    if (!inboxId) return [];
-
-    return get().todos.filter(
-      (todo) => todo.listId === inboxId && todo.status === 'open' && !todo.scheduledDate
-    );
+  getOpenTodoCountsByList: () => {
+    const counts: Record<string, number> = {};
+    for (const todo of get().todos) {
+      if (todo.status !== 'open') continue;
+      counts[todo.listId] = (counts[todo.listId] ?? 0) + 1;
+    }
+    return counts;
   },
 
   clearTodos: () => {

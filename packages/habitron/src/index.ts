@@ -9,7 +9,7 @@ import {
 } from './history.js';
 import { createTools, type AnyHabitronTool } from './tools.js';
 
-export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskPatch } from './db.js';
+export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskList, TaskPatch } from './db.js';
 export type { DayContext, HabitForDay } from './context.js';
 // One definition of "reviewed" for the ritual card HAB-86 adds. Note the hub is
 // in `apps/mobile`, which depends on `@habits-coach/shared` and not on this

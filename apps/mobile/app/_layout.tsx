@@ -9,6 +9,7 @@ import { useHabitsStore } from '../stores/useHabitsStore';
 import { useProfileStore } from '../stores/useProfileStore';
 import { useSessionStore } from '../stores/useSessionStore';
 import { useGoalsStore } from '../stores/useGoalsStore';
+import { useTaskListsUiStore } from '../stores/useTaskListsUiStore';
 import { useTodosStore } from '../stores/useTodosStore';
 import { useJournalStore } from '../stores/useJournalStore';
 import { useSessionsStore } from '../stores/useSessionsStore';
@@ -55,6 +56,7 @@ export default Sentry.wrap(function RootLayout() {
   const clearGoals = useGoalsStore((state) => state.clearGoals);
   const loadTodos = useTodosStore((state) => state.loadTodos);
   const clearTodos = useTodosStore((state) => state.clearTodos);
+  const resetTaskListsUi = useTaskListsUiStore((state) => state.reset);
   const loadEntries = useJournalStore((state) => state.loadEntries);
   const clearEntries = useJournalStore((state) => state.clearEntries);
   const loadSessions = useSessionsStore((state) => state.loadSessions);
@@ -100,6 +102,7 @@ export default Sentry.wrap(function RootLayout() {
       clearHabits();
       clearGoals();
       clearTodos();
+      resetTaskListsUi();
       clearEntries();
       clearSessions();
       clearPlans();
@@ -115,6 +118,7 @@ export default Sentry.wrap(function RootLayout() {
     clearPlans,
     clearSessions,
     clearTodos,
+    resetTaskListsUi,
     loadDesiredHabits,
     loadEntries,
     loadGoals,

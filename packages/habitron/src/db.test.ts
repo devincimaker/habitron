@@ -118,3 +118,133 @@ describe('setTaskStatus', () => {
     ).rejects.toThrow(/Reopening or cancelling clears the stamp/);
   });
 });
+
+const INBOX_ROW = { id: 'inbox-1', name: 'Inbox', color: null, is_inbox: true, sort_order: 0 };
+const BOOKS_ROW = { id: 'books-1', name: 'Books', color: '#64B5F6', is_inbox: false, sort_order: 1 };
+
+/**
+ * Serves `todo_lists` reads from `listRows` and refuses every other table, so
+ * a test proves list resolution needs nothing else. The chain is thenable
+ * because `listLists` awaits the builder itself.
+ */
+function listsOnlySupabase(listRows: Record<string, unknown>[]): SupabaseClient {
+  const chain: Record<string, unknown> = {
+    select: () => chain,
+    eq: () => chain,
+    order: () => chain,
+    then: (resolve: (result: unknown) => void) => resolve({ data: listRows, error: null }),
+  };
+  return {
+    from: (table: string) => {
+      if (table !== 'todo_lists') throw new Error(`supabase.from(${table}) should not be reached`);
+      return chain;
+    },
+  } as unknown as SupabaseClient;
+}
+
+describe('resolveListId', () => {
+  it('returns undefined without touching the database when no list is named', async () => {
+    const db = createDb(unreachableSupabase(), 'user-1');
+
+    await expect(db.resolveListId({})).resolves.toBeUndefined();
+  });
+
+  it('passes a known id through and matches a name case-insensitively', async () => {
+    const db = createDb(listsOnlySupabase([INBOX_ROW, BOOKS_ROW]), 'user-1');
+
+    await expect(db.resolveListId({ listId: 'books-1' })).resolves.toBe('books-1');
+    await expect(db.resolveListId({ listName: 'books' })).resolves.toBe('books-1');
+  });
+
+  it('rejects an unknown list and names list_lists', async () => {
+    const db = createDb(listsOnlySupabase([INBOX_ROW]), 'user-1');
+
+    await expect(db.resolveListId({ listName: 'Nope' })).rejects.toThrow(/list_lists/);
+    await expect(db.resolveListId({ listId: 'ghost' })).rejects.toThrow(/list_lists/);
+  });
+});
+
+describe('deleteList', () => {
+  it('refuses the inbox before touching any task', async () => {
+    const db = createDb(listsOnlySupabase([INBOX_ROW, BOOKS_ROW]), 'user-1');
+
+    // A todos access would throw "should not be reached" instead.
+    await expect(db.deleteList('inbox-1')).rejects.toThrow(/inbox cannot be deleted/);
+  });
+});
+
+/**
+ * A two-table fake for the task list moves: `todo_lists` reads come from
+ * `listRows`, `todos` writes are captured, and each `todos` read pops the next
+ * queued response — the order of reads is part of what the test asserts.
+ */
+function movingSupabase(
+  listRows: Record<string, unknown>[],
+  todoReads: unknown[]
+): { client: SupabaseClient; todoWrites: Record<string, unknown>[] } {
+  const todoWrites: Record<string, unknown>[] = [];
+  const listsChain: Record<string, unknown> = {
+    select: () => listsChain,
+    eq: () => listsChain,
+    order: () => listsChain,
+    maybeSingle: async () => ({ data: listRows.find((row) => row.is_inbox) ?? null, error: null }),
+    then: (resolve: (result: unknown) => void) => resolve({ data: listRows, error: null }),
+  };
+  const todosChain: Record<string, unknown> = {
+    select: () => todosChain,
+    eq: () => todosChain,
+    order: () => todosChain,
+    limit: () => todosChain,
+    update: (values: Record<string, unknown>) => {
+      todoWrites.push(values);
+      return todosChain;
+    },
+    maybeSingle: async () => ({ data: todoReads.shift() ?? null, error: null }),
+  };
+  return {
+    client: {
+      from: (table: string) => (table === 'todo_lists' ? listsChain : todosChain),
+    } as unknown as SupabaseClient,
+    todoWrites,
+  };
+}
+
+const TASK_ROW = {
+  id: 'task-1',
+  list_id: 'inbox-1',
+  title: 'Dune',
+  status: 'open',
+  position: 2,
+  created_at: '2026-08-01T00:00:00Z',
+  updated_at: '2026-08-01T00:00:00Z',
+  todo_tags: null,
+  todo_checklist_items: [],
+};
+
+describe('updateTask list moves', () => {
+  it('moving lists writes list_id and appends to the target order', async () => {
+    const { client, todoWrites } = movingSupabase(
+      [INBOX_ROW, BOOKS_ROW],
+      // getTask (current row), nextTaskPosition (target list's last), final update
+      [TASK_ROW, { position: 4 }, { ...TASK_ROW, list_id: 'books-1', position: 5 }]
+    );
+
+    await createDb(client, 'user-1').updateTask('task-1', { listName: 'Books' });
+
+    expect(todoWrites).toHaveLength(1);
+    expect(todoWrites[0].list_id).toBe('books-1');
+    expect(todoWrites[0].position).toBe(5);
+  });
+
+  it('naming the list the task is already in writes nothing', async () => {
+    const { client, todoWrites } = movingSupabase(
+      [INBOX_ROW, BOOKS_ROW],
+      // getTask (current row), then the empty-update fallback getTask
+      [TASK_ROW, TASK_ROW]
+    );
+
+    await createDb(client, 'user-1').updateTask('task-1', { listId: 'inbox-1' });
+
+    expect(todoWrites).toHaveLength(0);
+  });
+});

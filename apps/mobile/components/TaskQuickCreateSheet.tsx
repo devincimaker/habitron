@@ -50,6 +50,8 @@ interface TaskQuickCreateSheetProps {
   onClose: () => void;
   onSave: (draft: TodoDraft) => Promise<void>;
   defaultScheduledDate?: string;
+  /** The list the new task lands in; the Inbox when absent. */
+  defaultListId?: string;
 }
 
 type QuickCreatePicker = 'priority' | 'tags';
@@ -73,6 +75,7 @@ export function TaskQuickCreateSheet({
   onClose,
   onSave,
   defaultScheduledDate,
+  defaultListId,
 }: TaskQuickCreateSheetProps) {
   const [styles, colors] = useThemedStyles(createStyles);
   const insets = useSafeAreaInsets();
@@ -144,7 +147,7 @@ export function TaskQuickCreateSheet({
 
     setIsSaving(true);
     try {
-      await onSave(saveDraft);
+      await onSave({ ...saveDraft, listId: defaultListId });
       Keyboard.dismiss();
       onClose();
     } finally {

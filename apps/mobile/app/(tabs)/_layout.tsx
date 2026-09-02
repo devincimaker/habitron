@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 import { CustomTabBar } from '../../components/CustomTabBar';
 import { InstructProvider } from '../../components/InstructProvider';
 import { ProfileHeaderButton } from '../../components/ProfileHeaderButton';
+import { TaskListsDrawer } from '../../components/TaskListsDrawer';
 import { HEADER, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
@@ -82,6 +83,9 @@ export default function TabLayout() {
           }}
         />
       </Tabs>
+
+      {/* After <Tabs> so it slides over the header and the tab bar, TickTick-style. */}
+      <TaskListsDrawer />
     </InstructProvider>
   );
 }

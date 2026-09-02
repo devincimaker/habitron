@@ -20,7 +20,8 @@ The server is registered project-scoped from the `~/Coach` folder (its `.mcp.jso
 | Read | Write |
 | --- | --- |
 | `get_day_context` (the planning packet) | `create_task`, `update_task`, `set_task_status`, `delete_task` |
-| `list_tasks`, `list_habits`, `list_tags`, `list_memories` | `create_tag`, `update_tag`, `delete_tag`, `log_habit`, `set_checklist_item_done` |
+| `list_tasks`, `list_habits`, `list_tags`, `list_lists`, `list_memories` | `create_tag`, `update_tag`, `delete_tag`, `log_habit`, `set_checklist_item_done` |
+| | `create_list`, `update_list`, `delete_list` |
 | `get_habit_history`, `get_task_history`, `get_journal_history`, `get_plan_history` (learning from the past) | `save_day_plan`, `set_plan_item_outcome` |
 | `get_day_review_history` | `save_day_review` |
 | | `create_habit`, `update_habit`, `archive_habit`, `restore_habit` |
@@ -28,6 +29,8 @@ The server is registered project-scoped from the `~/Coach` folder (its `.mcp.jso
 | | `add_journal_entry`, `add_memory`, `delete_memory` |
 
 Tags are categories: every task carries at most one (`tag` on every task returned by `list_tasks`, `get_day_context`, and `get_task_history`, whose `summary.byTag` breaks completed work down per category). `create_task` / `update_task` take a `tagId` (null clears it) and reject unknown ids. `update_tag` renames or recolours one without touching its tasks; `delete_tag` removes it and leaves its tasks uncategorised unless you pass `reassignToTagId` to move them first.
+
+Lists group tasks the way the app's drawer shows them: every task lives in exactly one list (`listId` on every task), and the Inbox is the default. `create_task` / `update_task` take a `listId` or a case-insensitive `listName` and reject unknown ones — lists are made deliberately with `create_list`, never as a side effect. `list_tasks` filters by the same pair. `update_list` renames or recolours; `delete_list` never deletes tasks — they move to the Inbox in their old order, and the Inbox itself cannot be deleted.
 
 Habits are the coach's to start and shape, not just to log. `create_habit` takes a frequency — `daily` (optionally pinned to `weeklyDays`), `weekly` (`weeklyCount` times a week) or `interval` (every `intervalDays`) — and a goal that is either boolean or a `quantity` counted towards `targetAmount` in its `unit`. The coupling is enforced rather than ignored: a field belonging to another mode is an error naming the conflict, and **weekday pinning belongs to `daily`, not `weekly`**, matching the app. `section` is an existing section's name, resolved case-insensitively; an unknown one errors and lists the real names, because sections are created in the app. `update_habit` is a patch — only what you pass is written — and changing `frequency` or `goalType` rewrites that mode and clears the old one. `archive_habit` / `restore_habit` flip `active`; there is deliberately **no** `delete_habit`, because deleting a habit takes its logs with it and that is not recoverable.
 

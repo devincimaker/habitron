@@ -1,6 +1,6 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import type { Todo } from '@habits-coach/shared';
+import type { Todo, TodoList } from '@habits-coach/shared';
 import { TodoTagPill } from './TodoTagPill';
 import { Caption } from './ui';
 import {
@@ -13,19 +13,30 @@ import { useThemedStyles } from '../hooks/useColors';
 
 interface TaskSheetChipsProps {
   todo: Todo;
+  /** The task's list; the chip shows only for a list that is not the Inbox. */
+  list?: TodoList;
   onPressTag: () => void;
+  onPressList: () => void;
   onPressEstimate: () => void;
 }
 
 /**
- * What the task *is*, as chips: its category and its estimate. Each one shows
- * only when set — the bottom bar is where an unset one is added.
+ * What the task *is*, as chips: its list, its category and its estimate. Each
+ * one shows only when set — the bottom bar is where an unset one is added, and
+ * the Inbox is the unset list.
  */
-export function TaskSheetChips({ todo, onPressTag, onPressEstimate }: TaskSheetChipsProps) {
+export function TaskSheetChips({
+  todo,
+  list,
+  onPressTag,
+  onPressList,
+  onPressEstimate,
+}: TaskSheetChipsProps) {
   const [styles, colors] = useThemedStyles(createStyles);
 
+  const shownList = list && !list.isInbox ? list : undefined;
   const { estimateMinutes, actualMinutes } = todo;
-  if (!todo.tag && estimateMinutes === undefined) return null;
+  if (!todo.tag && !shownList && estimateMinutes === undefined) return null;
 
   // A finished task reads its actual against the estimate, in the row's colours.
   const delta =
@@ -41,6 +52,18 @@ export function TaskSheetChips({ todo, onPressTag, onPressEstimate }: TaskSheetC
 
   return (
     <View style={styles.row}>
+      {shownList ? (
+        <Pressable
+          style={styles.listChip}
+          onPress={onPressList}
+          accessibilityRole="button"
+          accessibilityLabel={`List ${shownList.name}. Change it`}
+        >
+          <View style={[styles.listDot, { backgroundColor: shownList.color ?? colors.textLight }]} />
+          <Caption color={colors.textSecondary}>{shownList.name}</Caption>
+        </Pressable>
+      ) : null}
+
       {todo.tag ? (
         <TodoTagPill name={todo.tag.name} color={todo.tag.color} onPress={onPressTag} />
       ) : null}
@@ -79,5 +102,21 @@ const createStyles = (colors: Colors) =>
       borderColor: colors.border,
       paddingHorizontal: 8,
       paddingVertical: 4,
+    },
+    listChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      borderRadius: BORDER_RADIUS.full,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+    },
+    listDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 4,
     },
   });

@@ -485,6 +485,84 @@ export async function createTodoList(name: string, color?: string): Promise<Todo
   return mapDbTodoListToTodoList(data as DbTodoList);
 }
 
+export async function updateTodoList(
+  listId: string,
+  changes: { name?: string; color?: string }
+): Promise<TodoList> {
+  const payload: Record<string, unknown> = {};
+  if (changes.name !== undefined) payload.name = changes.name.trim();
+  if (changes.color !== undefined) payload.color = changes.color;
+
+  const { data, error } = await supabase
+    .from('todo_lists')
+    .update(payload)
+    .eq('id', listId)
+    .select()
+    .single();
+
+  if (error) {
+    console.error('Error updating todo list:', error);
+    throw error;
+  }
+
+  return mapDbTodoListToTodoList(data as DbTodoList);
+}
+
+/** Deletes a list; its tasks append to the Inbox in their old relative order. */
+export async function deleteTodoList(listId: string): Promise<void> {
+  const userId = await getCurrentUserId();
+
+  const { data: list, error: listError } = await supabase
+    .from('todo_lists')
+    .select('is_inbox')
+    .eq('id', listId)
+    .single();
+
+  if (listError) {
+    console.error('Error fetching todo list:', listError);
+    throw listError;
+  }
+  if ((list as Pick<DbTodoList, 'is_inbox'>).is_inbox) {
+    throw new Error('The inbox cannot be deleted');
+  }
+
+  const inbox = await ensureInboxList(userId);
+
+  const { data: doomed, error: doomedError } = await supabase
+    .from('todos')
+    .select('id')
+    .eq('list_id', listId)
+    .order('position', { ascending: true });
+
+  if (doomedError) {
+    console.error('Error fetching the list\'s todos:', doomedError);
+    throw doomedError;
+  }
+
+  const base = await fetchNextTodoPosition(userId, inbox.id);
+  const results = await Promise.all(
+    (doomed as Array<{ id: string }>).map((todo, index) =>
+      supabase
+        .from('todos')
+        .update({ list_id: inbox.id, position: base + index })
+        .eq('id', todo.id)
+    )
+  );
+  const failure = results.find((result) => result.error);
+  if (failure?.error) {
+    console.error('Error moving todos to the inbox:', failure.error);
+    throw failure.error;
+  }
+
+  // The RESTRICT FK on todos.list_id fails this loudly if any row was missed.
+  const { error } = await supabase.from('todo_lists').delete().eq('id', listId);
+
+  if (error) {
+    console.error('Error deleting todo list:', error);
+    throw error;
+  }
+}
+
 export async function getTodoTags(): Promise<TodoTag[]> {
   const { data, error } = await supabase
     .from('todo_tags')
@@ -535,12 +613,13 @@ export async function getTodos(): Promise<Todo[]> {
   return (data as unknown as DbTodoWithRelations[]).map(mapDbTodoToTodo);
 }
 
-/** A new task appends to the user's manual order. */
-async function fetchNextTodoPosition(userId: string): Promise<number> {
+/** A new task appends to its list's manual order. */
+async function fetchNextTodoPosition(userId: string, listId: string): Promise<number> {
   const { data, error } = await supabase
     .from('todos')
     .select('position')
     .eq('user_id', userId)
+    .eq('list_id', listId)
     .order('position', { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -555,11 +634,11 @@ async function fetchNextTodoPosition(userId: string): Promise<number> {
 
 export async function addTodo(todo: TodoDraft): Promise<Todo> {
   const userId = await getCurrentUserId();
-  const [listId, tagId, position] = await Promise.all([
+  const [listId, tagId] = await Promise.all([
     resolveListId(userId, todo),
     resolveTagId(userId, todo),
-    fetchNextTodoPosition(userId),
   ]);
+  const position = await fetchNextTodoPosition(userId, listId);
   const schedule = resolveNewTodoSchedule(todo.scheduledDate, todo.scheduledTime);
 
   if (schedule === null) {
@@ -625,10 +704,26 @@ export async function updateTodo(
   if (tagId !== undefined) updateData.tag_id = tagId;
 
   if (changes.listId !== undefined || changes.listName !== undefined) {
-    updateData.list_id = await resolveListId(userId, {
+    const targetListId = await resolveListId(userId, {
       listId: changes.listId,
       listName: changes.listName,
     });
+    const { data: currentRow, error: currentError } = await supabase
+      .from('todos')
+      .select('list_id')
+      .eq('id', todoId)
+      .single();
+
+    if (currentError) {
+      console.error('Error reading the todo before a list move:', currentError);
+      throw currentError;
+    }
+
+    // Moving lists appends to the target; a same-list save must not move the task.
+    if ((currentRow as Pick<DbTodo, 'list_id'>).list_id !== targetListId) {
+      updateData.list_id = targetListId;
+      updateData.position = await fetchNextTodoPosition(userId, targetListId);
+    }
   }
 
   if (Object.keys(updateData).length > 0) {
