@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CoachStreamEvent } from '@habits-coach/shared';
 import type { CoachTurnInput, CoachTurnResult } from '../coach/agent.js';
 import type { InstructActionPatch, InstructActionRecord, InstructActionsDb } from './instructActions.js';
-import { createInstructQueue, firstCompleteLine, stripWorkingLine } from './instructQueue.js';
+import { createInstructQueue, firstCompleteLine, noWriteError, stripWorkingLine } from './instructQueue.js';
 
 const USER = 'user-1';
 
@@ -125,6 +125,21 @@ describe('instruct queue', () => {
     const final = rows.get(row.id)!;
     expect(final.status).toBe('failed');
     expect(final.error).toBe('Which run — morning or evening?');
+  });
+
+  it('will not pass on a claim to have acted from a turn that wrote nothing', async () => {
+    const { db, rows } = createMemoryDb();
+    // What HAB-189 caught: a rename narrated in the past tense, never performed.
+    const claim = 'Renamed “Comprar el juego” to “Bajar el juego”\n- Notes: multijugador local';
+    const { runTurn } = scriptedTurns(async () => done(claim));
+    const queue = createInstructQueue({ db, runTurn });
+
+    const row = await enqueue(queue);
+    await queue.idle(USER);
+
+    const final = rows.get(row.id)!;
+    expect(final.status).toBe('failed');
+    expect(final.error).toBe(`Nothing changed — the coach described work it did not do:\n${claim}`);
   });
 
   it('fails a turn whose outcome is an error', async () => {
@@ -404,5 +419,28 @@ describe('reply parsing helpers', () => {
     expect(stripWorkingLine('Moving…\nMoved it', 'Moving…')).toBe('Moved it');
     expect(stripWorkingLine('Moved it', null)).toBe('Moved it');
     expect(stripWorkingLine('Moved it', 'Moving…')).toBe('Moved it');
+  });
+});
+
+describe('noWriteError', () => {
+  it('lets a question stand as itself', () => {
+    expect(noWriteError('Which run — morning or evening?')).toBe('Which run — morning or evening?');
+  });
+
+  it('reads a NOTHING line as its reason', () => {
+    expect(noWriteError('NOTHING: Evening run is already on Thursday.')).toBe(
+      'Evening run is already on Thursday.'
+    );
+    expect(noWriteError('NOTHING:')).toBe('Nothing to do.');
+  });
+
+  it('leads with the truth when the coach claims work it did not do', () => {
+    expect(noWriteError('Moved Gym to 6:00 PM')).toBe(
+      'Nothing changed — the coach described work it did not do:\nMoved Gym to 6:00 PM'
+    );
+  });
+
+  it('says so when the turn said nothing at all', () => {
+    expect(noWriteError('  ')).toBe('The coach made no changes.');
   });
 });
