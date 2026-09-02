@@ -353,6 +353,85 @@ describe('useTodosStore selectors', () => {
     ]);
   });
 
+  it('updates a todo optimistically and reconciles with the backend row', async () => {
+    let resolveUpdate: (todo: Todo) => void = () => undefined;
+
+    useTodosStore.setState({ todos: [{ ...baseTodo, priority: 3 }] });
+
+    (todosService.updateTodo as jest.Mock).mockImplementation(
+      () =>
+        new Promise<Todo>((resolve) => {
+          resolveUpdate = resolve;
+        })
+    );
+
+    const pendingUpdate = useTodosStore.getState().updateTodo(baseTodo.id, { priority: 1 });
+
+    expect(useTodosStore.getState().todos).toEqual([
+      expect.objectContaining({ id: baseTodo.id, priority: 1 }),
+    ]);
+
+    resolveUpdate({ ...baseTodo, priority: 1, updatedAt: 20 });
+
+    await expect(pendingUpdate).resolves.toEqual(
+      expect.objectContaining({ id: baseTodo.id, priority: 1, updatedAt: 20 })
+    );
+    expect(useTodosStore.getState().todos).toEqual([
+      expect.objectContaining({ id: baseTodo.id, priority: 1, updatedAt: 20 }),
+    ]);
+    // A priority change cannot create a list or tag, so nothing was refetched.
+    expect(todosService.getTodoLists).not.toHaveBeenCalled();
+    expect(todosService.getTodoTags).not.toHaveBeenCalled();
+  });
+
+  it('clears a field optimistically when the key is present with undefined', async () => {
+    useTodosStore.setState({ todos: [{ ...baseTodo, priority: 2 }] });
+    (todosService.updateTodo as jest.Mock).mockImplementation(
+      () => new Promise<Todo>(() => undefined)
+    );
+
+    void useTodosStore.getState().updateTodo(baseTodo.id, { priority: undefined });
+
+    expect(useTodosStore.getState().todos[0].priority).toBeUndefined();
+  });
+
+  it('rolls back an optimistic update when the write fails', async () => {
+    const todoWithPriority: Todo = { ...baseTodo, priority: 4 };
+    useTodosStore.setState({ todos: [todoWithPriority] });
+    (todosService.updateTodo as jest.Mock).mockRejectedValue(new Error('update failed'));
+
+    const pendingUpdate = useTodosStore.getState().updateTodo(baseTodo.id, { priority: 1 });
+
+    expect(useTodosStore.getState().todos[0].priority).toBe(1);
+
+    await expect(pendingUpdate).rejects.toThrow('update failed');
+    expect(useTodosStore.getState().todos).toEqual([todoWithPriority]);
+  });
+
+  it('shows a named tag optimistically and refetches metadata only for that save', async () => {
+    useTodosStore.setState({ todos: [baseTodo], tags: [baseTag] });
+
+    let resolveUpdate: (todo: Todo) => void = () => undefined;
+    (todosService.updateTodo as jest.Mock).mockImplementation(
+      () =>
+        new Promise<Todo>((resolve) => {
+          resolveUpdate = resolve;
+        })
+    );
+    (todosService.getTodoLists as jest.Mock).mockResolvedValue([baseList]);
+    (todosService.getTodoTags as jest.Mock).mockResolvedValue([baseTag]);
+
+    const pendingUpdate = useTodosStore.getState().updateTodo(baseTodo.id, { tagName: 'brand' });
+
+    expect(useTodosStore.getState().todos[0].tag).toEqual(baseTag);
+
+    resolveUpdate({ ...baseTodo, tag: baseTag, updatedAt: 20 });
+    await pendingUpdate;
+
+    expect(todosService.getTodoTags).toHaveBeenCalled();
+    expect(todosService.getTodoLists).toHaveBeenCalled();
+  });
+
   it('rolls back an optimistic status update if the backend request fails', async () => {
     useTodosStore.setState({
       todos: [baseTodo],

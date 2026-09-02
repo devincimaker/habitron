@@ -17,6 +17,7 @@ interface TodosState {
   loadTodos: () => Promise<void>;
   addTodo: (todo: TodoDraft) => Promise<Todo>;
   addTodoOptimistic: (todo: TodoDraft) => Promise<Todo>;
+  /** Optimistic: the edit shows immediately, the server row replaces it, a failure rolls it back. */
   updateTodo: (todoId: string, changes: Partial<TodoDraft>) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: TodoStatus, options?: TodoStatusOptions) => Promise<Todo>;
   setTodoStatusOptimistic: (
@@ -46,6 +47,15 @@ async function reloadMetadata() {
   return { lists, tags };
 }
 
+/**
+ * A write can only grow the cached lists/tags when it names one — everything
+ * else (priority, dates, title…) leaves the metadata untouched and can skip
+ * the two refetches.
+ */
+function changesCanCreateMetadata(changes: Partial<TodoDraft>): boolean {
+  return Boolean(changes.listName?.trim()) || Boolean(changes.tagName?.trim());
+}
+
 function createOptimisticTodoId() {
   return `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
@@ -71,7 +81,10 @@ function resolveOptimisticListId(
   return lists.find((list) => list.isInbox)?.id ?? lists[0]?.id ?? 'optimistic-inbox';
 }
 
-function resolveOptimisticTag(tags: TodoTag[], draft: TodoDraft): TodoTag | undefined {
+function resolveOptimisticTag(
+  tags: TodoTag[],
+  draft: Pick<TodoDraft, 'tagId' | 'tagName'>
+): TodoTag | undefined {
   if (draft.tagId) {
     return tags.find((tag) => tag.id === draft.tagId);
   }
@@ -122,14 +135,14 @@ function buildOptimisticTodo(state: Pick<TodosState, 'todos' | 'lists' | 'tags'>
     listId,
     goalId: draft.goalId,
     tag: resolveOptimisticTag(state.tags, draft),
-    checklist: buildOptimisticChecklist(draft),
+    checklist: buildOptimisticChecklist(draft.checklist),
     createdAt: now,
     updatedAt: now,
   };
 }
 
-function buildOptimisticChecklist(draft: TodoDraft): Todo['checklist'] {
-  const items = normalizeChecklistDraft(draft.checklist ?? []);
+function buildOptimisticChecklist(checklist: TodoDraft['checklist']): Todo['checklist'] {
+  const items = normalizeChecklistDraft(checklist ?? []);
   if (items.length === 0) {
     return undefined;
   }
@@ -149,6 +162,71 @@ function applyChecklistItemDone(todo: Todo, itemId: string, done: boolean): Todo
       item.id === itemId ? { ...item, done } : item
     ),
   };
+}
+
+/** The update's three-state tag semantics: absent keeps, empty clears, a name finds or mints. */
+function resolveOptimisticTagChange(
+  todo: Todo,
+  changes: Partial<TodoDraft>,
+  tags: TodoTag[]
+): TodoTag | undefined {
+  if (changes.tagId !== undefined) {
+    if (changes.tagId === null) {
+      return undefined;
+    }
+    return tags.find((tag) => tag.id === changes.tagId) ?? todo.tag;
+  }
+
+  if (changes.tagName === undefined) {
+    return todo.tag;
+  }
+
+  if (!changes.tagName?.trim()) {
+    return undefined;
+  }
+
+  return resolveOptimisticTag(tags, { tagName: changes.tagName });
+}
+
+/**
+ * Predicts the row `todosService.updateTodo` will return, so the UI can show
+ * an edit before the round trip. Mirrors the service's key-presence semantics
+ * (`{ priority: undefined }` clears). What it cannot predict it leaves for the
+ * server row to correct: a list move's new position, a `listName`-only move.
+ * Returns null when the schedule is invalid — the write stays pessimistic and
+ * the server rejects it.
+ */
+function applyOptimisticTodoChanges(
+  todo: Todo,
+  changes: Partial<TodoDraft>,
+  tags: TodoTag[]
+): Todo | null {
+  const next: Todo = { ...todo, updatedAt: Date.now() };
+
+  if (changes.title !== undefined) next.title = changes.title;
+  if ('notes' in changes) next.notes = changes.notes ?? undefined;
+  if ('priority' in changes) next.priority = changes.priority;
+  if ('dueDate' in changes) next.dueDate = changes.dueDate;
+  if ('scheduledDate' in changes || 'scheduledTime' in changes) {
+    const schedule = resolveNewTodoSchedule(
+      changes.scheduledDate,
+      changes.scheduledTime === undefined ? null : changes.scheduledTime
+    );
+    if (schedule === null) {
+      return null;
+    }
+    next.scheduledDate = schedule.scheduledDate;
+    next.scheduledTime = schedule.scheduledTime;
+  }
+  if ('estimateMinutes' in changes) next.estimateMinutes = changes.estimateMinutes;
+  if ('goalId' in changes) next.goalId = changes.goalId;
+  if (changes.listId) next.listId = changes.listId;
+  if (changes.checklist !== undefined) {
+    next.checklist = buildOptimisticChecklist(changes.checklist);
+  }
+  next.tag = resolveOptimisticTagChange(todo, changes, tags);
+
+  return next;
 }
 
 function applyOptimisticTodoStatus(
@@ -196,11 +274,10 @@ export const useTodosStore = create<TodosState>((set, get) => ({
 
   addTodo: async (todo) => {
     const createdTodo = await todosService.addTodo(todo);
-    const metadata = await reloadMetadata();
+    const metadata = changesCanCreateMetadata(todo) ? await reloadMetadata() : undefined;
     set((state) => ({
       todos: [...state.todos, createdTodo],
-      lists: metadata.lists,
-      tags: metadata.tags,
+      ...metadata,
     }));
     return createdTodo;
   },
@@ -214,14 +291,13 @@ export const useTodosStore = create<TodosState>((set, get) => ({
 
     try {
       const createdTodo = await todosService.addTodo(todo);
-      const metadata = await reloadMetadata();
+      const metadata = changesCanCreateMetadata(todo) ? await reloadMetadata() : undefined;
 
       set((state) => ({
         todos: state.todos.map((existingTodo) =>
           existingTodo.id === optimisticTodo.id ? createdTodo : existingTodo
         ),
-        lists: metadata.lists,
-        tags: metadata.tags,
+        ...metadata,
       }));
 
       return createdTodo;
@@ -234,14 +310,33 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   },
 
   updateTodo: async (todoId, changes) => {
-    const updatedTodo = await todosService.updateTodo(todoId, changes);
-    const metadata = await reloadMetadata();
-    set((state) => ({
-      todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
-      lists: metadata.lists,
-      tags: metadata.tags,
-    }));
-    return updatedTodo;
+    const existingTodo = get().todos.find((todo) => todo.id === todoId);
+    const optimisticTodo = existingTodo
+      ? applyOptimisticTodoChanges(existingTodo, changes, get().tags)
+      : null;
+
+    if (optimisticTodo) {
+      set((state) => ({
+        todos: state.todos.map((todo) => (todo.id === todoId ? optimisticTodo : todo)),
+      }));
+    }
+
+    try {
+      const updatedTodo = await todosService.updateTodo(todoId, changes);
+      const metadata = changesCanCreateMetadata(changes) ? await reloadMetadata() : undefined;
+      set((state) => ({
+        todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
+        ...metadata,
+      }));
+      return updatedTodo;
+    } catch (error) {
+      if (existingTodo && optimisticTodo) {
+        set((state) => ({
+          todos: state.todos.map((todo) => (todo.id === todoId ? existingTodo : todo)),
+        }));
+      }
+      throw error;
+    }
   },
 
   setTodoStatus: async (todoId, status, options = {}) => {
