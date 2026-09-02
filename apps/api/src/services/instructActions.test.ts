@@ -11,9 +11,9 @@ const chain = vi.hoisted(() => {
   return stub;
 });
 
-vi.mock('@supabase/supabase-js', () => ({
-  createClient: () => ({ from: () => chain }),
-}));
+const createClient = vi.hoisted(() => vi.fn(() => ({ from: () => chain })));
+
+vi.mock('@supabase/supabase-js', () => ({ createClient }));
 
 import { createSupabaseInstructActionsDb, type InstructActionRecord } from './instructActions.js';
 
@@ -39,6 +39,35 @@ const EXISTING: InstructActionRecord = {
 const DUPLICATE = { code: '23505', message: 'duplicate key value violates unique constraint' };
 
 const NEW_ROW = { id: ID, user_id: 'user-1', transcript: 'buy the game', timezone: 'UTC', reinstruct_of: null };
+
+describe('createSupabaseInstructActionsDb() transport', () => {
+  /** The fetch the client was built with — every request the queue makes goes through it. */
+  function clientFetch(): typeof fetch {
+    createSupabaseInstructActionsDb();
+    const options = createClient.mock.lastCall?.[2] as { global: { fetch: typeof fetch } };
+    return options.global.fetch;
+  }
+
+  it('carries an abort signal on every request, so a dead socket cannot park the queue', async () => {
+    const underlying = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', underlying);
+
+    void clientFetch()('https://example.test');
+
+    expect(underlying.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+    vi.unstubAllGlobals();
+  });
+
+  it('keeps a caller’s own signal alongside the timeout', async () => {
+    const underlying = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', underlying);
+
+    void clientFetch()('https://example.test', { signal: AbortSignal.abort() });
+
+    expect(underlying.mock.calls[0][1].signal.aborted).toBe(true);
+    vi.unstubAllGlobals();
+  });
+});
 
 describe('createSupabaseInstructActionsDb().insert', () => {
   beforeEach(() => {

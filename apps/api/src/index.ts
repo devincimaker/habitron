@@ -9,7 +9,7 @@ import memoriesRouter from './routes/memories.js';
 import notificationsRouter from './routes/notifications.js';
 import sessionsRouter from './routes/sessions.js';
 import transcribeRouter from './routes/transcribe.js';
-import { instructQueue } from './services/instructQueue.js';
+import { SWEEP_INTERVAL_MS, instructQueue } from './services/instructQueue.js';
 
 const app = express();
 
@@ -69,3 +69,11 @@ app.listen(config.port, () => {
 instructQueue()
   .resume()
   .catch((error) => console.error('Instruct queue resume failed:', error));
+
+// And from then on the queue heals itself, so a dropped instruction waits a
+// minute rather than the next restart.
+setInterval(() => {
+  instructQueue()
+    .sweep()
+    .catch((error) => console.error('Instruct queue sweep failed:', error));
+}, SWEEP_INTERVAL_MS).unref();
