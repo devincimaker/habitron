@@ -84,8 +84,14 @@ export function toApiRow(record: InstructActionRecord): InstructActionRow {
  * instruction for as long as the kernel held the connection open — 46 minutes,
  * in the case that found this (HAB-190). A request here may fail. It may not
  * hang.
+ *
+ * Generous on purpose: these are single-row reads and writes, so a minute is
+ * hundreds of times what they take, and nothing is gained by failing fast. A
+ * spurious timeout on the transition that records a finished turn would leave
+ * the row `working` for the sweep to run a second time, which is a duplicate
+ * task — a worse outcome than waiting.
  */
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 60_000;
 
 const withRequestTimeout: typeof fetch = (input, init) => {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
