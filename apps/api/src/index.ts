@@ -8,6 +8,7 @@ import instructRouter from './routes/instruct.js';
 import memoriesRouter from './routes/memories.js';
 import notificationsRouter from './routes/notifications.js';
 import sessionsRouter from './routes/sessions.js';
+import speakRouter from './routes/speak.js';
 import transcribeRouter from './routes/transcribe.js';
 import { SWEEP_INTERVAL_MS, instructQueue } from './services/instructQueue.js';
 
@@ -39,6 +40,7 @@ app.use('/api/instruct', instructRouter);
 app.use('/api/memories', memoriesRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/sessions', sessionsRouter);
+app.use('/api/speak', speakRouter);
 app.use('/api/transcribe', transcribeRouter);
 
 // 404 handler

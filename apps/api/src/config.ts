@@ -34,6 +34,12 @@ export const config = {
   openai: {
     apiKey: required('OPENAI_API_KEY'),
   },
+  /** ElevenLabs text-to-speech: the coach's voice in interactive mode. */
+  elevenlabs: {
+    apiKey: required('ELEVENLABS_API_KEY'),
+    /** A premade ElevenLabs voice ("Sarah") unless the environment names another. */
+    voiceId: process.env.ELEVENLABS_VOICE_ID || 'EXAVITQu4vr4xnSDxMaL',
+  },
   coach: {
     model: process.env.COACH_MODEL || 'claude-opus-5',
     effort: optionalEffort(),

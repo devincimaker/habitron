@@ -25,7 +25,7 @@ function isNonEmptyString(value: unknown): value is string {
  * record is this turn's, and the app polls it if its stream drops.
  */
 export async function handleChatRequest(req: Request, res: Response): Promise<void> {
-  const { sessionId, prompt, timezone, userName } = (req.body ?? {}) as Partial<CoachTurnRequest>;
+  const { sessionId, prompt, timezone, userName, voice } = (req.body ?? {}) as Partial<CoachTurnRequest>;
   const userId = req.user!.id;
 
   if (!isNonEmptyString(sessionId)) {
@@ -94,6 +94,7 @@ export async function handleChatRequest(req: Request, res: Response): Promise<vo
         prompt: trimmedPrompt,
         timezone,
         userName: isNonEmptyString(userName) ? userName : undefined,
+        voice: voice === true,
         claudeSessionId: session.claudeSessionId,
       },
       send

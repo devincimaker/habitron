@@ -17,6 +17,8 @@ export interface CoachTurnInput {
   prompt: string;
   timezone: string;
   userName?: string;
+  /** The reply is spoken aloud, so the persona switches to its spoken register. */
+  voice?: boolean;
   /** Agent SDK session to resume; null on the first turn of a coaching session. */
   claudeSessionId: string | null;
   /** Skills this turn may invoke; defaults to the coaching set. */
@@ -96,6 +98,7 @@ export async function runCoachTurn(
       userName: input.userName,
       now: localNow(input.timezone),
       timezone: input.timezone,
+      voice: input.voice,
     }),
     model: config.coach.model,
     effort: config.coach.effort,

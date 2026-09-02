@@ -329,6 +329,8 @@ export interface ChatMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  /** Said and heard in interactive mode rather than typed and read. */
+  spoken?: boolean;
 }
 
 // Session types
@@ -353,6 +355,17 @@ export interface CoachTurnRequest {
   /** IANA timezone used for "today" and "now". */
   timezone: string;
   userName?: string;
+  /** The reply is spoken aloud (interactive mode), so the coach answers in a spoken register. */
+  voice?: boolean;
+}
+
+/** Text-to-speech (POST /api/speak): one sentence in, raw PCM out. */
+export interface SpeakRequest {
+  text: string;
+  /** What was spoken just before, so the voice carries its prosody across the seam. */
+  previousText?: string;
+  /** What follows, when it is already known. */
+  nextText?: string;
 }
 
 /**
@@ -423,6 +436,7 @@ export interface CoachingSessionMessage {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  spoken?: boolean;
 }
 
 /** A day's ratings, as the app reads them. The coach owns the full row. */

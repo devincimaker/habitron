@@ -10,6 +10,9 @@
  * COACH_SMOKE_MODE=instruct runs the turn the way the instruct queue does:
  * only the `instruct` skill, write tools live, one act turn — pass the
  * spoken instruction as `/instruct <text>`.
+ *
+ * COACH_SMOKE_VOICE=1 runs it the way interactive mode does: the reply is
+ * going to be spoken, so the persona answers in its spoken register.
  */
 import { INSTRUCT_SKILLS, runCoachTurn } from '../src/coach/agent.js';
 import { resolveTestUserId } from './seed/test-user.js';
@@ -18,6 +21,7 @@ const userId = process.env.COACH_SMOKE_USER_ID || (await resolveTestUserId());
 const prompt = process.argv.slice(2).join(' ') || '/coach';
 const claudeSessionId = process.env.COACH_SMOKE_RESUME || null;
 const instruct = process.env.COACH_SMOKE_MODE === 'instruct';
+const voice = process.env.COACH_SMOKE_VOICE === '1';
 
 const started = Date.now();
 const result = await runCoachTurn(
@@ -26,6 +30,7 @@ const result = await runCoachTurn(
     prompt,
     timezone: process.env.HABITRON_TIMEZONE || Intl.DateTimeFormat().resolvedOptions().timeZone,
     userName: 'Test',
+    voice,
     claudeSessionId,
     ...(instruct ? { skills: INSTRUCT_SKILLS, readOnly: false } : {}),
   },

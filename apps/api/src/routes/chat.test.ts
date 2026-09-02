@@ -100,6 +100,7 @@ describe('handleChatRequest', () => {
         prompt: '/coach',
         timezone: 'America/Argentina/Buenos_Aires',
         userName: 'Mauro',
+        voice: false,
         claudeSessionId: null,
       },
       expect.any(Function)

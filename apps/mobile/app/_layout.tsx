@@ -187,6 +187,16 @@ export default Sentry.wrap(function RootLayout() {
             }}
           />
           <Stack.Screen
+            name="interactive"
+            options={{
+              // Voice mode owns the whole screen: dark in both themes, and no
+              // swipe back while the coach is mid-sentence. Done ends it.
+              presentation: 'fullScreenModal',
+              headerShown: false,
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="task/[id]"
             options={{
               presentation: 'formSheet',
