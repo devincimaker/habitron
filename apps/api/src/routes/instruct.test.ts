@@ -103,6 +103,19 @@ describe('handleEnqueueRequest', () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
+  it('passes the id the client named the row with through to the queue', async () => {
+    const res = createResponse();
+    await handleEnqueueRequest(createRequest({ text: 'move gym to 6pm', id: RECORD.id }) as never, res as never);
+    expect(enqueue).toHaveBeenCalledWith(expect.objectContaining({ id: RECORD.id }));
+  });
+
+  it('rejects a malformed id rather than letting the database name the row', async () => {
+    const res = createResponse();
+    await handleEnqueueRequest(createRequest({ text: 'move gym to 6pm', id: 'not-a-uuid' }) as never, res as never);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(enqueue).not.toHaveBeenCalled();
+  });
+
   it('passes a valid reinstructOf through and rejects a malformed one', async () => {
     const res = createResponse();
     await handleEnqueueRequest(

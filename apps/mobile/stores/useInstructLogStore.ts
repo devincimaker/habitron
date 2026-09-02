@@ -9,7 +9,7 @@ import {
   postInstructAction,
   type InstructVerb,
 } from '../services/api';
-import { NOTHING_HEARD, UPLOAD_FAILED } from '../utils/instruct';
+import { NOTHING_HEARD, UPLOAD_FAILED, newActionId } from '../utils/instruct';
 import { useDailyPlansStore } from './useDailyPlansStore';
 import { useGoalsStore } from './useGoalsStore';
 import { useHabitsStore } from './useHabitsStore';
@@ -37,6 +37,20 @@ async function refreshData(): Promise<void> {
   }
 }
 
+/**
+ * Did the upload land after all? The row when the log has it, `null` when the
+ * log says it never arrived, `undefined` when the log could not be asked — a
+ * suspended app fails both requests, and that is not the same as a failure.
+ */
+async function lookUpAction(id: string): Promise<InstructActionRow | null | undefined> {
+  try {
+    const rows = await fetchInstructLog(startOfTodayIso());
+    return rows.find((row) => row.id === id) ?? null;
+  } catch {
+    return undefined;
+  }
+}
+
 interface InstructLogState {
   /** Today's log, newest first — the pill, the sheet, and the hub count all read it. */
   actions: InstructActionRow[];
@@ -55,6 +69,11 @@ interface InstructLogState {
    * this is what keeps the polling alive until the flip lands.
    */
   settling: Record<string, InstructActionRow['status']>;
+  /**
+   * Uploads whose fate is unknown: the enqueue failed and the log could not be
+   * reached either. The next refresh that turns one up retracts its notice.
+   */
+  unconfirmed: string[];
 
   submit: (audioUri: string) => Promise<void>;
   refresh: () => Promise<void>;
@@ -90,21 +109,37 @@ export const useInstructLogStore = create<InstructLogState>((set, get) => ({
   sheetOpen: false,
   busy: {},
   settling: {},
+  unconfirmed: [],
 
   submit: async (audioUri: string) => {
     const { reinstructOf } = get();
+    // The row is named before it is sent, so a lost reply is still answerable.
+    const id = newActionId();
     set((state) => ({ uploading: state.uploading + 1, notice: null, reinstructOf: null }));
     try {
-      const row = await enqueueInstruction({ audioUri, reinstructOf: reinstructOf?.id });
+      const row = await enqueueInstruction({ id, audioUri, reinstructOf: reinstructOf?.id });
       set((state) => ({ actions: merge(state.actions, row) }));
     } catch (error) {
       if (error instanceof NothingHeardError) {
         set({ notice: NOTHING_HEARD });
         return;
       }
+      // A pocketed phone loses the reply, not the request: iOS suspends the app
+      // and tears the socket down after the body has already arrived and the
+      // instruction is running. Ask the log before calling it a failure.
+      const landed = await lookUpAction(id);
+      if (landed) {
+        set((state) => ({ actions: merge(state.actions, landed) }));
+        return;
+      }
       console.warn('Instruction upload failed:', error);
       Sentry.captureException(error, { tags: { feature: 'instruct', stage: 'enqueue' } });
-      set({ notice: error instanceof TranscriptionTimeoutError ? error.message : UPLOAD_FAILED });
+      set((state) => ({
+        notice: error instanceof TranscriptionTimeoutError ? error.message : UPLOAD_FAILED,
+        // The log answered "no such row", so the failure is real; only an
+        // unreachable log leaves the question open for a later refresh.
+        unconfirmed: landed === undefined ? [...state.unconfirmed, id] : state.unconfirmed,
+      }));
     } finally {
       set((state) => ({ uploading: state.uploading - 1 }));
     }
@@ -118,7 +153,11 @@ export const useInstructLogStore = create<InstructLogState>((set, get) => ({
       for (const row of rows) {
         if (settling[row.id] && settling[row.id] !== row.status) delete settling[row.id];
       }
-      set({ actions: rows, settling });
+      // An unconfirmed upload that turns up here had landed all along, so the
+      // notice that mourned it was wrong and goes with it.
+      const unconfirmed = get().unconfirmed.filter((id) => !rows.some((row) => row.id === id));
+      const recovered = unconfirmed.length < get().unconfirmed.length;
+      set({ actions: rows, settling, unconfirmed, ...(recovered ? { notice: null } : {}) });
       if (newlyLanded(previous, rows)) void refreshData();
     } catch (error) {
       console.warn('Failed to refresh the activity log:', error);
@@ -154,5 +193,14 @@ export const useInstructLogStore = create<InstructLogState>((set, get) => ({
   setSheetOpen: (open) => set({ sheetOpen: open }),
 
   clear: () =>
-    set({ actions: [], uploading: 0, notice: null, reinstructOf: null, sheetOpen: false, busy: {}, settling: {} }),
+    set({
+      actions: [],
+      uploading: 0,
+      notice: null,
+      reinstructOf: null,
+      sheetOpen: false,
+      busy: {},
+      settling: {},
+      unconfirmed: [],
+    }),
 }));

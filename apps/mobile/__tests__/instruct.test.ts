@@ -6,6 +6,7 @@ import {
   formatElapsed,
   holdOutcome,
   instructReducer,
+  newActionId,
   queueCounts,
   type InstructAction,
   type InstructState,
@@ -123,6 +124,17 @@ describe('reading the activity log', () => {
       row({ id: '5', status: 'canceled' }),
     ]);
     expect(counts).toEqual({ pending: 2, failed: 1 });
+  });
+});
+
+describe('newActionId', () => {
+  it('mints a v4 uuid the server will take as a row id', () => {
+    expect(newActionId()).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+  });
+
+  it('never repeats itself', () => {
+    const ids = new Set(Array.from({ length: 500 }, newActionId));
+    expect(ids.size).toBe(500);
   });
 });
 

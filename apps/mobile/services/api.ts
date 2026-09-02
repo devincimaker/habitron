@@ -113,9 +113,13 @@ export type InstructVerb = 'retry' | 'cancel' | 'dismiss' | 'rewind' | 'restore'
  * Fire-and-forget hold-to-instruct: upload the recording (or text), get the
  * queued row back. The same deadline as transcription — the server runs
  * Whisper inside this call — and after it resolves, everything is server state.
+ *
+ * The caller names the row through `id`: the upload can arrive whole and still
+ * lose its reply when iOS suspends a pocketed phone, and that id is what turns
+ * "I never heard back" into a question the log can answer.
  */
 export async function enqueueInstruction(
-  input: { audioUri?: string; text?: string; reinstructOf?: string },
+  input: { id: string; audioUri?: string; text?: string; reinstructOf?: string },
   signal?: AbortSignal
 ): Promise<InstructActionRow> {
   const deadline = withDeadline(TRANSCRIBE_TIMEOUT_MS, signal);
@@ -123,6 +127,7 @@ export async function enqueueInstruction(
     const token = await raceSignal(getAuthToken(), deadline.signal);
 
     const formData = new FormData();
+    formData.append('id', input.id);
     formData.append('timezone', Intl.DateTimeFormat().resolvedOptions().timeZone);
     if (input.text) formData.append('text', input.text);
     if (input.reinstructOf) formData.append('reinstructOf', input.reinstructOf);
