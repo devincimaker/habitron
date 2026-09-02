@@ -14,6 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import * as Sentry from '@sentry/react-native';
@@ -48,12 +49,14 @@ import {
   FONT_SIZES,
   TYPOGRAPHY,
   TOUCH_TARGET,
+  ROUTINE_ALARM_CHIP,
   type Colors,
 } from '../constants/theme';
 import { describeCoachActivity } from '../utils/coachActivity';
 import { waitForTurn } from '../utils/coachTurnRecovery';
 import { CoachStreamDroppedError } from '../utils/sse';
 import { formatSessionStatus } from '../utils/coachSessions';
+import { spokenDividerFor } from '../utils/voiceTranscript';
 import { useThemedStyles } from '../hooks/useColors';
 
 type ReviewState =
@@ -79,6 +82,7 @@ function openerCommand(opener: SessionOpener, ritualDate: string | null): string
 
 export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   const [styles, colors] = useThemedStyles(createStyles);
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const {
@@ -416,6 +420,9 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
     onStopSuccess: setInputText,
   });
 
+  // Voice mode needs the audio session to itself and a session to talk in.
+  const canOpenVoiceMode = sessionId !== null && !isVoiceActive && !isLoading;
+
   const handleStopAndEdit = useCallback(async () => {
     const text = await handleStopRecording();
     if (text?.trim()) {
@@ -426,8 +433,10 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
   const { onMicPress, ...voiceControlProps } = voiceInputProps;
 
   const renderMessage = useCallback(
-    ({ item }: { item: ChatMessageType }) => <ChatMessage message={item} />,
-    []
+    ({ item, index }: { item: ChatMessageType; index: number }) => (
+      <ChatMessage message={item} divider={spokenDividerFor(messages, index)} />
+    ),
+    [messages]
   );
 
   const keyExtractor = useCallback((item: ChatMessageType) => item.id, []);
@@ -559,15 +568,28 @@ export function CoachSessionScreen({ onDismiss }: CoachSessionScreenProps) {
         )}
 
         {endedAt === null ? (
-          <TouchableOpacity
-            style={styles.headerButton}
-            onPress={handleEndSession}
-            activeOpacity={0.7}
-            accessibilityRole="button"
-            accessibilityLabel="End session"
-          >
-            <Text style={styles.endText}>End</Text>
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={[styles.voiceModeButton, !canOpenVoiceMode && styles.voiceModeButtonDisabled]}
+              onPress={() => router.push('/interactive')}
+              disabled={!canOpenVoiceMode}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="Talk with the coach"
+              accessibilityState={{ disabled: !canOpenVoiceMode }}
+            >
+              <Ionicons name="pulse" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.headerButton}
+              onPress={handleEndSession}
+              activeOpacity={0.7}
+              accessibilityRole="button"
+              accessibilityLabel="End session"
+            >
+              <Text style={styles.endText}>End</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.headerButton} />
         )}
@@ -666,6 +688,24 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     backgroundColor: colors.background,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  // Voice mode's door. One audio session at a time: it closes while the
+  // composer's own voice pill holds the microphone or a turn is running.
+  voiceModeButton: {
+    width: TOUCH_TARGET.min - 8,
+    height: TOUCH_TARGET.min - 8,
+    borderRadius: (TOUCH_TARGET.min - 8) / 2,
+    backgroundColor: ROUTINE_ALARM_CHIP.fill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voiceModeButtonDisabled: {
+    opacity: 0.35,
   },
   headerButton: {
     minWidth: TOUCH_TARGET.min,

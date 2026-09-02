@@ -55,6 +55,7 @@ function toMessagePayload(messages: ChatMessage[]) {
     role: m.role,
     content: m.content,
     timestamp: m.timestamp,
+    ...(m.spoken ? { spoken: true } : {}),
   }));
 }
 
@@ -123,6 +124,7 @@ export const useSessionStore = create<SessionState>((set, get) => ({
       role: m.role,
       content: m.content,
       timestamp: m.timestamp,
+      ...(m.spoken ? { spoken: true } : {}),
     }));
 
     set({

@@ -17,6 +17,7 @@ export const audioUpload = multer({
     const allowedMimes = [
       'audio/wav',
       'audio/x-wav',
+      'audio/vnd.wave', // what iOS calls a .wav it uploads itself (interactive mode's utterances)
       'audio/mp4',
       'audio/m4a',
       'audio/x-m4a',
