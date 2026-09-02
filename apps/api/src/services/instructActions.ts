@@ -52,8 +52,13 @@ export interface InstructActionsDb {
   /** The user's oldest queued row, or null when the queue is drained. */
   oldestQueued(userId: string): Promise<InstructActionRecord | null>;
   list(userId: string, since?: string): Promise<InstructActionRecord[]>;
-  /** Boot recovery: every `working` row (any user) back to `queued`. */
-  resetStaleWorking(): Promise<void>;
+  /**
+   * Every `working` row back to `queued` — at boot that is all of them, since
+   * no turn survived the process. `startedBefore` narrows it to the ones a
+   * running process can no longer be working on, so the sweep cannot kill a
+   * turn in flight.
+   */
+  resetStaleWorking(startedBefore?: string): Promise<void>;
   /** Users with queued rows, for the boot kick. */
   queuedUserIds(): Promise<string[]>;
 }
@@ -73,8 +78,33 @@ export function toApiRow(record: InstructActionRecord): InstructActionRow {
   };
 }
 
+/**
+ * supabase-js sets no request timeout of its own, and the instruct queue is one
+ * serial chain per user: a socket that never answers used to park every later
+ * instruction for as long as the kernel held the connection open — 46 minutes,
+ * in the case that found this (HAB-190). A request here may fail. It may not
+ * hang.
+ *
+ * Generous on purpose: these are single-row reads and writes, so a minute is
+ * hundreds of times what they take, and nothing is gained by failing fast. A
+ * spurious timeout on the transition that records a finished turn would leave
+ * the row `working` for the sweep to run a second time, which is a duplicate
+ * task — a worse outcome than waiting.
+ */
+const REQUEST_TIMEOUT_MS = 60_000;
+
+const withRequestTimeout: typeof fetch = (input, init) => {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return fetch(input, {
+    ...init,
+    signal: init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout,
+  });
+};
+
 export function createSupabaseInstructActionsDb(): InstructActionsDb {
-  const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey);
+  const supabase = createClient(config.supabase.url, config.supabase.serviceRoleKey, {
+    global: { fetch: withRequestTimeout },
+  });
   const table = () => supabase.from('instruct_actions');
 
   const get = async (id: string): Promise<InstructActionRecord | null> => {
@@ -127,10 +157,10 @@ export function createSupabaseInstructActionsDb(): InstructActionsDb {
       return (data ?? []) as InstructActionRecord[];
     },
 
-    async resetStaleWorking() {
-      const { error } = await table()
-        .update({ status: 'queued', started_at: null, summary: null })
-        .eq('status', 'working');
+    async resetStaleWorking(startedBefore) {
+      let query = table().update({ status: 'queued', started_at: null, summary: null }).eq('status', 'working');
+      if (startedBefore) query = query.lt('started_at', startedBefore);
+      const { error } = await query;
       if (error) throw new Error(`Failed to reset stale instruct actions: ${error.message}`);
     },
 

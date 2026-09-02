@@ -1,5 +1,6 @@
 import { INSTRUCT_SKILLS, runCoachTurn, type CoachTurnInput, type CoachTurnResult } from '../coach/agent.js';
 import type { CoachStreamEvent } from '@habits-coach/shared';
+import { config } from '../config.js';
 import {
   createSupabaseInstructActionsDb,
   type InstructActionRecord,
@@ -23,6 +24,42 @@ export interface EnqueueInput {
 }
 
 const now = () => new Date().toISOString();
+
+/**
+ * A turn that has not answered by now is wedged rather than slow: `turnCapMs`
+ * is the coach's own cap, and this is the outer one that holds even when the
+ * abort does not land. The row fails and the chain moves on.
+ */
+const TURN_DEADLINE_MS = config.coach.turnCapMs + 30_000;
+
+/** `working` for longer than this and no live turn can still be behind it. */
+const STALE_WORKING_MS = TURN_DEADLINE_MS * 2;
+
+/**
+ * The outermost bound: one turn plus the writes around it. Past this the chain
+ * link is abandoned so the user's next instruction is not held behind it, and
+ * the sweep picks up whatever it left.
+ */
+const LINK_DEADLINE_MS = TURN_DEADLINE_MS + 60_000;
+
+/** How often the queue looks for work that nothing is draining. */
+export const SWEEP_INTERVAL_MS = 60_000;
+
+/**
+ * A promise that never resolves and rejects at `ms`, with its timer's off
+ * switch. Every await inside the serial chain needs one: a link that hangs
+ * parks every instruction behind it, for as long as it hangs (HAB-190).
+ */
+function deadline(ms: number, message: string, onExpire?: () => void) {
+  let timer: NodeJS.Timeout | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      onExpire?.();
+      reject(new Error(message));
+    }, ms);
+  });
+  return { expiry, cancel: () => clearTimeout(timer) };
+}
 
 /** The first complete line of what has streamed so far, or null until one exists. */
 export function firstCompleteLine(streamed: string): string | null {
@@ -90,9 +127,15 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
   const rewinding = new Set<string>();
 
   function schedule(userId: string, work: () => Promise<void>): Promise<void> {
-    const next = (chains.get(userId) ?? Promise.resolve()).then(work).catch((error) => {
-      console.error('Instruct queue:', error);
-    });
+    const next = (chains.get(userId) ?? Promise.resolve())
+      .then(() => {
+        // Whatever hangs — a socket, the SDK — the chain is not held by it.
+        const link = deadline(LINK_DEADLINE_MS, `Instruct chain for ${userId} was abandoned; the sweep will pick it up`);
+        return Promise.race([work(), link.expiry]).finally(link.cancel);
+      })
+      .catch((error) => {
+        console.error('Instruct queue:', error);
+      });
     chains.set(userId, next);
     return next;
   }
@@ -127,6 +170,12 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
     activeTurns.set(row.id, controller);
     let streamed = '';
     let workingLine: string | null = null;
+    let timedOut = false;
+    // The abort is the polite half; the race is the half that always works.
+    const turnDeadline = deadline(TURN_DEADLINE_MS, 'The coach did not answer in time.', () => {
+      timedOut = true;
+      controller.abort();
+    });
     const onEvent = (event: CoachStreamEvent) => {
       if (event.type !== 'text' || workingLine) return;
       streamed += event.delta;
@@ -136,18 +185,21 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
     };
 
     try {
-      const result = await runTurn(
-        {
-          userId: row.user_id,
-          prompt: await buildActPrompt(row),
-          timezone: row.timezone,
-          claudeSessionId: null,
-          skills: INSTRUCT_SKILLS,
-          readOnly: false,
-          signal: controller.signal,
-        },
-        onEvent
-      );
+      const result = await Promise.race([
+        runTurn(
+          {
+            userId: row.user_id,
+            prompt: await buildActPrompt(row),
+            timezone: row.timezone,
+            claudeSessionId: null,
+            skills: INSTRUCT_SKILLS,
+            readOnly: false,
+            signal: controller.signal,
+          },
+          onEvent
+        ),
+        turnDeadline.expiry,
+      ]);
 
       if (result.outcome.type === 'error') {
         await db.transition(row.id, ['working'], { status: 'failed', error: result.outcome.message, finished_at: now() });
@@ -173,13 +225,16 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
         });
       }
     } catch (error) {
-      if (controller.signal.aborted) {
+      const message = error instanceof Error ? error.message : String(error);
+      // A timeout aborts the turn too, so it has to be read before the abort.
+      if (!timedOut && controller.signal.aborted) {
         await db.transition(row.id, ['working'], { status: 'canceled', finished_at: now() });
       } else {
-        const message = error instanceof Error ? error.message : String(error);
+        if (timedOut) console.error(`Instruct action ${row.id} timed out after ${TURN_DEADLINE_MS}ms`);
         await db.transition(row.id, ['working'], { status: 'failed', error: message, finished_at: now() });
       }
     } finally {
+      turnDeadline.cancel();
       activeTurns.delete(row.id);
     }
   }
@@ -287,6 +342,18 @@ export function createInstructQueue({ db, runTurn }: InstructQueueDeps) {
     /** Boot recovery: a turn that died with its process runs again from `queued`. */
     async resume(): Promise<void> {
       await db.resetStaleWorking();
+      for (const userId of await db.queuedUserIds()) kick(userId);
+    },
+
+    /**
+     * The backstop, on `SWEEP_INTERVAL_MS`. Every await in the chain has a
+     * deadline now, so a link fails instead of hanging — but a link that failed
+     * leaves its row queued with nothing left to kick it, and a turn abandoned
+     * mid-flight leaves a row `working` that no one will finish. Neither should
+     * wait for the next restart.
+     */
+    async sweep(): Promise<void> {
+      await db.resetStaleWorking(new Date(Date.now() - STALE_WORKING_MS).toISOString());
       for (const userId of await db.queuedUserIds()) kick(userId);
     },
 

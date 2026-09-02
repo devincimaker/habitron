@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CoachStreamEvent } from '@habits-coach/shared';
 import type { CoachTurnInput, CoachTurnResult } from '../coach/agent.js';
 import type { InstructActionPatch, InstructActionRecord, InstructActionsDb } from './instructActions.js';
@@ -48,11 +48,11 @@ function createMemoryDb() {
     async list(userId) {
       return [...rows.values()].filter((row) => row.user_id === userId);
     },
-    async resetStaleWorking() {
+    async resetStaleWorking(startedBefore) {
       for (const row of rows.values()) {
-        if (row.status === 'working') {
-          rows.set(row.id, { ...row, status: 'queued', started_at: null, summary: null });
-        }
+        if (row.status !== 'working') continue;
+        if (startedBefore && !(row.started_at && row.started_at < startedBefore)) continue;
+        rows.set(row.id, { ...row, status: 'queued', started_at: null, summary: null });
       }
     },
     async queuedUserIds() {
@@ -419,6 +419,81 @@ describe('reply parsing helpers', () => {
     expect(stripWorkingLine('Moving…\nMoved it', 'Moving…')).toBe('Moved it');
     expect(stripWorkingLine('Moved it', null)).toBe('Moved it');
     expect(stripWorkingLine('Moved it', 'Moving…')).toBe('Moved it');
+  });
+});
+
+describe('a chain that cannot wedge', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('fails a turn that never answers instead of holding the queue', async () => {
+    const { db, rows } = createMemoryDb();
+    const never = new Promise<CoachTurnResult>(() => {});
+    const { runTurn } = scriptedTurns(
+      () => never,
+      async () => done('Moved it', [MOVE_CALL])
+    );
+    const queue = createInstructQueue({ db, runTurn });
+
+    const stuck = await enqueue(queue, 'move gym to 6pm');
+    const next = await enqueue(queue, 'and cancel Beatport');
+    await vi.advanceTimersByTimeAsync(6 * 60_000);
+    await queue.idle(USER);
+
+    expect(rows.get(stuck.id)!.status).toBe('failed');
+    expect(rows.get(stuck.id)!.error).toBe('The coach did not answer in time.');
+    // The one behind it is the whole point: it ran.
+    expect(rows.get(next.id)!.status).toBe('applied');
+  });
+
+  it('abandons a chain link that hangs, and the sweep runs what it dropped', async () => {
+    const { db, rows } = createMemoryDb();
+    // What HAB-190 caught: the drain's own read never came back.
+    let hang = false;
+    const oldestQueued = db.oldestQueued.bind(db);
+    db.oldestQueued = (userId) => (hang ? new Promise(() => {}) : oldestQueued(userId));
+
+    const { runTurn } = scriptedTurns(async () => done('Moved it', [MOVE_CALL]));
+    const queue = createInstructQueue({ db, runTurn });
+
+    hang = true;
+    const row = await enqueue(queue);
+    await vi.advanceTimersByTimeAsync(7 * 60_000);
+    await queue.idle(USER);
+    expect(rows.get(row.id)!.status).toBe('queued'); // nothing ran, but nothing is stuck either
+
+    hang = false;
+    await queue.sweep();
+    await queue.idle(USER);
+    expect(rows.get(row.id)!.status).toBe('applied');
+  });
+
+  it('sweeps a working row no turn can still be behind, and spares a fresh one', async () => {
+    const { db, rows } = createMemoryDb();
+    const { runTurn } = scriptedTurns(async () => done('Moved it', [MOVE_CALL]));
+    const queue = createInstructQueue({ db, runTurn });
+
+    // Inserted, not enqueued: this test is about rows nothing is draining.
+    const stale = await db.insert({ user_id: USER, transcript: 'stale', timezone: 'UTC', reinstruct_of: null });
+    const fresh = await db.insert({ user_id: USER, transcript: 'fresh', timezone: 'UTC', reinstruct_of: null });
+    rows.set(stale.id, {
+      ...rows.get(stale.id)!,
+      status: 'working',
+      started_at: new Date(Date.now() - 60 * 60_000).toISOString(),
+    });
+    rows.set(fresh.id, { ...rows.get(fresh.id)!, status: 'working', started_at: new Date().toISOString() });
+
+    await queue.sweep();
+    await queue.idle(USER);
+
+    expect(rows.get(stale.id)!.status).toBe('applied'); // requeued, then run
+    expect(rows.get(fresh.id)!.status).toBe('working'); // still someone's turn
   });
 });
 
