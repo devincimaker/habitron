@@ -211,6 +211,19 @@ export interface ChecklistItemDraft {
   done?: boolean;
 }
 
+export type TaskRepeatFrequency = 'weekly' | 'biweekly' | 'monthly';
+
+/**
+ * How a task repeats. `weekdays` are 0 = Sunday … 6 = Saturday and only mean
+ * something for weekly and biweekly; monthly repeats on the start date's day.
+ */
+export interface TaskRepeatRule {
+  frequency: TaskRepeatFrequency;
+  weekdays: number[];
+  /** The last date an occurrence can fall on; absent means it never ends. */
+  endDate?: string;
+}
+
 export interface Todo {
   id: string;
   title: string;
@@ -233,6 +246,11 @@ export interface Todo {
   tag?: TodoTag;
   /** Ordered checklist items; a task has a checklist iff this is non-empty. */
   checklist?: ChecklistItem[];
+  /** Set on every occurrence of a repeating task; the rule is `repeat`. */
+  seriesId?: string;
+  /** The slot this occurrence fills in its series, even after it is moved. */
+  seriesDate?: string;
+  repeat?: TaskRepeatRule;
   createdAt: number;
   updatedAt: number;
 }
@@ -257,6 +275,11 @@ export interface TodoDraft {
    * replaces the existing list ([] clears it); items with an id are kept.
    */
   checklist?: string[] | ChecklistItemDraft[];
+  /**
+   * Makes the task repeat from its scheduled date on, or changes the rule from
+   * this occurrence on; `null` stops the series here.
+   */
+  repeat?: TaskRepeatRule | null;
 }
 
 // Journal types

@@ -32,6 +32,14 @@ describe('createTask', () => {
       /needs completedAt/
     );
   });
+
+  it('rejects a repeat without a scheduledDate, before touching the database', async () => {
+    const db = createDb(unreachableSupabase(), 'user-1');
+
+    await expect(
+      db.createTask({ title: 'Therapy', repeat: { frequency: 'weekly', weekdays: ['Wed'] } })
+    ).rejects.toThrow(/needs a scheduledDate/);
+  });
 });
 
 /**

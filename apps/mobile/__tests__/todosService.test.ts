@@ -121,7 +121,7 @@ describe('todos service', () => {
 
     const todos = await getTodos();
 
-    expect(select).toHaveBeenCalledWith('*, todo_tags(*), todo_checklist_items(*)');
+    expect(select).toHaveBeenCalledWith('*, todo_tags(*), todo_checklist_items(*), task_series(*)');
     expect(todos).toEqual([
       expect.objectContaining({
         id: 'todo-1',

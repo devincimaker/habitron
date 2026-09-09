@@ -10,6 +10,7 @@ import {
   buildJournalHistory,
   buildTaskHistory,
 } from './history.js';
+import { collapseSeriesOccurrences } from './series.js';
 import { instantFrom, isIsoDate, isIsoDateTime, today, WEEKDAYS } from './time.js';
 
 /**
@@ -49,6 +50,18 @@ const dateTimeSchema = z
 /** Every review axis: 1-5, higher always better, absent means not asked. */
 const ratingSchema = z.int().min(1).max(5).optional();
 const weekdaySchema = z.enum(WEEKDAYS);
+const repeatSchema = z
+  .object({
+    frequency: z.enum(['weekly', 'biweekly', 'monthly']),
+    weekdays: z
+      .array(weekdaySchema)
+      .optional()
+      .describe('Weekly and biweekly: the days it falls on. Defaults to the scheduled date\'s weekday'),
+    endDate: dateSchema.optional().describe('The last date it can fall on; omit for no end'),
+  })
+  .describe(
+    'How the task repeats. Occurrences are real tasks on the Calendar, generated eight weeks ahead; each is completed on its own'
+  );
 const habitFrequencySchema = z.enum(['daily', 'weekly', 'interval']);
 const habitGoalTypeSchema = z.enum(['boolean', 'quantity']);
 const habitCheckInModeSchema = z.enum(['auto', 'manual', 'complete_all']);
@@ -142,6 +155,12 @@ export function createTools(
         overdueOnly: z.boolean().optional().describe('Open tasks with dueDate before today'),
         listId: z.uuid().optional().describe('Only tasks in this list; see list_lists'),
         listName: z.string().min(1).optional().describe('List by name, case-insensitive'),
+        everyOccurrence: z
+          .boolean()
+          .optional()
+          .describe(
+            'A repeating task is one row, its next open occurrence, unless this is true or scheduledDate is set'
+          ),
         limit: z.int().min(1).max(200).optional(),
       },
       annotations: { readOnlyHint: true },
@@ -149,7 +168,8 @@ export function createTools(
         const current = now();
         const q = args.query?.trim().toLowerCase();
         const listId = await db.resolveListId(args);
-        const tasks = (await db.listAllTasks()).filter((t) => {
+        const all = await db.listAllTasks();
+        const tasks = (args.everyOccurrence || args.scheduledDate ? all : collapseSeriesOccurrences(all)).filter((t) => {
           if (args.status && t.status !== args.status) return false;
           if (args.scheduledDate && t.scheduledDate !== args.scheduledDate) return false;
           if (args.unscheduledOnly && t.scheduledDate) return false;
@@ -282,7 +302,7 @@ export function createTools(
       name: 'create_task',
       title: 'Create task',
       description:
-        'Create a task in the inbox, or in a list via listId/listName. Set scheduledDate (+ scheduledTime) to put it on a day. Give it a tagId so it belongs to a category, and a goalId when it moves a goal; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
+        'Create a task in the inbox, or in a list via listId/listName. Set scheduledDate (+ scheduledTime) to put it on a day; add `repeat` for something that recurs ("therapy every Wednesday at 11") — it needs a scheduledDate, the series starts there. Give it a tagId so it belongs to a category, and a goalId when it moves a goal; unknown ids are rejected. Several small things that belong together (a grocery list, errands at one place) are one task with a checklist, not N tasks. To record something already done, pass completedAt — the task is created already checked — and set scheduledDate/scheduledTime to when it happened, so it lands on that day everywhere.',
       inputSchema: {
         title: z.string().min(1),
         notes: z.string().optional(),
@@ -311,6 +331,7 @@ export function createTools(
           .positive()
           .optional()
           .describe('How long it took. Only with completedAt'),
+        repeat: repeatSchema.optional(),
       },
       // The local wall clock becomes an instant here, so db.ts stays timezone-free.
       handler: ({ completedAt, ...rest }) =>
@@ -324,7 +345,7 @@ export function createTools(
       name: 'update_task',
       title: 'Update task',
       description:
-        'Edit, schedule, reschedule, unschedule, re-categorise, link to a goal, or move a task between lists. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime.',
+        'Edit, schedule, reschedule, unschedule, re-categorise, link to a goal, or move a task between lists. Pass null to clear a field; omit fields to leave them unchanged. Clearing scheduledDate also clears scheduledTime. On a repeating task, scheduledDate moves this occurrence alone; every other field changes the series from this occurrence on. `repeat` sets or changes the rule from here; null stops it here.',
       inputSchema: {
         id: z.uuid(),
         title: z.string().min(1).optional(),
@@ -348,6 +369,7 @@ export function createTools(
           .describe(
             'Replaces the full checklist in order ([] clears it). Items whose title matches an existing one keep their done state.'
           ),
+        repeat: repeatSchema.nullable().optional(),
       },
       handler: ({ id, ...patch }) => db.updateTask(id, patch),
     }),
@@ -385,11 +407,14 @@ export function createTools(
       name: 'delete_task',
       title: 'Delete task',
       description:
-        'Permanently delete a task (e.g. a duplicate). Prefer cancel for tasks that were real but are no longer wanted.',
-      inputSchema: { id: z.uuid() },
+        'Permanently delete a task (e.g. a duplicate). Prefer cancel for tasks that were real but are no longer wanted. On a repeating task this deletes one occurrence; allFuture ends the series there too.',
+      inputSchema: {
+        id: z.uuid(),
+        allFuture: z.boolean().optional().describe('Also drop the later occurrences of a repeating task'),
+      },
       annotations: { destructiveHint: true },
-      handler: async ({ id }) => {
-        await db.deleteTask(id);
+      handler: async ({ id, allFuture }) => {
+        await db.deleteTask(id, allFuture);
         return { deleted: id };
       },
     }),

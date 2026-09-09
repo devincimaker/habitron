@@ -5,6 +5,7 @@ import { normalizeChecklistDraft } from '@habits-coach/shared';
 import * as todosService from '../services/todos';
 import type { TodoOrderUpdate, TodoStatusOptions } from '../services/todos';
 import { applyTodoOrder, nextTodoPosition, sortTodosByPosition } from '../utils/todoOrder';
+import { changesPropagateToSeries } from '../utils/todoRepeat';
 import { getTodoTagColor } from '../utils/todoTagColors';
 import { resolveNewTodoSchedule } from '../utils/todoTime';
 
@@ -23,6 +24,8 @@ interface TodosState {
   updateTodo: (todoId: string, changes: Partial<TodoDraft>) => Promise<Todo>;
   setTodoStatus: (todoId: string, status: TodoStatus, options?: TodoStatusOptions) => Promise<Todo>;
   setChecklistItemDone: (todoId: string, itemId: string, done: boolean) => Promise<void>;
+  /** Ends a repeating task at this occurrence; it stays, as a plain task. */
+  stopTodoSeries: (todoId: string) => Promise<void>;
   reorderTodos: (updates: TodoOrderUpdate[]) => Promise<void>;
   createTodoList: (name: string, color?: string) => Promise<TodoList>;
   updateTodoList: (listId: string, changes: { name?: string; color?: string }) => Promise<TodoList>;
@@ -234,6 +237,13 @@ function applyOptimisticTodoChanges(
   if (changes.checklist !== undefined) {
     next.checklist = buildOptimisticChecklist(changes.checklist);
   }
+  if ('repeat' in changes) {
+    next.repeat = changes.repeat ?? undefined;
+    if (!changes.repeat) {
+      next.seriesId = undefined;
+      next.seriesDate = undefined;
+    }
+  }
   next.tag = resolveOptimisticTagChange(todo, changes, tags);
 
   return next;
@@ -256,6 +266,15 @@ function applyOptimisticTodoStatus(
   };
 }
 
+/** Pulls the rows again without the loading flag: a quiet refresh after a series write. */
+async function refetchTodos(set: (partial: Partial<TodosState>) => void) {
+  try {
+    set({ todos: sortTodosByPosition(await todosService.getTodos()) });
+  } catch (error) {
+    console.warn('Failed to refresh todos:', error);
+  }
+}
+
 export const useTodosStore = create<TodosState>((set, get) => ({
   todos: [],
   lists: [],
@@ -265,6 +284,10 @@ export const useTodosStore = create<TodosState>((set, get) => ({
   loadTodos: async () => {
     set({ isLoading: true });
     try {
+      // Occurrences are rows, so the window has to be extended before the read.
+      await todosService.materializeTodoSeries().catch((error: unknown) => {
+        console.warn('Failed to extend repeating tasks:', error);
+      });
       const [todos, metadata] = await Promise.all([
         todosService.getTodos(),
         reloadMetadata(),
@@ -299,6 +322,8 @@ export const useTodosStore = create<TodosState>((set, get) => ({
         ),
         ...metadata,
       }));
+      // A rule writes the later occurrences too; they arrive with the refetch.
+      if (todo.repeat) await refetchTodos(set);
 
       return createdTodo;
     } catch (error) {
@@ -321,13 +346,20 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       }));
     }
 
+    // An edit on one occurrence is the series' from that one on, so the
+    // siblings change server-side and come back with a refetch.
+    const syncSeries =
+      Boolean(existingTodo?.seriesId) &&
+      changesPropagateToSeries(changes, existingTodo?.scheduledDate);
+
     try {
-      const updatedTodo = await todosService.updateTodo(todoId, changes);
+      const updatedTodo = await todosService.updateTodo(todoId, changes, { syncSeries });
       const metadata = changesCanCreateMetadata(changes) ? await reloadMetadata() : undefined;
       set((state) => ({
         todos: state.todos.map((todo) => (todo.id === todoId ? updatedTodo : todo)),
         ...metadata,
       }));
+      if (syncSeries || 'repeat' in changes) await refetchTodos(set);
       return updatedTodo;
     } catch (error) {
       if (existingTodo && optimisticTodo) {
@@ -384,6 +416,11 @@ export const useTodosStore = create<TodosState>((set, get) => ({
       }
       throw error;
     }
+  },
+
+  stopTodoSeries: async (todoId) => {
+    await todosService.stopTodoSeries(todoId);
+    await refetchTodos(set);
   },
 
   reorderTodos: async (updates) => {

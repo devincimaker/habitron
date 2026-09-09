@@ -1,6 +1,7 @@
 import type { DailyPlanItemOutcome, HabitStatus, Module } from '@habits-coach/shared';
 import { buildScorecard } from './scorecard.js';
 import type { Db, DesiredHabitRecord, Habit, Task } from './db.js';
+import { collapseSeriesOccurrences } from './series.js';
 import { goalsForDay } from './goals.js';
 import { addDays, localDateOf, localNow, weekRange, weekdayOf } from './time.js';
 
@@ -150,9 +151,10 @@ export async function buildDayContext(
       (t) => t.dueDate && t.dueDate >= date && t.dueDate <= addDays(date, 7) && t.scheduledDate !== date
     )
     .map(withChecklistProgress);
-  const scheduledLater = open
-    .filter((t) => t.scheduledDate && t.scheduledDate > date)
-    .map(withChecklistProgress);
+  // A repeating task is its next occurrence here; the day itself lists them all.
+  const scheduledLater = collapseSeriesOccurrences(
+    open.filter((t) => t.scheduledDate && t.scheduledDate > date)
+  ).map(withChecklistProgress);
   const scheduledPast = open
     .filter((t) => t.scheduledDate && t.scheduledDate < date)
     .map(withChecklistProgress);

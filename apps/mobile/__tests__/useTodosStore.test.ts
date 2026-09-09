@@ -1,6 +1,7 @@
 import type { Todo, TodoList, TodoTag } from '@habits-coach/shared';
 
 jest.mock('../services/todos', () => ({
+  materializeTodoSeries: jest.fn().mockResolvedValue(undefined),
   getTodos: jest.fn(),
   getTodoLists: jest.fn(),
   getTodoTags: jest.fn(),

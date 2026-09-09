@@ -10,6 +10,9 @@ interface TaskDateActionsPopupProps {
   selectedDate?: string;
   onSelectDate: (date: string) => void;
   onPickDate: () => void;
+  /** Opens the repeat picker; absent where a task cannot repeat. */
+  onRepeat?: () => void;
+  repeats?: boolean;
   onClear: () => void;
   onClose: () => void;
 }
@@ -20,6 +23,8 @@ export function TaskDateActionsPopup({
   selectedDate,
   onSelectDate,
   onPickDate,
+  onRepeat,
+  repeats = false,
   onClear,
   onClose,
 }: TaskDateActionsPopupProps) {
@@ -80,7 +85,11 @@ export function TaskDateActionsPopup({
 
           <View style={styles.row}>
             {renderAction('pick', 'calendar-number-outline', 'Pick Date', onPickDate)}
-            <View style={styles.action} />
+            {onRepeat ? (
+              renderAction('repeat', 'repeat-outline', 'Repeat', onRepeat, repeats)
+            ) : (
+              <View style={styles.action} />
+            )}
             {selectedDate ? (
               renderAction('clear', 'close-circle-outline', 'Clear', onClear, false, 'destructive')
             ) : (

@@ -51,6 +51,25 @@ describe('create_task', () => {
     });
   });
 
+  it('passes the repeat rule through to the data layer', async () => {
+    const createTask = vi.fn().mockResolvedValue({ id: 'task-4' });
+    const tool = createTaskTool(stubDb({ createTask }));
+
+    await tool.handler({
+      title: 'Therapy',
+      scheduledDate: '2026-09-09',
+      scheduledTime: '11:00',
+      repeat: { frequency: 'weekly', weekdays: ['Wed'] },
+    });
+
+    expect(createTask).toHaveBeenCalledWith({
+      title: 'Therapy',
+      scheduledDate: '2026-09-09',
+      scheduledTime: '11:00',
+      repeat: { frequency: 'weekly', weekdays: ['Wed'] },
+    });
+  });
+
   it('passes no completedAt at all when none was given', async () => {
     const createTask = vi.fn().mockResolvedValue({ id: 'task-2' });
     const tool = createTaskTool(stubDb({ createTask }));
@@ -82,6 +101,16 @@ describe('create_task', () => {
     it('accepts the seconds form a real turn sent, so the log costs one call', () => {
       const result = schema().safeParse({ title: 'x', completedAt: '2026-08-25T07:00:00' });
       expect(result.success).toBe(true);
+    });
+
+    it('rejects a repeat with an unknown frequency or weekday', () => {
+      expect(schema().safeParse({ title: 'x', repeat: { frequency: 'yearly' } }).success).toBe(false);
+      expect(
+        schema().safeParse({ title: 'x', repeat: { frequency: 'weekly', weekdays: ['Wednesday'] } }).success
+      ).toBe(false);
+      expect(
+        schema().safeParse({ title: 'x', repeat: { frequency: 'weekly', weekdays: ['Wed'] } }).success
+      ).toBe(true);
     });
 
     it('rejects a zero or negative actualMinutes', () => {

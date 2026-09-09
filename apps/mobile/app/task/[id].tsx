@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { ChecklistItem, ChecklistItemDraft, Priority } from '@habits-coach/shared';
+import type { ChecklistItem, ChecklistItemDraft, Priority, TaskRepeatRule } from '@habits-coach/shared';
+import { getTodayDate } from '@habits-coach/shared';
 import { TaskQuickCreatePopover } from '../../components/TaskQuickCreatePopover';
 import { TaskSheetBottomBar } from '../../components/TaskSheetBottomBar';
 import { TaskSheetChecklist } from '../../components/TaskSheetChecklist';
@@ -17,12 +18,13 @@ import { useGoalsStore } from '../../stores/useGoalsStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { useModuleEnabled } from '../../hooks/useModuleEnabled';
 import { isGoalOpen } from '../../utils/goals';
+import { nextRepeatDate } from '../../utils/todoRepeat';
 import { SPACING, TYPOGRAPHY, type Colors } from '../../constants/theme';
 import { useThemedStyles } from '../../hooks/useColors';
 
 type Picker = 'priority' | 'tag' | 'list' | 'goal' | TaskSheetModal | null;
 
-const MODALS: readonly Picker[] = ['dateActions', 'datePicker', 'time', 'estimate'];
+const MODALS: readonly Picker[] = ['dateActions', 'datePicker', 'time', 'estimate', 'repeat'];
 const isModal = (picker: Picker): picker is TaskSheetModal => MODALS.includes(picker);
 
 /**
@@ -92,13 +94,31 @@ export default function TaskDetailSheet() {
   // The service resolves date and time from the change set alone, so sending
   // one without the other wipes it: a new date would drop the time, and a time
   // with no date would snap the task to today.
+  // Clearing the date also ends a repeat: a series has nothing to hang on.
+  const seriesId = todo?.seriesId;
   const saveSchedule = useCallback(
     (schedule: { scheduledDate?: string; scheduledTime?: string }) =>
       save({
         scheduledDate: schedule.scheduledDate,
         scheduledTime: schedule.scheduledDate ? schedule.scheduledTime : undefined,
+        ...(!schedule.scheduledDate && seriesId ? { repeat: null } : {}),
       }),
-    [save]
+    [save, seriesId]
+  );
+
+  // The series starts on the first day the rule allows, from the task's date.
+  const scheduledDate = todo?.scheduledDate;
+  const scheduledTime = todo?.scheduledTime;
+  const saveRepeat = useCallback(
+    (rule: TaskRepeatRule | null) => {
+      if (!rule) {
+        save({ repeat: null });
+        return;
+      }
+      const from = scheduledDate ?? getTodayDate();
+      save({ scheduledDate: nextRepeatDate(rule, from) ?? from, scheduledTime, repeat: rule });
+    },
+    [save, scheduledDate, scheduledTime]
   );
 
   // The route can outlive its task: deleting one leaves the sheet mounted for a
@@ -146,6 +166,7 @@ export default function TaskDetailSheet() {
               }}
               onPressDate={() => setPicker('dateActions')}
               onPressTime={() => setPicker('time')}
+              onPressRepeat={() => setPicker('repeat')}
             />
           )}
 
@@ -290,6 +311,7 @@ export default function TaskDetailSheet() {
         onClose={closePicker}
         onSaveSchedule={saveSchedule}
         onSaveEstimate={(estimateMinutes) => save({ estimateMinutes })}
+        onSaveRepeat={saveRepeat}
       />
     </KeyboardAvoidingView>
   );

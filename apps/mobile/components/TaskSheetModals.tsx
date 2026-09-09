@@ -1,10 +1,12 @@
-import type { Todo } from '@habits-coach/shared';
+import type { TaskRepeatRule, Todo } from '@habits-coach/shared';
+import { getTodayDate } from '@habits-coach/shared';
 import { DatePickerModal } from './DatePickerModal';
 import { TaskDateActionsPopup } from './TaskDateActionsPopup';
 import { TaskEstimateDialog } from './TaskEstimateDialog';
+import { TaskRepeatPickerModal } from './TaskRepeatPickerModal';
 import { TimePickerModal } from './TimePickerModal';
 
-export type TaskSheetModal = 'dateActions' | 'datePicker' | 'time' | 'estimate';
+export type TaskSheetModal = 'dateActions' | 'datePicker' | 'time' | 'estimate' | 'repeat';
 
 interface TaskSheetModalsProps {
   todo: Todo;
@@ -14,6 +16,8 @@ interface TaskSheetModalsProps {
   onClose: () => void;
   onSaveSchedule: (schedule: { scheduledDate?: string; scheduledTime?: string }) => void;
   onSaveEstimate: (estimateMinutes: number | undefined) => void;
+  /** `null` stops the series at this task. */
+  onSaveRepeat: (rule: TaskRepeatRule | null) => void;
 }
 
 /**
@@ -28,6 +32,7 @@ export function TaskSheetModals({
   onClose,
   onSaveSchedule,
   onSaveEstimate,
+  onSaveRepeat,
 }: TaskSheetModalsProps) {
   return (
     <>
@@ -39,6 +44,8 @@ export function TaskSheetModals({
           onSaveSchedule({ scheduledDate, scheduledTime: todo.scheduledTime });
         }}
         onPickDate={() => onOpen('datePicker')}
+        onRepeat={() => onOpen('repeat')}
+        repeats={Boolean(todo.repeat)}
         onClear={() => {
           onClose();
           onSaveSchedule({});
@@ -71,6 +78,25 @@ export function TaskSheetModals({
             ? () => {
                 onClose();
                 onSaveSchedule({ scheduledDate: todo.scheduledDate });
+              }
+            : undefined
+        }
+      />
+
+      <TaskRepeatPickerModal
+        visible={open === 'repeat'}
+        rule={todo.repeat}
+        anchorDate={todo.scheduledDate ?? getTodayDate()}
+        onCancel={onClose}
+        onDone={(rule) => {
+          onClose();
+          onSaveRepeat(rule);
+        }}
+        onClear={
+          todo.repeat
+            ? () => {
+                onClose();
+                onSaveRepeat(null);
               }
             : undefined
         }
