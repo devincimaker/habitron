@@ -29,6 +29,7 @@ import { useTodoPlanOutcomeSync } from '../../hooks/useTodoPlanOutcomeSync';
 import { useTaskListsUiStore } from '../../stores/useTaskListsUiStore';
 import { useTodosStore } from '../../stores/useTodosStore';
 import { getTodoPlanOutcomeForStatus } from '../../utils/todoPlanOutcome';
+import { collapseSeriesOccurrences } from '../../utils/todoSeries';
 
 function compareCompletedTodos(a: Todo, b: Todo) {
   const completedAtA = a.completedAt ?? a.updatedAt;
@@ -61,10 +62,13 @@ export default function TasksScreen() {
     () => lists.find((list) => list.id === activeListId) ?? lists.find((list) => list.isInbox),
     [lists, activeListId]
   );
+  // A repeating task is one row here, its next occurrence; the Calendar has the rest.
   const openTodos = useMemo(
     () =>
-      todos.filter(
-        (todo) => todo.status === 'open' && (!activeList || todo.listId === activeList.id)
+      collapseSeriesOccurrences(
+        todos.filter(
+          (todo) => todo.status === 'open' && (!activeList || todo.listId === activeList.id)
+        )
       ),
     [todos, activeList]
   );

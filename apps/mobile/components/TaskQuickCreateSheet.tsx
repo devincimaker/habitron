@@ -105,6 +105,9 @@ export function TaskQuickCreateSheet({
     [activeInlineTag, tags]
   );
   const canSave = Boolean(saveDraft) && !isSaving;
+  // A repeat phrase schedules the task itself, so the badge reads the draft.
+  const draftScheduledDate = saveDraft?.scheduledDate ?? scheduledDate;
+  const repeats = Boolean(saveDraft?.repeat);
   const priorityOption = getTodoPriorityOption(priority);
   // Only the first line's tag is the category; checklist lines below do not count.
   const hasInlineTag = Boolean(getInlineTagName(title.split('\n')[0] ?? ''));
@@ -223,11 +226,13 @@ export function TaskQuickCreateSheet({
     {
       key: 'date',
       icon: 'calendar-outline',
-      label: scheduledDate
-        ? `Scheduled ${formatRelativeDateLabel(scheduledDate)}, change date`
+      label: draftScheduledDate
+        ? `Scheduled ${formatRelativeDateLabel(draftScheduledDate)}${repeats ? ', repeats' : ''}, change date`
         : 'Schedule task',
-      badge: scheduledDate ? formatRelativeDateLabel(scheduledDate) : undefined,
-      isActive: !!scheduledDate,
+      badge: draftScheduledDate
+        ? `${formatRelativeDateLabel(draftScheduledDate)}${repeats ? ' ↻' : ''}`
+        : undefined,
+      isActive: !!draftScheduledDate,
       onPress: handleOpenDatePicker,
     },
     {
@@ -279,7 +284,7 @@ export function TaskQuickCreateSheet({
                     <Text
                       key={`${segment.kind}-${index}`}
                       style={
-                        segment.kind === 'scheduledTime'
+                        segment.kind === 'scheduledTime' || segment.kind === 'repeat'
                           ? styles.inputHighlightScheduledTime
                           : segment.kind === 'estimate'
                             ? styles.inputHighlightEstimate
@@ -371,7 +376,7 @@ export function TaskQuickCreateSheet({
             <TaskQuickCreatePopover
               // Remount when the anchor changes, or the date badge moves it: the card
               // measures its place once, on mount.
-              key={`${pickerContent.kind}-${scheduledDate ?? ''}`}
+              key={`${pickerContent.kind}-${draftScheduledDate ?? ''}-${repeats}`}
               anchorRef={pickerContent.kind === 'priority' ? priorityButtonRef : tagButtonRef}
               containerRef={sheetRef}
               content={pickerContent}

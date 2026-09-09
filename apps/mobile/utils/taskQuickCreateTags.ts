@@ -1,5 +1,12 @@
 import type { Priority, TodoDraft } from '@habits-coach/shared';
+import { getTodayDate } from '@habits-coach/shared';
 import { getInlineEstimateContext, stripInlineEstimateToken } from './todoEstimate';
+import { nextRepeatDate } from './todoRepeat';
+import {
+  getInlineRepeatContext,
+  resolveInlineRepeat,
+  stripInlineRepeatToken,
+} from './todoRepeatParse';
 import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from './todoTime';
 
 export interface TextSelectionRange {
@@ -23,7 +30,7 @@ export interface InlineScheduledTimeContext {
 
 export interface QuickCreateTextSegment {
   text: string;
-  kind: 'default' | 'scheduledTime' | 'estimate';
+  kind: 'default' | 'scheduledTime' | 'estimate' | 'repeat';
 }
 
 const INLINE_TAG_TOKEN_PATTERN = /^#[\p{L}\p{N}_-]*$/u;
@@ -129,8 +136,13 @@ export function buildQuickCreateTodoDraft(
   priority?: Priority
 ): TodoDraft | null {
   const { firstLine, checklistItems } = splitQuickCreateInput(text);
+  // "Every Monday" lands the task on the first Monday from the picked day (or
+  // today); a rule needs a date, so the phrase is what schedules it.
+  const anchorDate = defaultScheduledDate ?? getTodayDate();
+  const repeatContext = getInlineRepeatContext(firstLine);
+  const repeat = repeatContext ? resolveInlineRepeat(repeatContext, anchorDate) : undefined;
   const schedule = resolveNewTodoSchedule(
-    defaultScheduledDate,
+    repeat ? nextRepeatDate(repeat, anchorDate) : defaultScheduledDate,
     getInlineScheduledTimeContext(firstLine)?.normalizedTime
   );
   if (schedule === null) {
@@ -139,7 +151,7 @@ export function buildQuickCreateTodoDraft(
 
   const estimate = getInlineEstimateContext(firstLine);
   const title = stripInlineTagTokens(
-    stripInlineScheduledTimeToken(stripInlineEstimateToken(firstLine))
+    stripInlineRepeatToken(stripInlineScheduledTimeToken(stripInlineEstimateToken(firstLine)))
   );
   if (!title) {
     return null;
@@ -152,6 +164,7 @@ export function buildQuickCreateTodoDraft(
     ...(priority ? { priority } : {}),
     ...(schedule.scheduledDate || schedule.scheduledTime ? schedule : {}),
     ...(estimate ? { estimateMinutes: estimate.minutes } : {}),
+    ...(repeat ? { repeat } : {}),
     ...(checklistItems.length > 0 ? { checklist: checklistItems } : {}),
   };
 }
@@ -161,9 +174,11 @@ export function getQuickCreateTextSegments(text: string): QuickCreateTextSegment
   const { firstLine } = splitQuickCreateInput(text);
   const scheduledTime = getInlineScheduledTimeContext(firstLine);
   const estimate = getInlineEstimateContext(firstLine);
+  const repeat = getInlineRepeatContext(firstLine);
   const highlights = [
     scheduledTime ? { ...scheduledTime, kind: 'scheduledTime' as const } : null,
     estimate ? { ...estimate, kind: 'estimate' as const } : null,
+    repeat ? { ...repeat, kind: 'repeat' as const } : null,
   ]
     .filter((highlight): highlight is NonNullable<typeof highlight> => highlight !== null)
     .sort((left, right) => left.start - right.start);

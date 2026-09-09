@@ -10,7 +10,7 @@ import {
 } from './history.js';
 import { createTools, type AnyHabitronTool } from './tools.js';
 
-export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskList, TaskPatch } from './db.js';
+export type { Db, Habit, HabitLogRecord, PlanItemInput, Tag, Task, TaskInput, TaskList, TaskPatch, TaskRepeat } from './db.js';
 export type { DayContext, HabitForDay } from './context.js';
 export type { GoalRecord } from './goals.js';
 // One definition of "reviewed" for the ritual card HAB-86 adds. Note the hub is

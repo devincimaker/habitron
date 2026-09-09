@@ -4,13 +4,16 @@ import type {
   ChecklistItem,
   ChecklistItemDraft,
   Priority,
+  TaskRepeatFrequency,
+  TaskRepeatRule,
   Todo,
   TodoDraft,
   TodoList,
   TodoStatus,
   TodoTag,
 } from '@habits-coach/shared';
-import { normalizeChecklistDraft } from '@habits-coach/shared';
+import { getTodayDate, normalizeChecklistDraft } from '@habits-coach/shared';
+import { getRepeatHorizon } from '../utils/todoRepeat';
 import { getTodoTagColor } from '../utils/todoTagColors';
 import { normalizeTodoScheduledTimeInput, resolveNewTodoSchedule } from '../utils/todoTime';
 
@@ -55,8 +58,18 @@ interface DbTodo {
   canceled_at: string | null;
   position: number;
   tag_id: string | null;
+  series_id: string | null;
+  series_date: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface DbTaskSeries {
+  id: string;
+  frequency: TaskRepeatFrequency;
+  weekdays: number[];
+  start_date: string;
+  end_date: string | null;
 }
 
 interface DbChecklistItem {
@@ -73,9 +86,10 @@ interface DbChecklistItem {
 interface DbTodoWithRelations extends DbTodo {
   todo_tags: DbTodoTag | null;
   todo_checklist_items: DbChecklistItem[];
+  task_series: DbTaskSeries | null;
 }
 
-const TODO_SELECT = '*, todo_tags(*), todo_checklist_items(*)';
+const TODO_SELECT = '*, todo_tags(*), todo_checklist_items(*), task_series(*)';
 
 function mapDbTodoListToTodoList(list: DbTodoList): TodoList {
   return {
@@ -130,6 +144,15 @@ function mapDbTodoToTodo(todo: DbTodoWithRelations): Todo {
       ? [...todo.todo_checklist_items]
           .sort((a, b) => a.position - b.position)
           .map(mapDbChecklistItem)
+      : undefined,
+    seriesId: todo.series_id ?? undefined,
+    seriesDate: todo.series_date ?? undefined,
+    repeat: todo.task_series
+      ? {
+          frequency: todo.task_series.frequency,
+          weekdays: todo.task_series.weekdays,
+          endDate: todo.task_series.end_date ?? undefined,
+        }
       : undefined,
     createdAt: new Date(todo.created_at).getTime(),
     updatedAt: new Date(todo.updated_at).getTime(),
@@ -642,16 +665,66 @@ export async function addTodo(todo: TodoDraft): Promise<Todo> {
   if (todo.checklist?.length) {
     await syncChecklist(userId, createdTodo.id, todo.checklist);
   }
+  if (todo.repeat) {
+    await setTodoRepeat(createdTodo.id, todo.repeat);
+  }
 
   return getTodoById(createdTodo.id);
 }
 
+async function callSeriesFunction(name: string, args: Record<string, unknown>): Promise<void> {
+  const { error } = await supabase.rpc(name, args);
+
+  if (error) {
+    console.error(`Error calling ${name}:`, error);
+    throw error;
+  }
+}
+
+/**
+ * Generates the occurrences of every repeating task up to the horizon. Runs
+ * on each load, so the window stays eight weeks ahead of today.
+ */
+export function materializeTodoSeries(): Promise<void> {
+  return callSeriesFunction('materialize_task_series', {
+    p_until: getRepeatHorizon(getTodayDate()),
+  });
+}
+
+/** Makes the task repeat from its scheduled date on, or changes its rule from here. */
+function setTodoRepeat(todoId: string, rule: TaskRepeatRule): Promise<void> {
+  return callSeriesFunction('set_task_repeat', {
+    p_todo_id: todoId,
+    p_frequency: rule.frequency,
+    p_weekdays: rule.weekdays,
+    p_end_date: rule.endDate ?? null,
+    p_until: getRepeatHorizon(getTodayDate()),
+  });
+}
+
+/** The task becomes a plain one and its later open occurrences go away. */
+export function stopTodoSeries(todoId: string): Promise<void> {
+  return callSeriesFunction('stop_task_series', { p_todo_id: todoId });
+}
+
+export interface UpdateTodoOptions {
+  /** Copy this edit onto the task's later open occurrences. */
+  syncSeries?: boolean;
+}
+
 export async function updateTodo(
   todoId: string,
-  changes: Partial<TodoDraft>
+  changes: Partial<TodoDraft>,
+  options: UpdateTodoOptions = {}
 ): Promise<Todo> {
   const userId = await getCurrentUserId();
   const updateData: Partial<DbTodo> = {};
+
+  // Stopping comes first so the row edit below lands on a plain task; a new
+  // rule comes after it, since it repeats whatever the row then says.
+  if (changes.repeat === null) {
+    await stopTodoSeries(todoId);
+  }
 
   if (changes.title !== undefined) updateData.title = changes.title;
   // These five test for the key rather than the value, the way the schedule
@@ -710,6 +783,12 @@ export async function updateTodo(
 
   if (changes.checklist !== undefined) {
     await syncChecklist(userId, todoId, changes.checklist);
+  }
+
+  if (changes.repeat) {
+    await setTodoRepeat(todoId, changes.repeat);
+  } else if (options.syncSeries) {
+    await callSeriesFunction('sync_task_series_from', { p_todo_id: todoId });
   }
 
   return getTodoById(todoId);

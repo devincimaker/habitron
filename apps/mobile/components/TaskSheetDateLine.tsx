@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import type { Todo } from '@habits-coach/shared';
 import { formatDateString, formatSheetDate, getTaskDateBadge } from '../utils/dateUtils';
+import { describeTaskRepeat } from '../utils/todoRepeat';
 import { formatTodoScheduledTime } from '../utils/todoTime';
 import { getTodoPriorityOption } from '../utils/todoPriority';
 import { FONT_SIZES, SPACING, TASK_SCHEDULED, type Colors } from '../constants/theme';
@@ -12,6 +13,7 @@ interface TaskSheetDateLineProps {
   onToggleStatus: () => void;
   onPressDate: () => void;
   onPressTime: () => void;
+  onPressRepeat: () => void;
 }
 
 /**
@@ -24,6 +26,7 @@ export function TaskSheetDateLine({
   onToggleStatus,
   onPressDate,
   onPressTime,
+  onPressRepeat,
 }: TaskSheetDateLineProps) {
   const [styles, colors] = useThemedStyles(createStyles);
 
@@ -97,8 +100,21 @@ export function TaskSheetDateLine({
         )}
       </View>
 
+      {todo.repeat ? (
+        <Pressable
+          style={styles.repeat}
+          onPress={onPressRepeat}
+          accessibilityRole="button"
+          accessibilityLabel={`Repeats ${describeTaskRepeat(todo.repeat, todo.seriesDate)}. Change the repeat`}
+          hitSlop={8}
+        >
+          <Ionicons name="repeat" size={13} color={colors.textLight} />
+          <Text style={styles.due}>{describeTaskRepeat(todo.repeat, todo.seriesDate)}</Text>
+        </Pressable>
+      ) : null}
+
       {todo.dueDate ? (
-        <Text style={styles.due}>{`Due ${formatSheetDate(todo.dueDate)}`}</Text>
+        <Text style={[styles.due, styles.hanging]}>{`Due ${formatSheetDate(todo.dueDate)}`}</Text>
       ) : null}
     </View>
   );
@@ -133,7 +149,15 @@ const createStyles = (colors: Colors) =>
       fontSize: FONT_SIZES.footnote,
       lineHeight: 18,
       color: colors.textLight,
-      // Clears the checkbox and the gap beside it, so it hangs under the date.
+    },
+    // Clears the checkbox and the gap beside it, so it hangs under the date.
+    hanging: {
+      paddingLeft: 24 + SPACING.sm + 4,
+    },
+    repeat: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
       paddingLeft: 24 + SPACING.sm + 4,
     },
   });

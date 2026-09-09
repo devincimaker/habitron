@@ -15,13 +15,14 @@ import type {
   MemoryCategory,
   Module,
   Priority,
+  TaskRepeatFrequency,
   TodoStatus,
 } from '@habits-coach/shared';
 import { reviewPatch } from './dayReview.js';
 import { createGoalsDb } from './goals.js';
 import { habitRowFromInput, type HabitFields } from './habitInput.js';
 import { unwrap } from './supabaseResult.js';
-import { today } from './time.js';
+import { addDays, today, WEEKDAYS } from './time.js';
 
 /** A habit write: the pure fields, plus the two that need the database. */
 export type HabitWriteInput = HabitFields & {
@@ -50,9 +51,37 @@ interface DbTodo {
   updated_at: string;
   tag_id: string | null;
   goal_id: string | null;
+  series_id: string | null;
   todo_tags: DbTag | null;
   todo_checklist_items: DbChecklistItem[];
+  task_series: DbTaskSeries | null;
 }
+
+interface DbTaskSeries {
+  frequency: TaskRepeatFrequency;
+  weekdays: number[];
+  end_date: string | null;
+}
+
+/** How a task repeats. Weekdays only matter for weekly and biweekly. */
+export interface TaskRepeat {
+  frequency: TaskRepeatFrequency;
+  /** Absent on input means the scheduled date's weekday; always present on a task. */
+  weekdays?: HabitWeekday[];
+  /** The last date an occurrence can fall on; absent means it never ends. */
+  endDate?: string;
+}
+
+/** Occurrences exist this far ahead. The UTC day is close enough for a window this wide. */
+const REPEAT_WINDOW_DAYS = 56;
+function repeatHorizon(): string {
+  return addDays(new Date().toISOString().slice(0, 10), REPEAT_WINDOW_DAYS);
+}
+
+/** The fields an edit copies onto later occurrences; the date and status never travel. */
+const SERIES_PATCH_KEYS = [
+  'title', 'notes', 'priority', 'estimateMinutes', 'tagId', 'goalId', 'listId', 'listName', 'checklist', 'scheduledTime',
+] as const;
 
 /** A task's category. Every task carries at most one. */
 export interface Tag {
@@ -120,6 +149,9 @@ export interface Task {
   goalId?: string;
   /** Ordered checklist; present iff the task has at least one item. */
   checklist?: ChecklistItem[];
+  /** Set on every occurrence of a repeating task; see `repeat` for the rule. */
+  seriesId?: string;
+  repeat?: TaskRepeat;
   createdAt: string;
   updatedAt: string;
 }
@@ -148,6 +180,8 @@ export interface TaskInput {
   completedAt?: string;
   /** How long it actually took. Only meaningful alongside `completedAt`. */
   actualMinutes?: number;
+  /** Repeats from scheduledDate on; weekdays default to that date's. */
+  repeat?: TaskRepeat;
 }
 
 /** What closing a task can record beyond the status itself. */
@@ -179,6 +213,8 @@ export interface TaskPatch {
   listName?: string;
   /** Full replacement of the checklist; [] clears it. Done state survives for matching titles. */
   checklist?: string[];
+  /** A rule makes it repeat from this task on (or changes the rule); null stops the series here. */
+  repeat?: TaskRepeat | null;
 }
 
 interface DbHabit {
@@ -355,7 +391,7 @@ export function createDb(supabase: SupabaseClient, userId: string) {
   // ---------------------------------------------------------------------------
 
   const TODO_COLUMNS =
-    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, position, created_at, updated_at, tag_id, goal_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position)';
+    'id, list_id, title, notes, status, priority, due_date, scheduled_date, scheduled_time, estimate_minutes, actual_minutes, completed_at, canceled_at, position, created_at, updated_at, tag_id, goal_id, series_id, todo_tags(id, name, color), todo_checklist_items(id, title, done, position), task_series(frequency, weekdays, end_date)';
 
 
 
@@ -390,12 +426,50 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       tag: row.todo_tags ? mapTag(row.todo_tags) : undefined,
       goalId: row.goal_id ?? undefined,
       checklist: mapChecklist(row.todo_checklist_items),
+      seriesId: row.series_id ?? undefined,
+      repeat: row.task_series
+        ? {
+            frequency: row.task_series.frequency,
+            weekdays: row.task_series.weekdays.map((day) => WEEKDAYS[day]),
+            ...(row.task_series.end_date ? { endDate: row.task_series.end_date } : {}),
+          }
+        : undefined,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
   }
 
+  /** Every repeating task's occurrences, extended to the horizon. */
+  async function materializeSeries(): Promise<void> {
+    unwrap(
+      await supabase.rpc('materialize_task_series', { p_until: repeatHorizon(), p_user_id: userId })
+    );
+  }
+
+  async function setRepeat(id: string, scheduledDate: string, repeat: TaskRepeat): Promise<void> {
+    const weekdays =
+      repeat.frequency === 'monthly'
+        ? []
+        : repeat.weekdays?.length
+          ? repeat.weekdays
+          : [WEEKDAYS[new Date(`${scheduledDate}T00:00:00Z`).getUTCDay()]];
+    unwrap(
+      await supabase.rpc('set_task_repeat', {
+        p_todo_id: id,
+        p_frequency: repeat.frequency,
+        p_weekdays: weekdays.map((day) => WEEKDAYS.indexOf(day)),
+        p_end_date: repeat.endDate ?? null,
+        p_until: repeatHorizon(),
+      })
+    );
+  }
+
+  async function stopSeries(id: string): Promise<void> {
+    unwrap(await supabase.rpc('stop_task_series', { p_todo_id: id }));
+  }
+
   async function listAllTasks(): Promise<Task[]> {
+    await materializeSeries();
     const rows = unwrap(
       await supabase
         .from('todos')
@@ -533,6 +607,9 @@ export function createDb(supabase: SupabaseClient, userId: string) {
           'To record it on a task that already exists, use set_task_status.'
       );
     }
+    if (input.repeat && !input.scheduledDate) {
+      throw new Error('A repeating task needs a scheduledDate: the series starts there.');
+    }
     if (input.tagId) await assertTagExists(input.tagId);
     if (input.goalId) await goals.assertGoalExists(input.goalId);
     const listId = (await resolveListId(input)) ?? (await inboxListId());
@@ -562,15 +639,20 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     ) as unknown as DbTodo;
     if (input.checklist?.length) {
       await replaceChecklist(row.id, input.checklist);
-      return getTask(row.id);
     }
-    return mapTodo(row);
+    if (input.repeat && input.scheduledDate) {
+      await setRepeat(row.id, input.scheduledDate, input.repeat);
+    }
+    return input.checklist?.length || input.repeat ? getTask(row.id) : mapTodo(row);
   }
 
 
   async function updateTask(id: string, patch: TaskPatch): Promise<Task> {
     if (patch.tagId) await assertTagExists(patch.tagId);
     if (patch.goalId) await goals.assertGoalExists(patch.goalId);
+    // Stopping comes first so the edit below lands on a plain task; a new rule
+    // comes after it, since it repeats whatever the row then says.
+    if (patch.repeat === null) await stopSeries(id);
     if (patch.checklist !== undefined) {
       // Ensure the task exists (and belongs to the user) before touching items.
       await getTask(id);
@@ -598,23 +680,42 @@ export function createDb(supabase: SupabaseClient, userId: string) {
       }
     }
 
+    let current: Task;
     if (Object.keys(update).length === 0) {
+      current = await getTask(id);
+    } else {
+      const row = unwrap(
+        await supabase
+          .from('todos')
+          .update(update)
+          .eq('user_id', userId)
+          .eq('id', id)
+          .select(TODO_COLUMNS)
+          .maybeSingle()
+      ) as unknown as DbTodo | null;
+      if (!row) {
+        throw new Error(`Task not found: ${id}`);
+      }
+      current = mapTodo(row);
+    }
+
+    if (patch.repeat) {
+      if (!current.scheduledDate) {
+        throw new Error('A repeating task needs a scheduledDate: the series starts there.');
+      }
+      await setRepeat(id, current.scheduledDate, patch.repeat);
       return getTask(id);
     }
 
-    const row = unwrap(
-      await supabase
-        .from('todos')
-        .update(update)
-        .eq('user_id', userId)
-        .eq('id', id)
-        .select(TODO_COLUMNS)
-        .maybeSingle()
-    ) as unknown as DbTodo | null;
-    if (!row) {
-      throw new Error(`Task not found: ${id}`);
+    // An edit on one occurrence is the series' from that one on. The date is
+    // this one's alone; the time follows unless it came with a date move.
+    const propagates =
+      SERIES_PATCH_KEYS.some((key) => patch[key] !== undefined) &&
+      !(patch.scheduledTime !== undefined && patch.scheduledDate !== undefined);
+    if (current.seriesId && propagates) {
+      unwrap(await supabase.rpc('sync_task_series_from', { p_todo_id: id }));
     }
-    return mapTodo(row);
+    return current;
   }
 
   async function setTaskStatus(
@@ -657,7 +758,9 @@ export function createDb(supabase: SupabaseClient, userId: string) {
     return mapTodo(row);
   }
 
-  async function deleteTask(id: string): Promise<void> {
+  /** `allFuture` ends the series here first, so its later occurrences go with it. */
+  async function deleteTask(id: string, allFuture = false): Promise<void> {
+    if (allFuture) await stopSeries(id);
     unwrap(await supabase.from('todos').delete().eq('user_id', userId).eq('id', id));
   }
 

@@ -380,6 +380,15 @@ export function TaskRow({
                   </Caption>
                 ) : null}
                 {!isCompact && scheduledTimeLabel ? <Caption>{scheduledTimeLabel}</Caption> : null}
+                {todo.repeat ? (
+                  <Ionicons
+                    name="repeat"
+                    size={13}
+                    color={isCompact ? compactScheduleColor : colors.textLight}
+                    accessibilityLabel="Repeats"
+                    style={styles.repeatGlyph}
+                  />
+                ) : null}
                 {!isCompact && todo.dueDate ? (
                   <Caption>Due {formatRelativeDateLabel(todo.dueDate)}</Caption>
                 ) : null}
@@ -510,6 +519,9 @@ const createStyles = (colors: Colors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+  },
+  repeatGlyph: {
+    alignSelf: 'center',
   },
   deltaPill: {
     borderRadius: BORDER_RADIUS.full,

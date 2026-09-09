@@ -17,6 +17,64 @@ import {
 } from '../utils/taskQuickCreateTags';
 
 describe('taskQuickCreateTags', () => {
+  // The mocked today, 2026-04-16, is a Thursday.
+  it('turns "every Monday" into a weekly rule on the first Monday from today', () => {
+    expect(buildQuickCreateTodoDraft('Singing every Monday 18:00')).toEqual({
+      title: 'Singing',
+      scheduledDate: '2026-04-20',
+      scheduledTime: '18:00',
+      repeat: { frequency: 'weekly', weekdays: [1] },
+    });
+  });
+
+  it('reads day lists, weekdays, every day, biweekly and monthly phrases', () => {
+    expect(buildQuickCreateTodoDraft('Gym every Mon/Wed')?.repeat).toEqual({
+      frequency: 'weekly',
+      weekdays: [1, 3],
+    });
+    expect(buildQuickCreateTodoDraft('Standup every weekday')?.repeat).toEqual({
+      frequency: 'weekly',
+      weekdays: [1, 2, 3, 4, 5],
+    });
+    expect(buildQuickCreateTodoDraft('Stretch every day')?.repeat?.weekdays).toHaveLength(7);
+    expect(buildQuickCreateTodoDraft('Therapy every 2 weeks on Wednesday')?.repeat).toEqual({
+      frequency: 'biweekly',
+      weekdays: [3],
+    });
+    expect(buildQuickCreateTodoDraft('Rent monthly')).toEqual({
+      title: 'Rent',
+      scheduledDate: '2026-04-16',
+      repeat: { frequency: 'monthly', weekdays: [] },
+    });
+  });
+
+  it('starts "every week" on the picked day and keeps that weekday', () => {
+    expect(buildQuickCreateTodoDraft('Review every week', '2026-04-22')).toEqual({
+      title: 'Review',
+      scheduledDate: '2026-04-22',
+      repeat: { frequency: 'weekly', weekdays: [3] },
+    });
+  });
+
+  it('moves the picked day forward to the first day the rule allows', () => {
+    expect(buildQuickCreateTodoDraft('Therapy every Wednesday', '2026-04-16')?.scheduledDate).toBe(
+      '2026-04-22'
+    );
+  });
+
+  it('leaves "everyone" and "every" inside words alone', () => {
+    expect(buildQuickCreateTodoDraft('Email everyone about the offsite')?.repeat).toBeUndefined();
+  });
+
+  it('highlights the repeat phrase', () => {
+    expect(getQuickCreateTextSegments('Singing every Monday 18:00')).toEqual([
+      { text: 'Singing ', kind: 'default' },
+      { text: 'every Monday', kind: 'repeat' },
+      { text: ' ', kind: 'default' },
+      { text: '18:00', kind: 'scheduledTime' },
+    ]);
+  });
+
   it('uses the first inline tag as the category and preserves its casing', () => {
     expect(getInlineTagName('Write launch copy #Brand #girls')).toBe('Brand');
   });
